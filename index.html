@@ -12,7 +12,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js">
     </script>
     <style>
-        /* ========== SEMUA STYLE SAMA SEPERTI SEBELUMNYA ========== */
+        /* ========== RESET & BASE ========== */
         * {
             margin: 0;
             padding: 0;
@@ -20,9 +20,14 @@
             font-family: 'Segoe UI', Roboto, system-ui, sans-serif;
         }
 
+        body {
+            background: #f5f0f0;
+            min-height: 100vh;
+            padding: 1.5rem;
+        }
+
         /* ========== LOGIN STYLES ========== */
         .login-page {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             display: flex;
             justify-content: center;
@@ -35,7 +40,24 @@
             bottom: 0;
             z-index: 9999;
             transition: opacity 0.6s ease, transform 0.6s ease;
+            background: linear-gradient(135deg, rgba(180, 20, 20, 0.85) 0%, rgba(120, 10, 10, 0.9) 50%, rgba(60, 5, 5, 0.95) 100%);
+            background-image: url('https://lh3.googleusercontent.com/u/0/d/1Dgbvx6U_DIitViiFL2BkcEP2S_TSvZSs');
+            background-size: cover;
+            background-position: center;
+            background-blend-mode: overlay;
         }
+
+        .login-page::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 0;
+        }
+
         .login-page.hidden {
             opacity: 0;
             transform: scale(1.1);
@@ -43,23 +65,27 @@
         }
 
         .login-container {
-            background: white;
-            border-radius: 20px;
-            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border-radius: 24px;
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.4);
             padding: 50px 40px;
-            width: 400px;
-            max-width: 90%;
-            animation: fadeIn 0.5s ease-in-out;
+            width: 420px;
+            max-width: 92%;
+            animation: fadeIn 0.6s ease-in-out;
+            position: relative;
+            z-index: 1;
+            border: 1px solid rgba(255, 255, 255, 0.2);
         }
 
         @keyframes fadeIn {
             from {
                 opacity: 0;
-                transform: translateY(-20px);
+                transform: translateY(-30px) scale(0.95);
             }
             to {
                 opacity: 1;
-                transform: translateY(0);
+                transform: translateY(0) scale(1);
             }
         }
 
@@ -68,33 +94,53 @@
             margin-bottom: 35px;
         }
 
+        .login-header .company-name {
+            font-size: 1.4rem;
+            font-weight: 700;
+            color: #b31b1b;
+            letter-spacing: 2px;
+        }
+
+        .login-header .company-name span {
+            color: #d42a2a;
+        }
+
+        .login-header .company-tagline {
+            font-size: 0.7rem;
+            color: #8a6a6a;
+            letter-spacing: 3px;
+            text-transform: uppercase;
+            margin-top: 2px;
+        }
+
+        .login-icon {
+            font-size: 50px;
+            margin-bottom: 12px;
+        }
+
+        .login-icon .hard-hat {
+            background: linear-gradient(135deg, #d42a2a, #b31b1b);
+            color: white;
+            width: 75px;
+            height: 75px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.4rem;
+            box-shadow: 0 12px 30px -8px rgba(180, 20, 20, 0.4);
+            border: 3px solid rgba(255, 255, 255, 0.15);
+        }
+
         .login-header h1 {
             font-size: 28px;
-            color: #333;
-            margin-bottom: 8px;
+            color: #2a1a1a;
+            margin: 12px 0 4px;
         }
 
         .login-header .login-sub {
             color: #888;
             font-size: 14px;
-        }
-
-        .login-icon {
-            font-size: 50px;
-            margin-bottom: 10px;
-        }
-
-        .login-icon .hard-hat {
-            background: #d42a2a;
-            color: white;
-            width: 70px;
-            height: 70px;
-            border-radius: 20px;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 2.2rem;
-            box-shadow: 0 10px 20px -8px rgba(200, 40, 40, 0.35);
         }
 
         .form-group {
@@ -106,16 +152,16 @@
             display: block;
             margin-bottom: 8px;
             font-weight: 600;
-            color: #555;
+            color: #444;
             font-size: 14px;
         }
 
         .form-group input {
             width: 100%;
-            padding: 12px 15px;
+            padding: 14px 15px;
             padding-right: 45px;
-            border: 2px solid #e1e5ee;
-            border-radius: 10px;
+            border: 2px solid #e8e8e8;
+            border-radius: 12px;
             font-size: 14px;
             transition: all 0.3s;
             outline: none;
@@ -123,45 +169,51 @@
         }
 
         .form-group input:focus {
-            border-color: #667eea;
+            border-color: #d42a2a;
             background: white;
-            box-shadow: 0 0 0 4px rgba(102, 126, 234, 0.1);
+            box-shadow: 0 0 0 4px rgba(212, 42, 42, 0.08);
         }
 
         .form-group .input-icon {
             position: absolute;
             right: 15px;
-            top: 40px;
+            top: 42px;
             color: #aaa;
+            font-size: 1.1rem;
         }
 
         .login-btn {
             width: 100%;
-            padding: 14px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 15px;
+            background: linear-gradient(135deg, #d42a2a, #b31b1b);
             border: none;
-            border-radius: 10px;
+            border-radius: 12px;
             color: white;
             font-size: 16px;
             font-weight: 600;
             cursor: pointer;
             transition: transform 0.2s, box-shadow 0.2s;
-            margin-top: 10px;
+            margin-top: 8px;
+            letter-spacing: 1px;
         }
 
         .login-btn:hover {
             transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+            box-shadow: 0 10px 25px -8px rgba(180, 20, 20, 0.4);
         }
 
         .login-btn:active {
             transform: translateY(0);
         }
 
+        .login-btn i {
+            margin-right: 8px;
+        }
+
         .error-message {
             background: #fee;
             color: #c0392b;
-            padding: 12px;
+            padding: 12px 16px;
             border-radius: 10px;
             font-size: 14px;
             margin-bottom: 20px;
@@ -180,10 +232,10 @@
                 transform: translateX(0);
             }
             25% {
-                transform: translateX(-10px);
+                transform: translateX(-8px);
             }
             75% {
-                transform: translateX(10px);
+                transform: translateX(8px);
             }
         }
 
@@ -195,13 +247,13 @@
         }
 
         .login-footer span {
-            color: #667eea;
+            color: #d42a2a;
             font-weight: 600;
         }
 
         .login-footer .demo-cred {
-            background: #f0f0f0;
-            padding: 0.3rem 1rem;
+            background: #f5f0f0;
+            padding: 0.4rem 1.2rem;
             border-radius: 60px;
             display: inline-block;
             font-size: 0.75rem;
@@ -217,20 +269,19 @@
             color: #d42a2a;
         }
 
-        @media (max-width: 480px) {
-            .login-container {
-                padding: 35px 25px;
-            }
-            .login-header h1 {
-                font-size: 24px;
-            }
+        .login-footer .company-footer {
+            margin-top: 1rem;
+            font-size: 0.65rem;
+            color: #aaa;
+            letter-spacing: 1px;
         }
 
         /* ========== MAIN APP STYLES ========== */
-        body {
-            background: #f5f0f0;
-            min-height: 100vh;
-            padding: 1.5rem;
+        #mainApp {
+            display: none;
+        }
+        #mainApp.visible {
+            display: block;
         }
 
         .app-wrapper {
@@ -788,7 +839,6 @@
             color: #0d47a1;
         }
 
-        /* Status perbaikan baru */
         .status-badge.closed {
             background: #e8f5e9;
             color: #1b5e20;
@@ -802,7 +852,6 @@
             color: #c62828;
         }
 
-        /* Status pengesahan */
         .status-badge.approved {
             background: #e8f5e9;
             color: #1b5e20;
@@ -810,10 +859,6 @@
         .status-badge.pending {
             background: #fff3e0;
             color: #e65100;
-        }
-        .status-badge.rejected {
-            background: #fce4ec;
-            color: #c62828;
         }
 
         .overdue-badge {
@@ -1229,7 +1274,6 @@
             background: #f0f8f0;
         }
 
-        /* ========== APPROVAL STAGES ========== */
         .approval-stages {
             display: flex;
             flex-direction: column;
@@ -1366,6 +1410,195 @@
             opacity: 0.5;
             cursor: not-allowed;
             transform: none;
+        }
+
+        .calendar-container {
+            background: white;
+            border-radius: 1.5rem;
+            padding: 1rem;
+            border: 1px solid #f0e0e0;
+        }
+
+        .calendar-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding: 0 0.5rem;
+        }
+
+        .calendar-header .month-year {
+            font-size: 1.1rem;
+            font-weight: 700;
+            color: #b31b1b;
+        }
+
+        .calendar-header .nav-btn {
+            background: none;
+            border: none;
+            font-size: 1.2rem;
+            color: #8a6a6a;
+            cursor: pointer;
+            padding: 0.3rem 0.8rem;
+            border-radius: 8px;
+            transition: 0.2s;
+        }
+
+        .calendar-header .nav-btn:hover {
+            background: #f0e8e8;
+            color: #d42a2a;
+        }
+
+        .calendar-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 2px;
+        }
+
+        .calendar-grid .day-name {
+            text-align: center;
+            font-size: 0.65rem;
+            font-weight: 600;
+            color: #8a6a6a;
+            padding: 0.3rem 0;
+            text-transform: uppercase;
+        }
+
+        .calendar-grid .day-cell {
+            text-align: center;
+            padding: 0.3rem 0;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            min-height: 40px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background: #faf8f8;
+            cursor: default;
+            transition: 0.15s;
+            border: 1px solid transparent;
+            position: relative;
+        }
+
+        .calendar-grid .day-cell.other-month {
+            color: #ccc;
+            background: #f9f9f9;
+        }
+
+        .calendar-grid .day-cell.today {
+            border-color: #d42a2a;
+            background: #fff5f5;
+        }
+
+        .calendar-grid .day-cell.has-event {
+            background: #e8f5e9;
+            border-color: #2e7d32;
+            cursor: pointer;
+        }
+
+        .calendar-grid .day-cell.has-event:hover {
+            transform: scale(1.05);
+            box-shadow: 0 4px 12px rgba(46, 125, 50, 0.2);
+        }
+
+        .calendar-grid .day-cell .day-number {
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+
+        .calendar-grid .day-cell .event-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            margin-top: 2px;
+        }
+
+        .calendar-grid .day-cell .event-dot.scheduled {
+            background: #d42a2a;
+        }
+
+        .calendar-grid .day-cell .event-dot.completed {
+            background: #2e7d32;
+        }
+
+        .calendar-grid .day-cell .event-dot.overdue {
+            background: #c62828;
+            animation: blink 1s infinite;
+        }
+
+        .calendar-grid .day-cell .event-dot.mixed {
+            background: linear-gradient(45deg, #d42a2a 50%, #2e7d32 50%);
+        }
+
+        .calendar-grid .day-cell .event-tooltip {
+            display: none;
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #2a1a1a;
+            color: white;
+            padding: 0.3rem 0.8rem;
+            border-radius: 8px;
+            font-size: 0.6rem;
+            white-space: nowrap;
+            z-index: 10;
+            margin-bottom: 4px;
+            max-width: 200px;
+            white-space: normal;
+        }
+
+        .calendar-grid .day-cell .event-tooltip::after {
+            content: '';
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            border: 4px solid transparent;
+            border-top-color: #2a1a1a;
+        }
+
+        .calendar-grid .day-cell.has-event:hover .event-tooltip {
+            display: block;
+        }
+
+        .calendar-legend {
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            margin-top: 0.8rem;
+            flex-wrap: wrap;
+        }
+
+        .calendar-legend .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.3rem;
+            font-size: 0.6rem;
+            color: #8a6a6a;
+        }
+
+        .calendar-legend .legend-item .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+
+        .calendar-legend .legend-item .dot.scheduled {
+            background: #d42a2a;
+        }
+
+        .calendar-legend .legend-item .dot.completed {
+            background: #2e7d32;
+        }
+
+        .calendar-legend .legend-item .dot.overdue {
+            background: #c62828;
+        }
+
+        .calendar-legend .legend-item .dot.mixed {
+            background: linear-gradient(45deg, #d42a2a 50%, #2e7d32 50%);
         }
 
         .jadwal-card {
@@ -1869,294 +2102,6 @@
             display: none;
         }
 
-        @media print {
-            body * {
-                visibility: hidden;
-            }
-            .pdf-content,
-            .pdf-content * {
-                visibility: visible;
-            }
-            .pdf-content {
-                display: block !important;
-                position: absolute;
-                top: 0;
-                left: 0;
-                width: 100%;
-                padding: 2rem;
-                background: white;
-            }
-            .no-print {
-                display: none !important;
-            }
-            .pdf-content .pdf-header {
-                text-align: center;
-                border-bottom: 3px solid #b31b1b;
-                padding-bottom: 1rem;
-                margin-bottom: 1.5rem;
-            }
-            .pdf-content .pdf-header h1 {
-                color: #b31b1b;
-                font-size: 1.8rem;
-            }
-            .pdf-content .pdf-header h1 span {
-                color: #d42a2a;
-            }
-            .pdf-content .pdf-header .sub {
-                color: #666;
-                font-size: 0.9rem;
-            }
-            .pdf-content .pdf-body {
-                padding: 0.5rem 0;
-            }
-            .pdf-content .pdf-body .info-grid {
-                display: grid;
-                grid-template-columns: 1fr 1fr;
-                gap: 0.5rem 2rem;
-                background: #f9f9f9;
-                padding: 1rem;
-                border-radius: 8px;
-                margin-bottom: 1rem;
-            }
-            .pdf-content .pdf-body .info-grid .item .label {
-                font-size: 0.7rem;
-                color: #888;
-                text-transform: uppercase;
-                font-weight: 600;
-            }
-            .pdf-content .pdf-body .info-grid .item .value {
-                font-size: 0.95rem;
-                font-weight: 500;
-                color: #222;
-            }
-            .pdf-content .pdf-body .section {
-                margin-top: 1rem;
-                border-top: 1px solid #eee;
-                padding-top: 0.8rem;
-            }
-            .pdf-content .pdf-body .section .title {
-                font-size: 0.8rem;
-                font-weight: 600;
-                color: #b31b1b;
-                margin-bottom: 0.5rem;
-            }
-            .pdf-content .pdf-body .section table {
-                width: 100%;
-                border-collapse: collapse;
-                font-size: 0.8rem;
-            }
-            .pdf-content .pdf-body .section table th {
-                background: #f0e0e0;
-                padding: 0.4rem 0.6rem;
-                text-align: left;
-                border: 1px solid #ddd;
-            }
-            .pdf-content .pdf-body .section table td {
-                padding: 0.3rem 0.6rem;
-                border: 1px solid #ddd;
-            }
-            .pdf-content .pdf-footer {
-                margin-top: 2rem;
-                border-top: 2px solid #b31b1b;
-                padding-top: 1rem;
-                text-align: center;
-            }
-            .pdf-content .pdf-footer .signature-block {
-                display: flex;
-                justify-content: center;
-                gap: 3rem;
-                margin: 1rem 0;
-                flex-wrap: wrap;
-            }
-            .pdf-content .pdf-footer .signature-block .sign-item {
-                text-align: center;
-                min-width: 150px;
-            }
-            .pdf-content .pdf-footer .signature-block .sign-item .sign-line {
-                border-top: 1px solid #222;
-                width: 150px;
-                margin: 0.3rem auto;
-            }
-            .pdf-content .pdf-footer .signature-block .sign-item .sign-name {
-                font-weight: 600;
-                font-size: 0.9rem;
-            }
-            .pdf-content .pdf-footer .signature-block .sign-item .sign-title {
-                font-size: 0.7rem;
-                color: #666;
-            }
-            .pdf-content .pdf-footer .legal-text {
-                font-size: 0.7rem;
-                color: #888;
-                font-style: italic;
-                margin-top: 0.5rem;
-                padding: 0.5rem;
-                border: 1px solid #ddd;
-                border-radius: 8px;
-                background: #f9f9f9;
-            }
-            .pdf-content .pdf-footer .legal-text i {
-                color: #b31b1b;
-                margin-right: 5px;
-            }
-            .pdf-content .pdf-stamp {
-                position: absolute;
-                bottom: 100px;
-                right: 50px;
-                opacity: 0.15;
-                font-size: 4rem;
-                color: #b31b1b;
-                transform: rotate(-15deg);
-                font-weight: 700;
-                border: 4px solid #b31b1b;
-                padding: 0.5rem 1.5rem;
-                border-radius: 16px;
-            }
-            .pdf-content .pdf-stamp small {
-                display: block;
-                font-size: 0.8rem;
-                font-weight: 400;
-            }
-            .pdf-gallery {
-                display: flex;
-                gap: 0.5rem;
-                flex-wrap: wrap;
-                margin: 0.3rem 0;
-            }
-            .pdf-gallery .pdf-thumb {
-                width: 50px;
-                height: 50px;
-                background: #f0e8e8;
-                border: 1px solid #ddd;
-                border-radius: 8px;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-                font-size: 1.2rem;
-            }
-        }
-
-        @media (max-width: 900px) {
-            .chart-row {
-                grid-template-columns: 1fr;
-            }
-            .form-row {
-                grid-template-columns: 1fr;
-            }
-            .app-wrapper {
-                padding: 1rem;
-            }
-            .app-header {
-                flex-direction: column;
-                align-items: flex-start;
-                gap: 0.8rem;
-            }
-            .header-right {
-                width: 100%;
-                justify-content: flex-start;
-            }
-            .nav-tabs {
-                overflow-x: auto;
-                flex-wrap: nowrap;
-                padding: 0.3rem;
-            }
-            .nav-tab {
-                padding: 0.4rem 1rem;
-                font-size: 0.8rem;
-                white-space: nowrap;
-            }
-            .stats-grid {
-                grid-template-columns: repeat(2, 1fr);
-            }
-            .form-group .file-input-group {
-                flex-direction: column;
-            }
-            .detail-grid {
-                grid-template-columns: 1fr;
-                gap: 0.5rem;
-            }
-            .search-wrapper {
-                min-width: 150px;
-            }
-            .search-wrapper input {
-                width: 100px;
-            }
-            .table-header-right {
-                width: 100%;
-            }
-            .lightbox-overlay .lightbox-nav {
-                padding: 0.8rem 1rem;
-                font-size: 1.2rem;
-            }
-            .lightbox-overlay .lightbox-nav.prev {
-                left: 0.5rem;
-            }
-            .lightbox-overlay .lightbox-nav.next {
-                right: 0.5rem;
-            }
-            .approval-stage {
-                flex-wrap: wrap;
-                gap: 0.3rem;
-            }
-            .approval-stage .stage-action-btn {
-                font-size: 0.55rem;
-                padding: 0.1rem 0.4rem;
-            }
-        }
-
-        @media (max-width: 480px) {
-            .stats-grid {
-                grid-template-columns: 1fr;
-            }
-            .modal-box {
-                padding: 1.2rem;
-            }
-            .detail-grid {
-                padding: 1rem;
-            }
-            .detail-section {
-                padding: 0.8rem 1rem;
-            }
-            .search-wrapper {
-                min-width: 120px;
-            }
-            .search-wrapper input {
-                width: 70px;
-                font-size: 0.75rem;
-            }
-            .lightbox-overlay .lightbox-close {
-                top: 0.8rem;
-                right: 0.8rem;
-                font-size: 1.8rem;
-                width: 40px;
-                height: 40px;
-            }
-            .lightbox-overlay .lightbox-content .lightbox-image {
-                max-height: 55vh;
-            }
-            .progress-wrapper {
-                flex-wrap: wrap;
-                gap: 0.2rem;
-            }
-            .progress-wrapper .progress-label {
-                min-width: 40px;
-            }
-            .approval-stage .stage-info .stage-title {
-                font-size: 0.7rem;
-            }
-            .approval-stage .stage-info .stage-detail {
-                font-size: 0.6rem;
-            }
-        }
-
-        /* hide main app initially */
-        #mainApp {
-            display: none;
-        }
-        #mainApp.visible {
-            display: block;
-        }
-
         /* ========== SELECT WITH SEARCH STYLES ========== */
         .select-search-wrapper {
             position: relative;
@@ -2269,7 +2214,7 @@
             display: block;
         }
 
-        /* ========== PERBAIKAN MODAL STYLE RAPI ========== */
+        /* ========== PERBAIKAN MODAL STYLE ========== */
         .perbaikan-info-box {
             background: #faf8f8;
             border-radius: 12px;
@@ -2450,6 +2395,323 @@
             font-size: 0.65rem;
             color: #8a6a6a;
         }
+
+        /* ========== PDF PRINT ========== */
+        @media print {
+            body * {
+                visibility: hidden;
+            }
+            .pdf-content,
+            .pdf-content * {
+                visibility: visible;
+            }
+            .pdf-content {
+                display: block !important;
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                padding: 2rem;
+                background: white;
+            }
+            .no-print {
+                display: none !important;
+            }
+            .pdf-content .pdf-header {
+                text-align: center;
+                border-bottom: 3px solid #b31b1b;
+                padding-bottom: 1rem;
+                margin-bottom: 1.5rem;
+            }
+            .pdf-content .pdf-header h1 {
+                color: #b31b1b;
+                font-size: 1.8rem;
+            }
+            .pdf-content .pdf-header h1 span {
+                color: #d42a2a;
+            }
+            .pdf-content .pdf-header .sub {
+                color: #666;
+                font-size: 0.9rem;
+            }
+            .pdf-content .pdf-body {
+                padding: 0.5rem 0;
+            }
+            .pdf-content .pdf-body .info-grid {
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 0.5rem 2rem;
+                background: #f9f9f9;
+                padding: 1rem;
+                border-radius: 8px;
+                margin-bottom: 1rem;
+            }
+            .pdf-content .pdf-body .info-grid .item .label {
+                font-size: 0.7rem;
+                color: #888;
+                text-transform: uppercase;
+                font-weight: 600;
+            }
+            .pdf-content .pdf-body .info-grid .item .value {
+                font-size: 0.95rem;
+                font-weight: 500;
+                color: #222;
+            }
+            .pdf-content .pdf-body .section {
+                margin-top: 1rem;
+                border-top: 1px solid #eee;
+                padding-top: 0.8rem;
+            }
+            .pdf-content .pdf-body .section .title {
+                font-size: 0.8rem;
+                font-weight: 600;
+                color: #b31b1b;
+                margin-bottom: 0.5rem;
+            }
+            .pdf-content .pdf-body .section table {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 0.8rem;
+            }
+            .pdf-content .pdf-body .section table th {
+                background: #f0e0e0;
+                padding: 0.4rem 0.6rem;
+                text-align: left;
+                border: 1px solid #ddd;
+            }
+            .pdf-content .pdf-body .section table td {
+                padding: 0.3rem 0.6rem;
+                border: 1px solid #ddd;
+            }
+            .pdf-content .pdf-footer {
+                margin-top: 2rem;
+                border-top: 2px solid #b31b1b;
+                padding-top: 1rem;
+                text-align: center;
+            }
+            .pdf-content .pdf-footer .signature-block {
+                display: flex;
+                justify-content: center;
+                gap: 3rem;
+                margin: 1rem 0;
+                flex-wrap: wrap;
+            }
+            .pdf-content .pdf-footer .signature-block .sign-item {
+                text-align: center;
+                min-width: 150px;
+            }
+            .pdf-content .pdf-footer .signature-block .sign-item .sign-line {
+                border-top: 1px solid #222;
+                width: 150px;
+                margin: 0.3rem auto;
+            }
+            .pdf-content .pdf-footer .signature-block .sign-item .sign-name {
+                font-weight: 600;
+                font-size: 0.9rem;
+            }
+            .pdf-content .pdf-footer .signature-block .sign-item .sign-title {
+                font-size: 0.7rem;
+                color: #666;
+            }
+            .pdf-content .pdf-footer .legal-text {
+                font-size: 0.7rem;
+                color: #888;
+                font-style: italic;
+                margin-top: 0.5rem;
+                padding: 0.5rem;
+                border: 1px solid #ddd;
+                border-radius: 8px;
+                background: #f9f9f9;
+            }
+            .pdf-content .pdf-footer .legal-text i {
+                color: #b31b1b;
+                margin-right: 5px;
+            }
+            .pdf-content .pdf-stamp {
+                position: absolute;
+                bottom: 100px;
+                right: 50px;
+                opacity: 0.15;
+                font-size: 4rem;
+                color: #b31b1b;
+                transform: rotate(-15deg);
+                font-weight: 700;
+                border: 4px solid #b31b1b;
+                padding: 0.5rem 1.5rem;
+                border-radius: 16px;
+            }
+            .pdf-content .pdf-stamp small {
+                display: block;
+                font-size: 0.8rem;
+                font-weight: 400;
+            }
+            .pdf-gallery {
+                display: flex;
+                gap: 0.5rem;
+                flex-wrap: wrap;
+                margin: 0.3rem 0;
+            }
+            .pdf-gallery .pdf-thumb {
+                width: 50px;
+                height: 50px;
+                background: #f0e8e8;
+                border: 1px solid #ddd;
+                border-radius: 8px;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 1.2rem;
+            }
+        }
+
+        /* ========== RESPONSIVE ========== */
+        @media (max-width: 900px) {
+            .chart-row {
+                grid-template-columns: 1fr;
+            }
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+            .app-wrapper {
+                padding: 1rem;
+            }
+            .app-header {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 0.8rem;
+            }
+            .header-right {
+                width: 100%;
+                justify-content: flex-start;
+            }
+            .nav-tabs {
+                overflow-x: auto;
+                flex-wrap: nowrap;
+                padding: 0.3rem;
+            }
+            .nav-tab {
+                padding: 0.4rem 1rem;
+                font-size: 0.8rem;
+                white-space: nowrap;
+            }
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .form-group .file-input-group {
+                flex-direction: column;
+            }
+            .detail-grid {
+                grid-template-columns: 1fr;
+                gap: 0.5rem;
+            }
+            .search-wrapper {
+                min-width: 150px;
+            }
+            .search-wrapper input {
+                width: 100px;
+            }
+            .table-header-right {
+                width: 100%;
+            }
+            .lightbox-overlay .lightbox-nav {
+                padding: 0.8rem 1rem;
+                font-size: 1.2rem;
+            }
+            .lightbox-overlay .lightbox-nav.prev {
+                left: 0.5rem;
+            }
+            .lightbox-overlay .lightbox-nav.next {
+                right: 0.5rem;
+            }
+            .approval-stage {
+                flex-wrap: wrap;
+                gap: 0.3rem;
+            }
+            .approval-stage .stage-action-btn {
+                font-size: 0.55rem;
+                padding: 0.1rem 0.4rem;
+            }
+            .calendar-grid .day-cell {
+                min-height: 30px;
+                font-size: 0.7rem;
+                padding: 0.15rem 0;
+            }
+            .calendar-grid .day-cell .day-number {
+                font-size: 0.7rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .login-container {
+                padding: 30px 20px;
+                width: 100%;
+            }
+            .login-header h1 {
+                font-size: 24px;
+            }
+            .login-icon .hard-hat {
+                width: 60px;
+                height: 60px;
+                font-size: 1.8rem;
+            }
+            .login-header .company-name {
+                font-size: 1.1rem;
+            }
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+            .modal-box {
+                padding: 1.2rem;
+            }
+            .detail-grid {
+                padding: 1rem;
+            }
+            .detail-section {
+                padding: 0.8rem 1rem;
+            }
+            .search-wrapper {
+                min-width: 120px;
+            }
+            .search-wrapper input {
+                width: 70px;
+                font-size: 0.75rem;
+            }
+            .lightbox-overlay .lightbox-close {
+                top: 0.8rem;
+                right: 0.8rem;
+                font-size: 1.8rem;
+                width: 40px;
+                height: 40px;
+            }
+            .lightbox-overlay .lightbox-content .lightbox-image {
+                max-height: 55vh;
+            }
+            .progress-wrapper {
+                flex-wrap: wrap;
+                gap: 0.2rem;
+            }
+            .progress-wrapper .progress-label {
+                min-width: 40px;
+            }
+            .approval-stage .stage-info .stage-title {
+                font-size: 0.7rem;
+            }
+            .approval-stage .stage-info .stage-detail {
+                font-size: 0.6rem;
+            }
+            .calendar-grid .day-cell {
+                min-height: 25px;
+                font-size: 0.6rem;
+                padding: 0.1rem 0;
+            }
+            .calendar-grid .day-cell .day-number {
+                font-size: 0.6rem;
+            }
+            .calendar-grid .day-cell .event-dot {
+                width: 4px;
+                height: 4px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -2575,12 +2837,13 @@
                     </div>
                 </div>
 
+                <!-- CALENDAR -->
                 <div class="table-wrap" style="margin-bottom:1.5rem;">
                     <div class="table-header">
-                        <h4><i class="fas fa-calendar-alt"></i> Jadwal Inspeksi Terdekat <span class="demo-badge">DEMO</span></h4>
+                        <h4><i class="fas fa-calendar-alt"></i> Jadwal Inspeksi Mingguan <span class="demo-badge">DEMO</span></h4>
                         <button class="btn-sm primary" onclick="switchTab('jadwal')"><i class="fas fa-arrow-right"></i> Kelola</button>
                     </div>
-                    <div id="dashboardJadwalContainer"></div>
+                    <div class="calendar-container" id="calendarContainer"></div>
                 </div>
 
                 <div class="chart-row">
@@ -2629,7 +2892,7 @@
             <div id="panel-jadwal" class="panel no-print">
                 <div class="table-wrap">
                     <div class="table-header">
-                        <h4><i class="fas fa-calendar-plus"></i> Penjadwalan Inspeksi <span class="demo-badge">DEMO</span></h4>
+                        <h4><i class="fas fa-calendar-plus"></i> Penjadwalan Inspeksi Mingguan <span class="demo-badge">DEMO</span></h4>
                         <div class="table-header-right">
                             <div class="search-wrapper" id="searchJadwal">
                                 <i class="fas fa-search search-icon"></i>
@@ -2645,7 +2908,9 @@
                             <tr>
                                 <th>Plant</th>
                                 <th>Periode</th>
-                                <th>Tahun</th>
+                                <th>Minggu</th>
+                                <th>Tanggal Jadwal</th>
+                                <th>Tanggal Realisasi</th>
                                 <th>Safety Officer</th>
                                 <th>Status</th>
                                 <th>Aksi</th>
@@ -2842,6 +3107,18 @@
                         </div>
                     </div>
                     <div class="form-group">
+                        <label>Minggu ke- <span style="color:#c62828;">*</span></label>
+                        <select id="jadwalMinggu">
+                            <option value="1">Minggu 1</option>
+                            <option value="2">Minggu 2</option>
+                            <option value="3">Minggu 3</option>
+                            <option value="4">Minggu 4</option>
+                            <option value="5">Minggu 5</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
                         <label>Periode <span style="color:#c62828;">*</span></label>
                         <select id="jadwalPeriode">
                             <option value="1">Periode 1 (Jan - Mar)</option>
@@ -2850,15 +3127,33 @@
                             <option value="4">Periode 4 (Okt - Des)</option>
                         </select>
                     </div>
-                </div>
-                <div class="form-row">
                     <div class="form-group">
                         <label>Tahun <span style="color:#c62828;">*</span></label>
                         <input type="number" id="jadwalTahun" value="2026" min="2024" max="2030">
                     </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Tanggal Jadwal <span style="color:#c62828;">*</span></label>
+                        <input type="date" id="jadwalTanggal">
+                    </div>
                     <div class="form-group">
                         <label>Safety Officer</label>
                         <input type="text" id="jadwalPetugas" placeholder="Nama Safety Officer" value="Arif">
+                    </div>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Tanggal Realisasi (jika sudah dilaksanakan)</label>
+                        <input type="date" id="jadwalRealisasi">
+                    </div>
+                    <div class="form-group">
+                        <label>&nbsp;</label>
+                        <div style="display:flex;gap:0.5rem;">
+                            <button type="button" class="btn-sm success" onclick="setRealisasiHariIni()" style="padding:0.4rem 1rem;">
+                                <i class="fas fa-calendar-check"></i> Set Hari Ini
+                            </button>
+                        </div>
                     </div>
                 </div>
                 <button type="submit" class="btn-submit" id="submitJadwal"><i class="fas fa-save"></i> Simpan Jadwal</button>
@@ -2935,6 +3230,279 @@
             { id: 3, name: 'Manajer Bagian', title: 'Manajer Bagian', order: 3 },
             { id: 4, name: 'Ketua P2K3', title: 'Ketua P2K3', order: 4 }
         ];
+
+        // ========================================================================
+        // ========== HELPERS ==========
+        // ========================================================================
+
+        function formatDate(dateStr) {
+            if (!dateStr) return '-';
+            const d = new Date(dateStr);
+            return d.toLocaleDateString('id-ID');
+        }
+
+        function getWeekNumber(dateStr) {
+            const d = new Date(dateStr);
+            const startOfYear = new Date(d.getFullYear(), 0, 1);
+            const diff = d - startOfYear;
+            const week = Math.ceil((diff / 86400000 + startOfYear.getDay() + 1) / 7);
+            return week;
+        }
+
+        function getWeekLabel(dateStr) {
+            if (!dateStr) return '-';
+            const week = getWeekNumber(dateStr);
+            return `Minggu ${week}`;
+        }
+
+        function getDateISO(days) {
+            const d = new Date();
+            d.setDate(d.getDate() + days);
+            return d.toISOString().split('T')[0];
+        }
+
+        function getDateOffset(days) {
+            const d = new Date();
+            d.setDate(d.getDate() + days);
+            return d.toLocaleDateString('id-ID');
+        }
+
+        function getRandomOfficer() {
+            const officers = ['Arif', 'Tulus', 'Mustofa', 'Melka'];
+            return officers[Math.floor(Math.random() * officers.length)];
+        }
+
+        // ========================================================================
+        // ========== GENERATE JADWAL MINGGUAN ==========
+        // ========================================================================
+
+        function generateWeeklySchedule() {
+            const today = new Date();
+            const currentYear = today.getFullYear();
+            
+            const schedules = [];
+            let idCounter = 1;
+
+            PLANT_LIST.forEach(plant => {
+                PERIODE_LIST.forEach(periode => {
+                    const startMonth = (periode.id - 1) * 3;
+                    const endMonth = startMonth + 2;
+                    
+                    for (let week = 0; week < 12; week++) {
+                        const date = new Date(currentYear, startMonth, 1 + (week * 7));
+                        
+                        if (date.getMonth() > endMonth) break;
+                        
+                        const diffDays = (date - today) / (1000 * 60 * 60 * 24);
+                        if (diffDays < -30) continue;
+                        
+                        const officers = ['Arif', 'Tulus', 'Mustofa', 'Melka'];
+                        const officerIndex = (plant.id + week) % officers.length;
+                        
+                        const isRealisasi = Math.random() < 0.3 && diffDays < 0;
+                        const realisasiDate = isRealisasi ? new Date(date) : null;
+                        if (realisasiDate) {
+                            realisasiDate.setDate(realisasiDate.getDate() + Math.floor(Math.random() * 5) + 1);
+                        }
+                        
+                        schedules.push({
+                            id: `SCH-${String(idCounter++).padStart(3, '0')}`,
+                            plantId: plant.id,
+                            plantName: plant.name,
+                            periode: periode.id,
+                            tahun: currentYear,
+                            minggu: week + 1,
+                            tanggalJadwal: date.toISOString().split('T')[0],
+                            tanggalRealisasi: realisasiDate ? realisasiDate.toISOString().split('T')[0] : null,
+                            officer: officers[officerIndex],
+                            status: isRealisasi ? 'selesai' : 'aktif'
+                        });
+                    }
+                });
+            });
+
+            return schedules;
+        }
+
+        // ========================================================================
+        // ========== DATA ==========
+        // ========================================================================
+
+        let jadwalData = generateWeeklySchedule();
+
+        let inspeksiData = [{
+            id: 'INS-001',
+            lokasi: 'Electrical dan Instrument',
+            plantId: 1,
+            keteranganLokasi: 'Ruang Panel E&I Lantai 2',
+            lat: -6.200000,
+            lng: 106.816666,
+            tanggal: getDateOffset(-5),
+            petugas: 'Arif',
+            status: 'selesai',
+            dueDate: getDateOffset(-2),
+            fotoDekat: ['kimia_dekat1.jpg', 'kimia_dekat2.jpg'],
+            fotoJauh: ['kimia_jauh1.jpg'],
+            approvals: {
+                1: { approved: true, by: 'Arif', jabatan: 'Safety Officer', tanggal: getDateOffset(-4) + ' 09:00' },
+                2: { approved: true, by: 'Bambang', jabatan: 'Koord. K3L Bagian', tanggal: getDateOffset(-3) + ' 10:30' },
+                3: { approved: true, by: 'Siti', jabatan: 'Manajer Bagian', tanggal: getDateOffset(-2) + ' 13:15' },
+                4: { approved: true, by: 'Hadi', jabatan: 'Ketua P2K3', tanggal: getDateOffset(-1) + ' 16:00' }
+            },
+            temuan: [
+                { deskripsi: 'Kabel ground tidak terpasang dengan benar', kategori: 'Kelistrikan' },
+                { deskripsi: 'Panel kontrol tidak terkunci', kategori: 'Kecelakaan' }
+            ],
+            perbaikan: [
+                { tgl: getDateOffset(-4), action: 'Perbaiki grounding kabel', status: 'closed', pic: 'Arif',
+                    foto: ['ground1.jpg'] },
+                { tgl: getDateOffset(-3), action: 'Pasang kunci panel', status: 'closed', pic: 'Tulus',
+                    foto: ['kunci1.jpg'] }
+            ]
+        }, {
+            id: 'INS-002',
+            lokasi: 'Fermentation',
+            plantId: 3,
+            keteranganLokasi: 'Area Fermentasi A2',
+            lat: -6.210000,
+            lng: 106.820000,
+            tanggal: getDateOffset(-3),
+            petugas: 'Mustofa',
+            status: 'proses',
+            dueDate: getDateOffset(3),
+            fotoDekat: ['fermentasi_dekat1.jpg'],
+            fotoJauh: ['fermentasi_jauh1.jpg'],
+            approvals: {
+                1: { approved: true, by: 'Mustofa', jabatan: 'Safety Officer', tanggal: getDateOffset(-2) + ' 08:00' },
+                2: { approved: false, by: null, jabatan: 'Koord. K3L Bagian', tanggal: null },
+                3: { approved: false, by: null, jabatan: 'Manajer Bagian', tanggal: null },
+                4: { approved: false, by: null, jabatan: 'Ketua P2K3', tanggal: null }
+            },
+            temuan: [
+                { deskripsi: 'Suhu fermentasi tidak stabil', kategori: 'Kesehatan' },
+                { deskripsi: 'Kebocoran pada pipa transfer', kategori: 'Kebocoran' }
+            ],
+            perbaikan: [
+                { tgl: getDateOffset(-2), action: 'Kalibrasi sensor suhu', status: 'closed', pic: 'Tulus',
+                    foto: ['sensor1.jpg'] },
+                { tgl: getDateOffset(-1), action: 'Perbaiki kebocoran pipa', status: 'on-progress', pic: 'Melka',
+                    foto: ['pipa1.jpg'] }
+            ]
+        }, {
+            id: 'INS-003',
+            lokasi: 'PMR 2',
+            plantId: 6,
+            keteranganLokasi: 'Gedung PMR 2 - Lantai 3',
+            lat: -6.190000,
+            lng: 106.810000,
+            tanggal: getDateOffset(-7),
+            petugas: 'Melka',
+            status: 'tinjau',
+            dueDate: getDateOffset(-1),
+            fotoDekat: ['pmr2_dekat1.jpg'],
+            fotoJauh: ['pmr2_jauh1.jpg'],
+            approvals: {
+                1: { approved: true, by: 'Melka', jabatan: 'Safety Officer', tanggal: getDateOffset(-6) + ' 11:00' },
+                2: { approved: true, by: 'Dewi', jabatan: 'Koord. K3L Bagian', tanggal: getDateOffset(-5) + ' 09:30' },
+                3: { approved: false, by: null, jabatan: 'Manajer Bagian', tanggal: null },
+                4: { approved: false, by: null, jabatan: 'Ketua P2K3', tanggal: null }
+            },
+            temuan: [
+                { deskripsi: 'APAR tidak terisi penuh', kategori: 'Kebakaran' },
+                { deskripsi: 'Rambu evakuasi tidak terlihat', kategori: 'Kecelakaan' }
+            ],
+            perbaikan: [
+                { tgl: getDateOffset(-6), action: 'Isi ulang APAR', status: 'closed', pic: 'Arif',
+                    foto: ['apar1.jpg'] },
+                { tgl: getDateOffset(-4), action: 'Pasang rambu evakuasi baru', status: 'open', pic: 'Tulus',
+                    foto: [] }
+            ]
+        }, {
+            id: 'INS-004',
+            lokasi: 'Logistic',
+            plantId: 9,
+            keteranganLokasi: 'Gudang Logistik - Rak C4',
+            lat: -6.180000,
+            lng: 106.815000,
+            tanggal: getDateOffset(-10),
+            petugas: 'Tulus',
+            status: 'selesai',
+            dueDate: getDateOffset(-5),
+            fotoDekat: ['logistik_dekat1.jpg'],
+            fotoJauh: ['logistik_jauh1.jpg'],
+            approvals: {
+                1: { approved: true, by: 'Tulus', jabatan: 'Safety Officer', tanggal: getDateOffset(-9) + ' 10:00' },
+                2: { approved: true, by: 'Rina', jabatan: 'Koord. K3L Bagian', tanggal: getDateOffset(-8) + ' 11:30' },
+                3: { approved: true, by: 'Andi', jabatan: 'Manajer Bagian', tanggal: getDateOffset(-7) + ' 09:00' },
+                4: { approved: true, by: 'Hadi', jabatan: 'Ketua P2K3', tanggal: getDateOffset(-6) + ' 15:00' }
+            },
+            temuan: [
+                { deskripsi: 'Rak penyimpanan tidak stabil', kategori: 'Kecelakaan' },
+                { deskripsi: 'Penerangan gudang kurang', kategori: 'Kesehatan' }
+            ],
+            perbaikan: [
+                { tgl: getDateOffset(-9), action: 'Perbaiki rak penyimpanan', status: 'closed', pic: 'Melka',
+                    foto: ['rak1.jpg'] },
+                { tgl: getDateOffset(-7), action: 'Tambah lampu penerangan', status: 'closed', pic: 'Arif',
+                    foto: ['lampu1.jpg'] }
+            ]
+        }, {
+            id: 'INS-005',
+            lokasi: 'UTILITY',
+            plantId: 16,
+            keteranganLokasi: 'Ruang Utility - Pompa Air',
+            lat: -6.195000,
+            lng: 106.825000,
+            tanggal: getDateOffset(-1),
+            petugas: 'Mustofa',
+            status: 'proses',
+            dueDate: getDateOffset(7),
+            fotoDekat: ['utility_dekat1.jpg'],
+            fotoJauh: ['utility_jauh1.jpg'],
+            approvals: {
+                1: { approved: true, by: 'Mustofa', jabatan: 'Safety Officer', tanggal: getDateOffset(0) + ' 07:30' },
+                2: { approved: false, by: null, jabatan: 'Koord. K3L Bagian', tanggal: null },
+                3: { approved: false, by: null, jabatan: 'Manajer Bagian', tanggal: null },
+                4: { approved: false, by: null, jabatan: 'Ketua P2K3', tanggal: null }
+            },
+            temuan: [
+                { deskripsi: 'Bocor pada sambungan pipa', kategori: 'Kebocoran' },
+                { deskripsi: 'Tekanan air tidak stabil', kategori: 'Lainnya' }
+            ],
+            perbaikan: [
+                { tgl: getDateOffset(0), action: 'Identifikasi sumber bocor', status: 'on-progress', pic: 'Tulus',
+                    foto: ['bocor1.jpg'] }
+            ]
+        }, {
+            id: 'INS-006',
+            lokasi: 'SHE, WT, IPAL',
+            plantId: 14,
+            keteranganLokasi: 'Area IPAL - Bak Sedimentasi',
+            lat: -6.205000,
+            lng: 106.818000,
+            tanggal: getDateOffset(-12),
+            petugas: 'Melka',
+            status: 'selesai',
+            dueDate: getDateOffset(-8),
+            fotoDekat: ['ipal_dekat1.jpg'],
+            fotoJauh: ['ipal_jauh1.jpg'],
+            approvals: {
+                1: { approved: true, by: 'Melka', jabatan: 'Safety Officer', tanggal: getDateOffset(-11) + ' 08:00' },
+                2: { approved: true, by: 'Dewi', jabatan: 'Koord. K3L Bagian', tanggal: getDateOffset(-10) + ' 09:30' },
+                3: { approved: true, by: 'Andi', jabatan: 'Manajer Bagian', tanggal: getDateOffset(-9) + ' 13:00' },
+                4: { approved: false, by: null, jabatan: 'Ketua P2K3', tanggal: null }
+            },
+            temuan: [
+                { deskripsi: 'Pompa IPAL tidak berfungsi optimal', kategori: 'Lainnya' },
+                { deskripsi: 'Kebersihan area sekitar kurang', kategori: 'Kesehatan' }
+            ],
+            perbaikan: [
+                { tgl: getDateOffset(-11), action: 'Perbaiki pompa IPAL', status: 'closed', pic: 'Arif',
+                    foto: ['pompa1.jpg'] },
+                { tgl: getDateOffset(-10), action: 'Bersihkan area IPAL', status: 'closed', pic: 'Mustofa',
+                    foto: ['bersih1.jpg'] }
+            ]
+        }];
 
         // ========================================================================
         // ========== SELECT WITH SEARCH ==========
@@ -3223,224 +3791,6 @@
         window.addEventListener('load', function() {
             document.getElementById('loginUsername').focus();
         });
-
-        // ========================================================================
-        // ========== DATA DEMO ==========
-        // ========================================================================
-
-        const SAFETY_OFFICER_LIST = ['Arif', 'Tulus', 'Mustofa', 'Melka'];
-        const MANAGER_SHE = 'Nur Hadi';
-        const MANAGER_TITLE = 'Manager SHE';
-
-        function getRandomOfficer() {
-            return SAFETY_OFFICER_LIST[Math.floor(Math.random() * SAFETY_OFFICER_LIST.length)];
-        }
-
-        function getDateOffset(days) {
-            const d = new Date();
-            d.setDate(d.getDate() + days);
-            return d.toLocaleDateString('id-ID');
-        }
-
-        function getDateISO(days) {
-            const d = new Date();
-            d.setDate(d.getDate() + days);
-            return d.toISOString().split('T')[0];
-        }
-
-        // ========================================================================
-        // ========== JADWAL DATA (Periode) ==========
-        // ========================================================================
-
-        let jadwalData = [
-            { id: 'SCH-001', plantId: 1, plantName: 'Electrical dan Instrument', periode: 1, tahun: 2026, officer: 'Arif', status: 'aktif' },
-            { id: 'SCH-002', plantId: 3, plantName: 'Fermentation', periode: 2, tahun: 2026, officer: 'Tulus', status: 'aktif' },
-            { id: 'SCH-003', plantId: 6, plantName: 'PMR 2', periode: 3, tahun: 2026, officer: 'Mustofa', status: 'aktif' },
-            { id: 'SCH-004', plantId: 16, plantName: 'UTILITY', periode: 4, tahun: 2026, officer: 'Melka', status: 'aktif' },
-            { id: 'SCH-005', plantId: 14, plantName: 'SHE, WT, IPAL', periode: 1, tahun: 2026, officer: 'Arif', status: 'aktif' },
-            { id: 'SCH-006', plantId: 9, plantName: 'Logistic', periode: 2, tahun: 2026, officer: 'Tulus', status: 'aktif' },
-            { id: 'SCH-007', plantId: 5, plantName: 'PMR 1 dan DCL', periode: 3, tahun: 2026, officer: 'Melka', status: 'aktif' },
-            { id: 'SCH-008', plantId: 2, plantName: 'Engineering TD', periode: 4, tahun: 2026, officer: 'Mustofa', status: 'aktif' }
-        ];
-
-        // ========================================================================
-        // ========== INSPEKSI DATA ==========
-        // ========================================================================
-
-        let inspeksiData = [{
-            id: 'INS-001',
-            lokasi: 'Electrical dan Instrument',
-            plantId: 1,
-            keteranganLokasi: 'Ruang Panel E&I Lantai 2',
-            lat: -6.200000,
-            lng: 106.816666,
-            tanggal: getDateOffset(-5),
-            petugas: 'Arif',
-            status: 'selesai',
-            dueDate: getDateOffset(-2),
-            fotoDekat: ['kimia_dekat1.jpg', 'kimia_dekat2.jpg'],
-            fotoJauh: ['kimia_jauh1.jpg'],
-            // Approval stages (4 tahap)
-            approvals: {
-                1: { approved: true, by: 'Arif', jabatan: 'Safety Officer', tanggal: getDateOffset(-4) + ' 09:00' },
-                2: { approved: true, by: 'Bambang', jabatan: 'Koord. K3L Bagian', tanggal: getDateOffset(-3) + ' 10:30' },
-                3: { approved: true, by: 'Siti', jabatan: 'Manajer Bagian', tanggal: getDateOffset(-2) + ' 13:15' },
-                4: { approved: true, by: 'Hadi', jabatan: 'Ketua P2K3', tanggal: getDateOffset(-1) + ' 16:00' }
-            },
-            temuan: [
-                { deskripsi: 'Kabel ground tidak terpasang dengan benar', kategori: 'Kelistrikan' },
-                { deskripsi: 'Panel kontrol tidak terkunci', kategori: 'Kecelakaan' }
-            ],
-            perbaikan: [
-                { tgl: getDateOffset(-4), action: 'Perbaiki grounding kabel', status: 'closed', pic: 'Arif',
-                    foto: ['ground1.jpg'] },
-                { tgl: getDateOffset(-3), action: 'Pasang kunci panel', status: 'closed', pic: 'Tulus',
-                    foto: ['kunci1.jpg'] }
-            ]
-        }, {
-            id: 'INS-002',
-            lokasi: 'Fermentation',
-            plantId: 3,
-            keteranganLokasi: 'Area Fermentasi A2',
-            lat: -6.210000,
-            lng: 106.820000,
-            tanggal: getDateOffset(-3),
-            petugas: 'Mustofa',
-            status: 'proses',
-            dueDate: getDateOffset(3),
-            fotoDekat: ['fermentasi_dekat1.jpg'],
-            fotoJauh: ['fermentasi_jauh1.jpg'],
-            approvals: {
-                1: { approved: true, by: 'Mustofa', jabatan: 'Safety Officer', tanggal: getDateOffset(-2) + ' 08:00' },
-                2: { approved: false, by: null, jabatan: 'Koord. K3L Bagian', tanggal: null },
-                3: { approved: false, by: null, jabatan: 'Manajer Bagian', tanggal: null },
-                4: { approved: false, by: null, jabatan: 'Ketua P2K3', tanggal: null }
-            },
-            temuan: [
-                { deskripsi: 'Suhu fermentasi tidak stabil', kategori: 'Kesehatan' },
-                { deskripsi: 'Kebocoran pada pipa transfer', kategori: 'Kebocoran' }
-            ],
-            perbaikan: [
-                { tgl: getDateOffset(-2), action: 'Kalibrasi sensor suhu', status: 'closed', pic: 'Tulus',
-                    foto: ['sensor1.jpg'] },
-                { tgl: getDateOffset(-1), action: 'Perbaiki kebocoran pipa', status: 'on-progress', pic: 'Melka',
-                    foto: ['pipa1.jpg'] }
-            ]
-        }, {
-            id: 'INS-003',
-            lokasi: 'PMR 2',
-            plantId: 6,
-            keteranganLokasi: 'Gedung PMR 2 - Lantai 3',
-            lat: -6.190000,
-            lng: 106.810000,
-            tanggal: getDateOffset(-7),
-            petugas: 'Melka',
-            status: 'tinjau',
-            dueDate: getDateOffset(-1),
-            fotoDekat: ['pmr2_dekat1.jpg'],
-            fotoJauh: ['pmr2_jauh1.jpg'],
-            approvals: {
-                1: { approved: true, by: 'Melka', jabatan: 'Safety Officer', tanggal: getDateOffset(-6) + ' 11:00' },
-                2: { approved: true, by: 'Dewi', jabatan: 'Koord. K3L Bagian', tanggal: getDateOffset(-5) + ' 09:30' },
-                3: { approved: false, by: null, jabatan: 'Manajer Bagian', tanggal: null },
-                4: { approved: false, by: null, jabatan: 'Ketua P2K3', tanggal: null }
-            },
-            temuan: [
-                { deskripsi: 'APAR tidak terisi penuh', kategori: 'Kebakaran' },
-                { deskripsi: 'Rambu evakuasi tidak terlihat', kategori: 'Kecelakaan' }
-            ],
-            perbaikan: [
-                { tgl: getDateOffset(-6), action: 'Isi ulang APAR', status: 'closed', pic: 'Arif',
-                    foto: ['apar1.jpg'] },
-                { tgl: getDateOffset(-4), action: 'Pasang rambu evakuasi baru', status: 'open', pic: 'Tulus',
-                    foto: [] }
-            ]
-        }, {
-            id: 'INS-004',
-            lokasi: 'Logistic',
-            plantId: 9,
-            keteranganLokasi: 'Gudang Logistik - Rak C4',
-            lat: -6.180000,
-            lng: 106.815000,
-            tanggal: getDateOffset(-10),
-            petugas: 'Tulus',
-            status: 'selesai',
-            dueDate: getDateOffset(-5),
-            fotoDekat: ['logistik_dekat1.jpg'],
-            fotoJauh: ['logistik_jauh1.jpg'],
-            approvals: {
-                1: { approved: true, by: 'Tulus', jabatan: 'Safety Officer', tanggal: getDateOffset(-9) + ' 10:00' },
-                2: { approved: true, by: 'Rina', jabatan: 'Koord. K3L Bagian', tanggal: getDateOffset(-8) + ' 11:30' },
-                3: { approved: true, by: 'Andi', jabatan: 'Manajer Bagian', tanggal: getDateOffset(-7) + ' 09:00' },
-                4: { approved: true, by: 'Hadi', jabatan: 'Ketua P2K3', tanggal: getDateOffset(-6) + ' 15:00' }
-            },
-            temuan: [
-                { deskripsi: 'Rak penyimpanan tidak stabil', kategori: 'Kecelakaan' },
-                { deskripsi: 'Penerangan gudang kurang', kategori: 'Kesehatan' }
-            ],
-            perbaikan: [
-                { tgl: getDateOffset(-9), action: 'Perbaiki rak penyimpanan', status: 'closed', pic: 'Melka',
-                    foto: ['rak1.jpg'] },
-                { tgl: getDateOffset(-7), action: 'Tambah lampu penerangan', status: 'closed', pic: 'Arif',
-                    foto: ['lampu1.jpg'] }
-            ]
-        }, {
-            id: 'INS-005',
-            lokasi: 'UTILITY',
-            plantId: 16,
-            keteranganLokasi: 'Ruang Utility - Pompa Air',
-            lat: -6.195000,
-            lng: 106.825000,
-            tanggal: getDateOffset(-1),
-            petugas: 'Mustofa',
-            status: 'proses',
-            dueDate: getDateOffset(7),
-            fotoDekat: ['utility_dekat1.jpg'],
-            fotoJauh: ['utility_jauh1.jpg'],
-            approvals: {
-                1: { approved: true, by: 'Mustofa', jabatan: 'Safety Officer', tanggal: getDateOffset(0) + ' 07:30' },
-                2: { approved: false, by: null, jabatan: 'Koord. K3L Bagian', tanggal: null },
-                3: { approved: false, by: null, jabatan: 'Manajer Bagian', tanggal: null },
-                4: { approved: false, by: null, jabatan: 'Ketua P2K3', tanggal: null }
-            },
-            temuan: [
-                { deskripsi: 'Bocor pada sambungan pipa', kategori: 'Kebocoran' },
-                { deskripsi: 'Tekanan air tidak stabil', kategori: 'Lainnya' }
-            ],
-            perbaikan: [
-                { tgl: getDateOffset(0), action: 'Identifikasi sumber bocor', status: 'on-progress', pic: 'Tulus',
-                    foto: ['bocor1.jpg'] }
-            ]
-        }, {
-            id: 'INS-006',
-            lokasi: 'SHE, WT, IPAL',
-            plantId: 14,
-            keteranganLokasi: 'Area IPAL - Bak Sedimentasi',
-            lat: -6.205000,
-            lng: 106.818000,
-            tanggal: getDateOffset(-12),
-            petugas: 'Melka',
-            status: 'selesai',
-            dueDate: getDateOffset(-8),
-            fotoDekat: ['ipal_dekat1.jpg'],
-            fotoJauh: ['ipal_jauh1.jpg'],
-            approvals: {
-                1: { approved: true, by: 'Melka', jabatan: 'Safety Officer', tanggal: getDateOffset(-11) + ' 08:00' },
-                2: { approved: true, by: 'Dewi', jabatan: 'Koord. K3L Bagian', tanggal: getDateOffset(-10) + ' 09:30' },
-                3: { approved: true, by: 'Andi', jabatan: 'Manajer Bagian', tanggal: getDateOffset(-9) + ' 13:00' },
-                4: { approved: false, by: null, jabatan: 'Ketua P2K3', tanggal: null }
-            },
-            temuan: [
-                { deskripsi: 'Pompa IPAL tidak berfungsi optimal', kategori: 'Lainnya' },
-                { deskripsi: 'Kebersihan area sekitar kurang', kategori: 'Kesehatan' }
-            ],
-            perbaikan: [
-                { tgl: getDateOffset(-11), action: 'Perbaiki pompa IPAL', status: 'closed', pic: 'Arif',
-                    foto: ['pompa1.jpg'] },
-                { tgl: getDateOffset(-10), action: 'Bersihkan area IPAL', status: 'closed', pic: 'Mustofa',
-                    foto: ['bersih1.jpg'] }
-            ]
-        }];
 
         // ========================================================================
         // ========== CLOCK REAL TIME ==========
@@ -3743,7 +4093,6 @@
             const stage = APPROVAL_STAGES.find(s => s.id === stageId);
             if (!stage) { showToast('⚠️ Tahap tidak ditemukan'); return; }
 
-            // Cek apakah stage sebelumnya sudah disetujui
             const prevStage = APPROVAL_STAGES.find(s => s.order === stage.order - 1);
             if (prevStage) {
                 const prevApproval = item.approvals && item.approvals[prevStage.id];
@@ -3753,13 +4102,11 @@
                 }
             }
 
-            // Cek apakah stage ini sudah disetujui
             if (item.approvals && item.approvals[stageId] && item.approvals[stageId].approved) {
                 showToast('⚠️ Tahap ini sudah disetujui!');
                 return;
             }
 
-            // Approve
             if (!item.approvals) item.approvals = {};
             item.approvals[stageId] = {
                 approved: true,
@@ -3768,7 +4115,6 @@
                 tanggal: new Date().toLocaleString('id-ID')
             };
 
-            // Jika semua tahap sudah disetujui, update status inspeksi
             const allApproved = APPROVAL_STAGES.every(s => item.approvals[s.id] && item.approvals[s.id].approved === true);
             if (allApproved) {
                 item.status = 'selesai';
@@ -3870,7 +4216,6 @@
             const item = inspeksiData.find(d => d.id === id);
             if (!item) { showToast('⚠️ Data tidak ditemukan'); return; }
 
-            // Cek apakah semua tahap sudah disetujui
             const allApproved = APPROVAL_STAGES.every(s => item.approvals && item.approvals[s.id] && item.approvals[s.id].approved === true);
             if (!allApproved) {
                 showToast('⚠️ Inspeksi belum disetujui semua tahap! Silahkan selesaikan pengesahan terlebih dahulu.');
@@ -3904,7 +4249,6 @@
                 }).join('') :
                 '<tr><td colspan="4" style="text-align:center;color:#888;">Belum ada tindakan perbaikan</td></tr>';
 
-            // Approval signatures
             const approvalSignatures = APPROVAL_STAGES.map(s => {
                 const approval = item.approvals && item.approvals[s.id];
                 if (approval && approval.approved) {
@@ -4066,6 +4410,192 @@
         };
 
         // ========================================================================
+        // ========== CALENDAR FUNCTIONS ==========
+        // ========================================================================
+
+        let currentCalendarMonth = new Date().getMonth();
+        let currentCalendarYear = new Date().getFullYear();
+
+        function renderCalendar() {
+            const container = document.getElementById('calendarContainer');
+            if (!container) return;
+
+            const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+            const dayNames = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+
+            const firstDay = new Date(currentCalendarYear, currentCalendarMonth, 1).getDay();
+            const daysInMonth = new Date(currentCalendarYear, currentCalendarMonth + 1, 0).getDate();
+            const daysInPrevMonth = new Date(currentCalendarYear, currentCalendarMonth, 0).getDate();
+
+            const today = new Date();
+            const todayDate = today.getDate();
+            const todayMonth = today.getMonth();
+            const todayYear = today.getFullYear();
+
+            const events = {};
+            jadwalData.forEach(j => {
+                if (j.tanggalJadwal) {
+                    const d = new Date(j.tanggalJadwal);
+                    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                    if (!events[key]) events[key] = [];
+                    events[key].push({ 
+                        plant: j.plantName, 
+                        status: j.tanggalRealisasi ? 'completed' : 'scheduled',
+                        id: j.id,
+                        isRealisasi: false
+                    });
+                }
+                if (j.tanggalRealisasi) {
+                    const d = new Date(j.tanggalRealisasi);
+                    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                    if (!events[key]) events[key] = [];
+                    events[key].push({ 
+                        plant: j.plantName, 
+                        status: 'completed',
+                        id: j.id,
+                        isRealisasi: true
+                    });
+                }
+            });
+
+            let html = `
+                <div class="calendar-header">
+                    <button class="nav-btn" onclick="changeCalendarMonth(-1)"><i class="fas fa-chevron-left"></i></button>
+                    <span class="month-year">${monthNames[currentCalendarMonth]} ${currentCalendarYear}</span>
+                    <button class="nav-btn" onclick="changeCalendarMonth(1)"><i class="fas fa-chevron-right"></i></button>
+                </div>
+                <div class="calendar-grid">
+            `;
+
+            dayNames.forEach(name => {
+                html += `<div class="day-name">${name}</div>`;
+            });
+
+            for (let i = 0; i < firstDay; i++) {
+                const prevDate = daysInPrevMonth - firstDay + i + 1;
+                html += `<div class="day-cell other-month">${prevDate}</div>`;
+            }
+
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dateKey = `${currentCalendarYear}-${String(currentCalendarMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+                const isToday = day === todayDate && currentCalendarMonth === todayMonth && currentCalendarYear === todayYear;
+                const dayEvents = events[dateKey] || [];
+                const hasEvent = dayEvents.length > 0;
+
+                let eventHtml = '';
+                let tooltipHtml = '';
+                let dotClass = '';
+
+                if (hasEvent) {
+                    const hasCompleted = dayEvents.some(e => e.status === 'completed' && !e.isRealisasi);
+                    const hasScheduled = dayEvents.some(e => e.status === 'scheduled');
+                    const hasRealisasi = dayEvents.some(e => e.isRealisasi === true);
+                    
+                    if (hasCompleted && hasScheduled) {
+                        dotClass = 'mixed';
+                    } else if (hasCompleted || hasRealisasi) {
+                        dotClass = 'completed';
+                    } else if (hasScheduled) {
+                        dotClass = 'scheduled';
+                        const eventDate = new Date(currentCalendarYear, currentCalendarMonth, day);
+                        if (eventDate < today) {
+                            dotClass = 'overdue';
+                        }
+                    }
+
+                    const tooltipItems = dayEvents.map(e => 
+                        `${e.plant} ${e.isRealisasi ? '✅ Realisasi' : (e.status === 'completed' ? '✅' : '📋')}`
+                    );
+                    const uniqueTooltips = [...new Set(tooltipItems)];
+                    tooltipHtml = uniqueTooltips.join(' • ');
+                }
+
+                html += `
+                    <div class="day-cell ${isToday ? 'today' : ''} ${hasEvent ? 'has-event' : ''}" 
+                         ${hasEvent ? `onclick="showDayEvents('${dateKey}')"` : ''}>
+                        <span class="day-number">${day}</span>
+                        ${hasEvent ? `<div class="event-dot ${dotClass}"></div>` : ''}
+                        ${hasEvent ? `<div class="event-tooltip">${tooltipHtml}</div>` : ''}
+                    </div>
+                `;
+            }
+
+            html += `</div>`;
+
+            html += `
+                <div class="calendar-legend">
+                    <span class="legend-item"><span class="dot scheduled"></span> Terjadwal</span>
+                    <span class="legend-item"><span class="dot completed"></span> Selesai</span>
+                    <span class="legend-item"><span class="dot overdue"></span> Overdue</span>
+                    <span class="legend-item"><span class="dot mixed"></span> Campuran</span>
+                </div>
+            `;
+
+            container.innerHTML = html;
+        }
+
+        function changeCalendarMonth(delta) {
+            currentCalendarMonth += delta;
+            if (currentCalendarMonth > 11) {
+                currentCalendarMonth = 0;
+                currentCalendarYear++;
+            } else if (currentCalendarMonth < 0) {
+                currentCalendarMonth = 11;
+                currentCalendarYear--;
+            }
+            renderCalendar();
+        }
+
+        function showDayEvents(dateKey) {
+            const events = [];
+            jadwalData.forEach(j => {
+                if (j.tanggalJadwal) {
+                    const d = new Date(j.tanggalJadwal);
+                    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                    if (key === dateKey) {
+                        events.push({
+                            plant: j.plantName,
+                            tanggal: formatDate(j.tanggalJadwal),
+                            status: j.tanggalRealisasi ? '✅ Sudah dilaksanakan' : '📋 Terjadwal',
+                            realisasi: j.tanggalRealisasi ? formatDate(j.tanggalRealisasi) : 'Belum',
+                            minggu: j.minggu || '-',
+                            periode: j.periode || '-'
+                        });
+                    }
+                }
+                if (j.tanggalRealisasi) {
+                    const d = new Date(j.tanggalRealisasi);
+                    const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+                    if (key === dateKey) {
+                        events.push({
+                            plant: j.plantName,
+                            tanggal: formatDate(j.tanggalRealisasi),
+                            status: '✅ Realisasi',
+                            realisasi: formatDate(j.tanggalRealisasi),
+                            minggu: j.minggu || '-',
+                            periode: j.periode || '-'
+                        });
+                    }
+                }
+            });
+
+            if (events.length === 0) {
+                showToast('📅 Tidak ada jadwal pada tanggal ini');
+                return;
+            }
+
+            let msg = `📅 Jadwal ${formatDate(dateKey)}:\n\n`;
+            events.forEach(e => {
+                msg += `🏭 ${e.plant}\n`;
+                msg += `   📋 ${e.status}\n`;
+                if (e.periode) msg += `   📅 Periode: ${e.periode}\n`;
+                if (e.minggu) msg += `   📌 Minggu ke-${e.minggu}\n`;
+                msg += '\n';
+            });
+            alert(msg);
+        }
+
+        // ========================================================================
         // ========== SEARCH FUNCTIONS ==========
         // ========================================================================
 
@@ -4108,28 +4638,7 @@
         // ========================================================================
 
         function renderDashboardJadwal() {
-            const container = document.getElementById('dashboardJadwalContainer');
-            if (!container) return;
-            
-            if (jadwalData.length === 0) {
-                container.innerHTML = '<p style="color:#8a6a6a;font-size:0.9rem;padding:0.5rem;">Tidak ada jadwal aktif</p>';
-                return;
-            }
-
-            container.innerHTML = jadwalData.filter(j => j.status === 'aktif').slice(0, 5).map(item => {
-                const periode = PERIODE_LIST.find(p => p.id === item.periode);
-                return `
-                        <div class="jadwal-card" style="border-left-color: #2e7d32;">
-                            <div class="jadwal-info">
-                                <span class="title">${item.plantName}</span>
-                                <span class="detail">${periode ? periode.name + ' (' + periode.months + ')' : 'Periode ' + item.periode} ${item.tahun} · ${item.officer}</span>
-                            </div>
-                            <div class="jadwal-alert">
-                                <span class="status-badge proses">Aktif</span>
-                            </div>
-                        </div>
-                    `;
-            }).join('');
+            renderCalendar();
         }
 
         function renderInspeksiTable(data, tbodyId, isFull, highlightQuery = '') {
@@ -4172,13 +4681,11 @@
                     `<button class="btn-export-temuan" onclick="exportTemuanPerItem('${item.id}')" title="Export temuan ke Excel"><i class="fas fa-file-excel"></i></button>` :
                     '';
 
-                // Cek apakah semua tahap sudah disetujui
                 const allApproved = APPROVAL_STAGES.every(s => item.approvals && item.approvals[s.id] && item.approvals[s.id].approved === true);
                 const pdfBtn = allApproved ?
                     `<button class="btn-pdf" onclick="cetakPDF('${item.id}')" title="Cetak PDF Laporan"><i class="fas fa-file-pdf"></i></button>` :
                     `<button class="btn-pdf" disabled title="Harus disetujui semua tahap terlebih dahulu"><i class="fas fa-file-pdf"></i></button>`;
 
-                // Approval status display
                 let approvalStatus = 'Belum';
                 let approvalColor = 'menunggu';
                 if (allApproved) {
@@ -4239,26 +4746,45 @@
 
             if (displayData.length === 0) {
                 tbody.innerHTML =
-                    '<tr><td colspan="6" style="text-align:center;padding:2rem;color:#8a6a6a;">Tidak ada data ditemukan</td></tr>';
+                    '<tr><td colspan="8" style="text-align:center;padding:2rem;color:#8a6a6a;">Tidak ada data ditemukan</td></tr>';
                 updateNotifBadge(0);
                 return 0;
             }
 
-            tbody.innerHTML = displayData.map(item => {
+            const limitedData = displayData.slice(0, 100);
+
+            tbody.innerHTML = limitedData.map(item => {
                 const periode = PERIODE_LIST.find(p => p.id === item.periode);
                 const plant = PLANT_LIST.find(p => p.id === item.plantId);
                 
                 const plantDisplay = highlightQuery ? highlightText(item.plantName, highlightQuery) : item.plantName;
                 const officerDisplay = highlightQuery ? highlightText(item.officer, highlightQuery) : item.officer;
                 const periodeDisplay = highlightQuery && periode ? highlightText(periode.name, highlightQuery) : (periode ? periode.name : 'Periode ' + item.periode);
+                const tanggalJadwalDisplay = item.tanggalJadwal ? formatDate(item.tanggalJadwal) : '-';
+                const tanggalRealisasiDisplay = item.tanggalRealisasi ? formatDate(item.tanggalRealisasi) : '-';
+                const mingguDisplay = item.minggu ? `Minggu ${item.minggu}` : '-';
+
+                const isOverdueSchedule = item.tanggalJadwal && new Date(item.tanggalJadwal) < new Date() && !item.tanggalRealisasi;
+
+                let statusClass = 'proses';
+                let statusText = 'Aktif';
+                if (item.tanggalRealisasi) {
+                    statusClass = 'selesai';
+                    statusText = '✅ Selesai';
+                } else if (isOverdueSchedule) {
+                    statusClass = 'terlambat';
+                    statusText = '⚠️ Overdue';
+                }
 
                 return `
                         <tr>
                             <td>${plantDisplay} ${plant ? '<span style="font-size:0.6rem;color:#8a6a6a;">('+plant.code+')</span>' : ''}</td>
                             <td>${periodeDisplay}</td>
-                            <td>${item.tahun}</td>
+                            <td>${mingguDisplay}</td>
+                            <td>${tanggalJadwalDisplay} ${isOverdueSchedule ? '<span class="overdue-badge"><i class="fas fa-exclamation-circle"></i> OVERDUE</span>' : ''}</td>
+                            <td>${tanggalRealisasiDisplay}</td>
                             <td>${officerDisplay}</td>
-                            <td><span class="status-badge ${item.status === 'aktif' ? 'proses' : 'selesai'}">${item.status}</span></td>
+                            <td><span class="status-badge ${statusClass}">${statusText}</span></td>
                             <td>
                                 <button class="btn-sm warning" onclick="editJadwal('${item.id}')"><i class="fas fa-edit"></i></button>
                                 <button class="btn-sm danger" onclick="hapusJadwal('${item.id}')"><i class="fas fa-trash"></i></button>
@@ -4656,10 +5182,17 @@
         // ========== JADWAL FUNCTIONS ==========
         // ========================================================================
 
+        function setRealisasiHariIni() {
+            const today = new Date().toISOString().split('T')[0];
+            document.getElementById('jadwalRealisasi').value = today;
+            showToast('📅 Tanggal realisasi diisi hari ini');
+        }
+
         window.openJadwalModal = function(data = null) {
             const modal = document.getElementById('jadwalModal');
             document.getElementById('jadwalModalTitle').textContent = data ? 'Edit Jadwal' : 'Tambah Jadwal';
             const currentYear = new Date().getFullYear();
+            const todayISO = new Date().toISOString().split('T')[0];
 
             if (data) {
                 document.getElementById('editJadwalId').value = data.id;
@@ -4672,9 +5205,12 @@
                     document.getElementById('clearPlantSelectionJadwal').classList.add('visible');
                     selectedPlantJadwal = plant;
                 }
-                document.getElementById('jadwalPeriode').value = data.periode;
-                document.getElementById('jadwalTahun').value = data.tahun;
-                document.getElementById('jadwalPetugas').value = data.officer;
+                document.getElementById('jadwalPeriode').value = data.periode || 1;
+                document.getElementById('jadwalTahun').value = data.tahun || currentYear;
+                document.getElementById('jadwalTanggal').value = data.tanggalJadwal || '';
+                document.getElementById('jadwalPetugas').value = data.officer || '';
+                document.getElementById('jadwalRealisasi').value = data.tanggalRealisasi || '';
+                document.getElementById('jadwalMinggu').value = data.minggu || 1;
             } else {
                 document.getElementById('editJadwalId').value = '';
                 document.getElementById('plantSearchInputJadwal').value = '';
@@ -4684,7 +5220,10 @@
                 selectedPlantJadwal = null;
                 document.getElementById('jadwalPeriode').value = '1';
                 document.getElementById('jadwalTahun').value = currentYear;
+                document.getElementById('jadwalTanggal').value = todayISO;
                 document.getElementById('jadwalPetugas').value = getRandomOfficer();
+                document.getElementById('jadwalRealisasi').value = '';
+                document.getElementById('jadwalMinggu').value = '1';
             }
             modal.classList.add('show');
         };
@@ -4715,11 +5254,15 @@
             const plantId = document.getElementById('selectedPlantJadwal').value;
             const periode = parseInt(document.getElementById('jadwalPeriode').value);
             const tahun = parseInt(document.getElementById('jadwalTahun').value);
+            const tanggalJadwal = document.getElementById('jadwalTanggal').value;
             const officer = document.getElementById('jadwalPetugas').value.trim();
+            const tanggalRealisasi = document.getElementById('jadwalRealisasi').value;
+            const minggu = parseInt(document.getElementById('jadwalMinggu').value);
 
             if (!plantId) { showToast('⚠️ Silakan pilih Plant terlebih dahulu!'); return; }
             if (!officer) { showToast('⚠️ Safety Officer wajib diisi!'); return; }
             if (!tahun || tahun < 2020) { showToast('⚠️ Tahun wajib diisi!'); return; }
+            if (!tanggalJadwal) { showToast('⚠️ Tanggal Jadwal wajib diisi!'); return; }
 
             const plant = PLANT_LIST.find(p => p.id == plantId);
             const plantName = plant ? plant.name : '';
@@ -4731,7 +5274,10 @@
                     item.plantName = plantName;
                     item.periode = periode;
                     item.tahun = tahun;
+                    item.tanggalJadwal = tanggalJadwal;
+                    item.tanggalRealisasi = tanggalRealisasi || null;
                     item.officer = officer;
+                    item.minggu = minggu;
                     showToast(`✅ Jadwal ${id} berhasil diupdate`);
                 }
             } else {
@@ -4742,7 +5288,10 @@
                     plantName: plantName,
                     periode: periode,
                     tahun: tahun,
+                    tanggalJadwal: tanggalJadwal,
+                    tanggalRealisasi: tanggalRealisasi || null,
                     officer: officer,
+                    minggu: minggu,
                     status: 'aktif'
                 });
                 showToast(`✅ Jadwal ${newId} berhasil ditambahkan`);
@@ -5023,7 +5572,6 @@
 
             const newId = `INS-${String(inspeksiData.length + 1).padStart(3, '0')}`;
             
-            // Inisialisasi approval dengan tahap 1 (Safety Officer) otomatis disetujui oleh petugas
             const initialApprovals = {};
             APPROVAL_STAGES.forEach((s, index) => {
                 if (index === 0) {
@@ -5095,9 +5643,10 @@
             const totalTemuan = inspeksiData.reduce((sum, d) => sum + (d.temuan ? d.temuan.length : 0), 0);
             const selesaiPerbaikan = inspeksiData.filter(d => d.perbaikan && d.perbaikan.every(p => p.status === 'closed'))
                 .length;
+            const jadwalAktif = jadwalData.filter(d => d.status === 'aktif' && !d.tanggalRealisasi).length;
             document.getElementById('statTotalInspeksi').textContent = total;
             document.getElementById('statTotalTemuan').textContent = totalTemuan;
-            document.getElementById('statJadwalAktif').textContent = jadwalData.filter(d => d.status === 'aktif').length;
+            document.getElementById('statJadwalAktif').textContent = jadwalAktif;
             document.getElementById('statSelesaiPerbaikan').textContent = selesaiPerbaikan;
         }
 
@@ -5290,10 +5839,10 @@
             }, 10000);
 
             console.log('🚀 SHE Sasa K3 System - DEMO MODE ACTIVE');
-            console.log(`📊 ${inspeksiData.length} inspeksi, ${jadwalData.length} jadwal`);
+            console.log(`📊 ${inspeksiData.length} inspeksi, ${jadwalData.length} jadwal mingguan`);
             console.log(`🏭 ${PLANT_LIST.length} Plant terdaftar`);
-            console.log(`👤 Safety Officers: ${SAFETY_OFFICER_LIST.join(', ')}`);
             console.log(`📋 4 Tahap Pengesahan: ${APPROVAL_STAGES.map(s => s.title).join(' → ')}`);
+            console.log(`📅 Jadwal mingguan setiap plant - ${jadwalData.length} total jadwal`);
         }
 
         document.getElementById('loginPassword').addEventListener('keydown', function(e) {
