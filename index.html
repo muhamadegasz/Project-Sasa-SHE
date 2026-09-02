@@ -1498,8 +1498,8 @@
         }
 
         .calendar-grid .day-cell.has-event:hover {
-            transform: scale(1.05);
-            box-shadow: 0 4px 12px rgba(46, 125, 50, 0.2);
+            transform: scale(1.03);
+            box-shadow: 0 2px 8px rgba(46, 125, 50, 0.15);
         }
 
         .calendar-grid .day-cell .day-number {
@@ -1529,38 +1529,6 @@
 
         .calendar-grid .day-cell .event-dot.mixed {
             background: linear-gradient(45deg, #d42a2a 50%, #2e7d32 50%);
-        }
-
-        .calendar-grid .day-cell .event-tooltip {
-            display: none;
-            position: absolute;
-            bottom: 100%;
-            left: 50%;
-            transform: translateX(-50%);
-            background: #2a1a1a;
-            color: white;
-            padding: 0.3rem 0.8rem;
-            border-radius: 8px;
-            font-size: 0.6rem;
-            white-space: nowrap;
-            z-index: 10;
-            margin-bottom: 4px;
-            max-width: 200px;
-            white-space: normal;
-        }
-
-        .calendar-grid .day-cell .event-tooltip::after {
-            content: '';
-            position: absolute;
-            top: 100%;
-            left: 50%;
-            transform: translateX(-50%);
-            border: 4px solid transparent;
-            border-top-color: #2a1a1a;
-        }
-
-        .calendar-grid .day-cell.has-event:hover .event-tooltip {
-            display: block;
         }
 
         .calendar-legend {
@@ -2396,6 +2364,81 @@
             color: #8a6a6a;
         }
 
+        /* ========== MODAL KALENDER ========== */
+        #calendarModal .modal-box {
+            max-width: 550px;
+        }
+
+        .calendar-event-list {
+            max-height: 350px;
+            overflow-y: auto;
+        }
+
+        .calendar-event-item {
+            display: flex;
+            gap: 0.8rem;
+            padding: 0.7rem 0.8rem;
+            border-bottom: 1px solid #f0e0e0;
+            align-items: flex-start;
+            transition: 0.15s;
+        }
+
+        .calendar-event-item:hover {
+            background: #faf8f8;
+            border-radius: 8px;
+        }
+
+        .calendar-event-item:last-child {
+            border-bottom: none;
+        }
+
+        .calendar-event-item .event-icon {
+            font-size: 1.4rem;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+
+        .calendar-event-item .event-detail {
+            flex: 1;
+        }
+
+        .calendar-event-item .event-title {
+            font-size: 0.9rem;
+            color: #2a1a1a;
+        }
+
+        .calendar-event-item .event-meta {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-top: 0.2rem;
+        }
+
+        .calendar-event-item .event-status {
+            font-size: 0.65rem;
+            padding: 0.1rem 0.6rem;
+            border-radius: 60px;
+            font-weight: 600;
+        }
+
+        .calendar-event-item .event-status.scheduled {
+            background: #fff3e0;
+            color: #e65100;
+        }
+
+        .calendar-event-item .event-status.completed {
+            background: #e8f5e9;
+            color: #1b5e20;
+        }
+
+        .calendar-event-item .event-meta-item {
+            font-size: 0.65rem;
+            color: #8a6a6a;
+            background: #f5f0f0;
+            padding: 0.1rem 0.6rem;
+            border-radius: 60px;
+        }
+
         /* ========== PDF PRINT ========== */
         @media print {
             body * {
@@ -3188,6 +3231,15 @@
         </div>
     </div>
 
+    <!-- MODAL KALENDER -->
+    <div class="modal-overlay" id="calendarModal">
+        <div class="modal-box">
+            <button class="close-modal" id="closeCalendarModal">&times;</button>
+            <h3><i class="fas fa-calendar-day"></i> Detail Jadwal</h3>
+            <div id="calendarModalContent"></div>
+        </div>
+    </div>
+
     <div id="toastMessage" class="toast-msg no-print"><i class="fas fa-bolt"></i> <span id="toastText"></span></div>
 
     <script>
@@ -3241,26 +3293,6 @@
             return d.toLocaleDateString('id-ID');
         }
 
-        function getWeekNumber(dateStr) {
-            const d = new Date(dateStr);
-            const startOfYear = new Date(d.getFullYear(), 0, 1);
-            const diff = d - startOfYear;
-            const week = Math.ceil((diff / 86400000 + startOfYear.getDay() + 1) / 7);
-            return week;
-        }
-
-        function getWeekLabel(dateStr) {
-            if (!dateStr) return '-';
-            const week = getWeekNumber(dateStr);
-            return `Minggu ${week}`;
-        }
-
-        function getDateISO(days) {
-            const d = new Date();
-            d.setDate(d.getDate() + days);
-            return d.toISOString().split('T')[0];
-        }
-
         function getDateOffset(days) {
             const d = new Date();
             d.setDate(d.getDate() + days);
@@ -3273,7 +3305,7 @@
         }
 
         // ========================================================================
-        // ========== GENERATE JADWAL MINGGUAN ==========
+        // ========== GENERATE JADWAL MINGGUAN (DIKURANGI) ==========
         // ========================================================================
 
         function generateWeeklySchedule() {
@@ -3283,42 +3315,56 @@
             const schedules = [];
             let idCounter = 1;
 
-            PLANT_LIST.forEach(plant => {
-                PERIODE_LIST.forEach(periode => {
-                    const startMonth = (periode.id - 1) * 3;
-                    const endMonth = startMonth + 2;
+            // Hanya 6 plant yang aktif
+            const activePlants = [
+                { id: 1, name: 'Electrical dan Instrument', code: 'E&I' },
+                { id: 3, name: 'Fermentation', code: 'FERM' },
+                { id: 6, name: 'PMR 2', code: 'PMR2' },
+                { id: 9, name: 'Logistic', code: 'LOG' },
+                { id: 14, name: 'SHE, WT, IPAL', code: 'SHE-WT-IPAL' },
+                { id: 16, name: 'UTILITY', code: 'UTIL' }
+            ];
+
+            const officers = ['Arif', 'Tulus', 'Mustofa', 'Melka'];
+
+            activePlants.forEach((plant, plantIndex) => {
+                // Setiap plant punya 2 jadwal
+                for (let i = 0; i < 2; i++) {
+                    // Jadwal di hari Senin, dengan interval 2-3 minggu
+                    const weekOffset = (i * 3) + (plantIndex % 2) + 1;
+                    const date = new Date(today);
+                    date.setDate(date.getDate() + (weekOffset * 7) + (1 - date.getDay() + 7) % 7 + 7);
                     
-                    for (let week = 0; week < 12; week++) {
-                        const date = new Date(currentYear, startMonth, 1 + (week * 7));
-                        
-                        if (date.getMonth() > endMonth) break;
-                        
-                        const diffDays = (date - today) / (1000 * 60 * 60 * 24);
-                        if (diffDays < -30) continue;
-                        
-                        const officers = ['Arif', 'Tulus', 'Mustofa', 'Melka'];
-                        const officerIndex = (plant.id + week) % officers.length;
-                        
-                        const isRealisasi = Math.random() < 0.3 && diffDays < 0;
-                        const realisasiDate = isRealisasi ? new Date(date) : null;
-                        if (realisasiDate) {
-                            realisasiDate.setDate(realisasiDate.getDate() + Math.floor(Math.random() * 5) + 1);
-                        }
-                        
-                        schedules.push({
-                            id: `SCH-${String(idCounter++).padStart(3, '0')}`,
-                            plantId: plant.id,
-                            plantName: plant.name,
-                            periode: periode.id,
-                            tahun: currentYear,
-                            minggu: week + 1,
-                            tanggalJadwal: date.toISOString().split('T')[0],
-                            tanggalRealisasi: realisasiDate ? realisasiDate.toISOString().split('T')[0] : null,
-                            officer: officers[officerIndex],
-                            status: isRealisasi ? 'selesai' : 'aktif'
-                        });
+                    const diffDays = (date - today) / (1000 * 60 * 60 * 24);
+                    if (diffDays > 35 || diffDays < -7) continue;
+                    
+                    const officerIndex = (plant.id + i) % officers.length;
+                    
+                    const isRealisasi = Math.random() < 0.3 && diffDays < 0;
+                    const realisasiDate = isRealisasi ? new Date(date) : null;
+                    if (realisasiDate) {
+                        realisasiDate.setDate(realisasiDate.getDate() + Math.floor(Math.random() * 3) + 1);
                     }
-                });
+                    
+                    const month = date.getMonth();
+                    let periode = 1;
+                    if (month >= 3 && month <= 5) periode = 2;
+                    else if (month >= 6 && month <= 8) periode = 3;
+                    else if (month >= 9 && month <= 11) periode = 4;
+                    
+                    schedules.push({
+                        id: `SCH-${String(idCounter++).padStart(3, '0')}`,
+                        plantId: plant.id,
+                        plantName: plant.name,
+                        periode: periode,
+                        tahun: currentYear,
+                        minggu: i + 1,
+                        tanggalJadwal: date.toISOString().split('T')[0],
+                        tanggalRealisasi: realisasiDate ? realisasiDate.toISOString().split('T')[0] : null,
+                        officer: officers[officerIndex],
+                        status: isRealisasi ? 'selesai' : 'aktif'
+                    });
+                }
             });
 
             return schedules;
@@ -3812,83 +3858,6 @@
                 hour12: false
             });
             document.getElementById('currentTime').textContent = timeStr;
-        }
-
-        // ========================================================================
-        // ========== AUDIO NOTIFICATION ==========
-        // ========================================================================
-
-        let audioCtx = null;
-
-        function playNotificationSound() {
-            try {
-                if (!audioCtx) {
-                    audioCtx = new(window.AudioContext || window.webkitAudioContext)();
-                }
-                const osc1 = audioCtx.createOscillator();
-                const gain1 = audioCtx.createGain();
-                osc1.type = 'sine';
-                osc1.frequency.value = 880;
-                gain1.gain.value = 0.3;
-                osc1.connect(gain1);
-                gain1.connect(audioCtx.destination);
-                osc1.start();
-                osc1.stop(audioCtx.currentTime + 0.2);
-
-                setTimeout(() => {
-                    const osc2 = audioCtx.createOscillator();
-                    const gain2 = audioCtx.createGain();
-                    osc2.type = 'sine';
-                    osc2.frequency.value = 1100;
-                    gain2.gain.value = 0.35;
-                    osc2.connect(gain2);
-                    gain2.connect(audioCtx.destination);
-                    osc2.start();
-                    osc2.stop(audioCtx.currentTime + 0.2);
-                }, 150);
-
-                setTimeout(() => {
-                    const osc3 = audioCtx.createOscillator();
-                    const gain3 = audioCtx.createGain();
-                    osc3.type = 'sine';
-                    osc3.frequency.value = 1320;
-                    gain3.gain.value = 0.4;
-                    osc3.connect(gain3);
-                    gain3.connect(audioCtx.destination);
-                    osc3.start();
-                    osc3.stop(audioCtx.currentTime + 0.3);
-                }, 350);
-
-                if (navigator.vibrate) {
-                    navigator.vibrate([200, 100, 200, 100, 300]);
-                }
-                return true;
-            } catch (e) {
-                console.log('Audio error:', e);
-                return false;
-            }
-        }
-
-        function showBrowserNotification(title, body) {
-            if (Notification.permission === 'granted') {
-                try {
-                    new Notification(title, {
-                        body: body,
-                        icon: 'data:image/svg+xml,%3Csvg xmlns="http://www.w3.org/2000/svg" width="64" height="64"%3E%3Ccircle cx="32" cy="32" r="30" fill="%23d42a2a"/%3E%3Ctext x="50%25" y="55%25" text-anchor="middle" fill="white" font-size="30" font-family="sans-serif"%3E🔔%3C/text%3E%3C/svg%3E',
-                        silent: false
-                    });
-                    return true;
-                } catch (e) {
-                    console.log('Notification error:', e);
-                }
-            } else if (Notification.permission === 'default') {
-                Notification.requestPermission();
-            }
-            return false;
-        }
-
-        if ('Notification' in window && Notification.permission === 'default') {
-            Notification.requestPermission();
         }
 
         // ========================================================================
@@ -4442,7 +4411,10 @@
                         plant: j.plantName, 
                         status: j.tanggalRealisasi ? 'completed' : 'scheduled',
                         id: j.id,
-                        isRealisasi: false
+                        isRealisasi: false,
+                        officer: j.officer,
+                        minggu: j.minggu,
+                        periode: j.periode
                     });
                 }
                 if (j.tanggalRealisasi) {
@@ -4453,7 +4425,10 @@
                         plant: j.plantName, 
                         status: 'completed',
                         id: j.id,
-                        isRealisasi: true
+                        isRealisasi: true,
+                        officer: j.officer,
+                        minggu: j.minggu,
+                        periode: j.periode
                     });
                 }
             });
@@ -4482,8 +4457,6 @@
                 const dayEvents = events[dateKey] || [];
                 const hasEvent = dayEvents.length > 0;
 
-                let eventHtml = '';
-                let tooltipHtml = '';
                 let dotClass = '';
 
                 if (hasEvent) {
@@ -4502,12 +4475,6 @@
                             dotClass = 'overdue';
                         }
                     }
-
-                    const tooltipItems = dayEvents.map(e => 
-                        `${e.plant} ${e.isRealisasi ? '✅ Realisasi' : (e.status === 'completed' ? '✅' : '📋')}`
-                    );
-                    const uniqueTooltips = [...new Set(tooltipItems)];
-                    tooltipHtml = uniqueTooltips.join(' • ');
                 }
 
                 html += `
@@ -4515,7 +4482,6 @@
                          ${hasEvent ? `onclick="showDayEvents('${dateKey}')"` : ''}>
                         <span class="day-number">${day}</span>
                         ${hasEvent ? `<div class="event-dot ${dotClass}"></div>` : ''}
-                        ${hasEvent ? `<div class="event-tooltip">${tooltipHtml}</div>` : ''}
                     </div>
                 `;
             }
@@ -4546,6 +4512,10 @@
             renderCalendar();
         }
 
+        // ========================================================================
+        // ========== SHOW DAY EVENTS WITH MODAL ==========
+        // ========================================================================
+
         function showDayEvents(dateKey) {
             const events = [];
             jadwalData.forEach(j => {
@@ -4559,7 +4529,8 @@
                             status: j.tanggalRealisasi ? '✅ Sudah dilaksanakan' : '📋 Terjadwal',
                             realisasi: j.tanggalRealisasi ? formatDate(j.tanggalRealisasi) : 'Belum',
                             minggu: j.minggu || '-',
-                            periode: j.periode || '-'
+                            periode: j.periode || '-',
+                            officer: j.officer
                         });
                     }
                 }
@@ -4573,7 +4544,8 @@
                             status: '✅ Realisasi',
                             realisasi: formatDate(j.tanggalRealisasi),
                             minggu: j.minggu || '-',
-                            periode: j.periode || '-'
+                            periode: j.periode || '-',
+                            officer: j.officer
                         });
                     }
                 }
@@ -4584,16 +4556,48 @@
                 return;
             }
 
-            let msg = `📅 Jadwal ${formatDate(dateKey)}:\n\n`;
-            events.forEach(e => {
-                msg += `🏭 ${e.plant}\n`;
-                msg += `   📋 ${e.status}\n`;
-                if (e.periode) msg += `   📅 Periode: ${e.periode}\n`;
-                if (e.minggu) msg += `   📌 Minggu ke-${e.minggu}\n`;
-                msg += '\n';
-            });
-            alert(msg);
+            // Tampilkan modal cantik
+            const modal = document.getElementById('calendarModal');
+            const content = document.getElementById('calendarModalContent');
+            
+            let eventHtml = events.map(e => `
+                <div class="calendar-event-item">
+                    <div class="event-icon">🏭</div>
+                    <div class="event-detail">
+                        <div class="event-title"><strong>${e.plant}</strong></div>
+                        <div class="event-meta">
+                            <span class="event-status ${e.status.includes('Realisasi') || e.status.includes('dilaksanakan') ? 'completed' : 'scheduled'}">${e.status}</span>
+                            ${e.periode ? `<span class="event-meta-item">📅 Periode ${e.periode}</span>` : ''}
+                            ${e.minggu ? `<span class="event-meta-item">📌 Minggu ke-${e.minggu}</span>` : ''}
+                            ${e.officer ? `<span class="event-meta-item">👤 ${e.officer}</span>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+
+            content.innerHTML = `
+                <div style="margin-bottom:1rem;font-size:0.9rem;color:#7a4a4a;">
+                    <i class="fas fa-calendar-day" style="color:#d42a2a;"></i> 
+                    <strong>${formatDate(dateKey)}</strong>
+                </div>
+                <div class="calendar-event-list">
+                    ${eventHtml}
+                </div>
+            `;
+            
+            modal.classList.add('show');
         }
+
+        // ========================================================================
+        // ========== MODAL KALENDER EVENTS ==========
+        // ========================================================================
+
+        document.getElementById('closeCalendarModal').addEventListener('click', function() {
+            document.getElementById('calendarModal').classList.remove('show');
+        });
+        document.getElementById('calendarModal').addEventListener('click', function(e) {
+            if (e.target === this) this.classList.remove('show');
+        });
 
         // ========================================================================
         // ========== SEARCH FUNCTIONS ==========
