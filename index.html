@@ -12,6 +12,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js">
     </script>
     <style>
+        /* ========== SEMUA STYLE SAMA SEPERTI SEBELUMNYA ========== */
         * {
             margin: 0;
             padding: 0;
@@ -787,6 +788,34 @@
             color: #0d47a1;
         }
 
+        /* Status perbaikan baru */
+        .status-badge.closed {
+            background: #e8f5e9;
+            color: #1b5e20;
+        }
+        .status-badge.on-progress {
+            background: #fff3e0;
+            color: #e65100;
+        }
+        .status-badge.open {
+            background: #fce4ec;
+            color: #c62828;
+        }
+
+        /* Status pengesahan */
+        .status-badge.approved {
+            background: #e8f5e9;
+            color: #1b5e20;
+        }
+        .status-badge.pending {
+            background: #fff3e0;
+            color: #e65100;
+        }
+        .status-badge.rejected {
+            background: #fce4ec;
+            color: #c62828;
+        }
+
         .overdue-badge {
             display: inline-block;
             padding: 0.15rem 0.6rem;
@@ -1200,6 +1229,145 @@
             background: #f0f8f0;
         }
 
+        /* ========== APPROVAL STAGES ========== */
+        .approval-stages {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+
+        .approval-stage {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+            padding: 0.5rem 0.8rem;
+            border-radius: 10px;
+            background: #faf8f8;
+            border: 1px solid #f0e0e0;
+            transition: 0.2s;
+        }
+
+        .approval-stage.completed {
+            background: #e8f5e9;
+            border-color: #2e7d32;
+        }
+
+        .approval-stage.current {
+            background: #fff3e0;
+            border-color: #f57f17;
+            border-left: 4px solid #f57f17;
+        }
+
+        .approval-stage.pending {
+            opacity: 0.6;
+        }
+
+        .approval-stage .stage-number {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.7rem;
+            font-weight: 700;
+            color: white;
+            background: #b0a0a0;
+            flex-shrink: 0;
+        }
+
+        .approval-stage.completed .stage-number {
+            background: #2e7d32;
+        }
+
+        .approval-stage.current .stage-number {
+            background: #f57f17;
+        }
+
+        .approval-stage .stage-info {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .approval-stage .stage-info .stage-title {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #3a2a2a;
+        }
+
+        .approval-stage .stage-info .stage-detail {
+            font-size: 0.65rem;
+            color: #8a6a6a;
+        }
+
+        .approval-stage .stage-status {
+            font-size: 0.6rem;
+            font-weight: 600;
+            padding: 0.1rem 0.6rem;
+            border-radius: 60px;
+            white-space: nowrap;
+        }
+
+        .approval-stage .stage-status.done {
+            background: #e8f5e9;
+            color: #1b5e20;
+        }
+
+        .approval-stage .stage-status.in-progress {
+            background: #fff3e0;
+            color: #e65100;
+        }
+
+        .approval-stage .stage-status.waiting {
+            background: #f5f5f5;
+            color: #8a6a6a;
+        }
+
+        .approval-stage .stage-status.rejected {
+            background: #fce4ec;
+            color: #c62828;
+        }
+
+        .approval-stage .stage-action-btn {
+            font-size: 0.6rem;
+            padding: 0.15rem 0.6rem;
+            border: none;
+            border-radius: 60px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: 0.15s;
+            background: #d42a2a;
+            color: white;
+        }
+
+        .approval-stage .stage-action-btn:hover {
+            transform: scale(1.05);
+        }
+
+        .approval-stage .stage-action-btn.approve {
+            background: #2e7d32;
+        }
+
+        .approval-stage .stage-action-btn.approve:hover {
+            background: #1b5e20;
+        }
+
+        .approval-stage .stage-action-btn.reject {
+            background: #c62828;
+        }
+
+        .approval-stage .stage-action-btn.reject:hover {
+            background: #b71c1c;
+        }
+
+        .approval-stage .stage-action-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
         .jadwal-card {
             background: white;
             border-radius: 1rem;
@@ -1275,19 +1443,49 @@
             border-radius: 60px;
         }
 
-        .perbaikan-timeline .perbaikan-item .status-mini.done {
+        .perbaikan-timeline .perbaikan-item .status-mini.closed {
             background: #e8f5e9;
-            color: #2e7d32;
+            color: #1b5e20;
         }
-
-        .perbaikan-timeline .perbaikan-item .status-mini.progress {
+        .perbaikan-timeline .perbaikan-item .status-mini.on-progress {
             background: #fff3e0;
             color: #e65100;
         }
-
-        .perbaikan-timeline .perbaikan-item .status-mini.pending {
+        .perbaikan-timeline .perbaikan-item .status-mini.open {
             background: #fce4ec;
             color: #c62828;
+        }
+
+        .perbaikan-timeline .perbaikan-item .pic-name {
+            font-size: 0.7rem;
+            color: #8a6a6a;
+            min-width: 60px;
+        }
+
+        .perbaikan-timeline .perbaikan-item .foto-thumbs {
+            display: flex;
+            gap: 0.2rem;
+            flex-wrap: wrap;
+        }
+
+        .perbaikan-timeline .perbaikan-item .foto-thumbs .thumb-mini {
+            width: 30px;
+            height: 30px;
+            border-radius: 6px;
+            background: #f0e8e8;
+            border: 1px solid #ddd;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.6rem;
+            cursor: pointer;
+            transition: 0.15s;
+            color: #8a6a6a;
+        }
+
+        .perbaikan-timeline .perbaikan-item .foto-thumbs .thumb-mini:hover {
+            transform: scale(1.1);
+            border-color: #d42a2a;
         }
 
         .detail-container {
@@ -1896,6 +2094,14 @@
             .lightbox-overlay .lightbox-nav.next {
                 right: 0.5rem;
             }
+            .approval-stage {
+                flex-wrap: wrap;
+                gap: 0.3rem;
+            }
+            .approval-stage .stage-action-btn {
+                font-size: 0.55rem;
+                padding: 0.1rem 0.4rem;
+            }
         }
 
         @media (max-width: 480px) {
@@ -1935,6 +2141,12 @@
             .progress-wrapper .progress-label {
                 min-width: 40px;
             }
+            .approval-stage .stage-info .stage-title {
+                font-size: 0.7rem;
+            }
+            .approval-stage .stage-info .stage-detail {
+                font-size: 0.6rem;
+            }
         }
 
         /* hide main app initially */
@@ -1943,6 +2155,300 @@
         }
         #mainApp.visible {
             display: block;
+        }
+
+        /* ========== SELECT WITH SEARCH STYLES ========== */
+        .select-search-wrapper {
+            position: relative;
+            width: 100%;
+        }
+
+        .select-search-wrapper input {
+            width: 100%;
+            padding: 0.7rem 1rem;
+            border: 1px solid #f0d0d0;
+            border-radius: 12px;
+            font-size: 0.9rem;
+            background: white;
+            transition: 0.15s;
+            outline: none;
+            padding-right: 35px;
+        }
+
+        .select-search-wrapper input:focus {
+            border-color: #d42a2a;
+            box-shadow: 0 0 0 3px rgba(212, 42, 42, 0.08);
+        }
+
+        .select-search-wrapper input.error {
+            border-color: #c62828;
+            box-shadow: 0 0 0 3px rgba(198, 40, 40, 0.15);
+        }
+
+        .select-search-wrapper .dropdown-list {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            max-height: 200px;
+            overflow-y: auto;
+            background: white;
+            border: 1px solid #f0d0d0;
+            border-radius: 12px;
+            margin-top: 4px;
+            z-index: 100;
+            display: none;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+        }
+
+        .select-search-wrapper .dropdown-list.show {
+            display: block;
+        }
+
+        .select-search-wrapper .dropdown-list .dropdown-item {
+            padding: 0.6rem 1rem;
+            cursor: pointer;
+            transition: 0.15s;
+            font-size: 0.85rem;
+            border-bottom: 1px solid #f5eeee;
+        }
+
+        .select-search-wrapper .dropdown-list .dropdown-item:hover {
+            background: #f5f0f0;
+        }
+
+        .select-search-wrapper .dropdown-list .dropdown-item.selected {
+            background: #d42a2a;
+            color: white;
+        }
+
+        .select-search-wrapper .dropdown-list .dropdown-item .highlight-match {
+            background: #ffeb3b;
+            font-weight: 600;
+            padding: 0 2px;
+        }
+
+        .select-search-wrapper .dropdown-list .dropdown-item .plant-code {
+            font-size: 0.65rem;
+            color: #8a6a6a;
+            margin-left: 8px;
+            font-weight: 600;
+        }
+
+        .select-search-wrapper .selected-value {
+            display: inline-block;
+            padding: 0.2rem 0.8rem;
+            background: #e8f5e9;
+            color: #2e7d32;
+            border-radius: 60px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            margin-top: 0.3rem;
+        }
+
+        .select-search-wrapper .selected-value i {
+            margin-right: 4px;
+            color: #2e7d32;
+        }
+
+        .select-search-wrapper .clear-selection {
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: #c62828;
+            cursor: pointer;
+            font-size: 1rem;
+            padding: 0 4px;
+            display: none;
+        }
+
+        .select-search-wrapper .clear-selection.visible {
+            display: block;
+        }
+
+        /* ========== PERBAIKAN MODAL STYLE RAPI ========== */
+        .perbaikan-info-box {
+            background: #faf8f8;
+            border-radius: 12px;
+            padding: 1rem 1.5rem;
+            border: 1px solid #f0e0e0;
+            margin-bottom: 1rem;
+        }
+
+        .perbaikan-info-box .info-row {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.3rem 0;
+            border-bottom: 1px dashed #f0e0e0;
+        }
+
+        .perbaikan-info-box .info-row:last-child {
+            border-bottom: none;
+        }
+
+        .perbaikan-info-box .info-row .label {
+            font-size: 0.7rem;
+            color: #8a6a6a;
+            font-weight: 600;
+        }
+
+        .perbaikan-info-box .info-row .value {
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: #2a1a1a;
+        }
+
+        .perbaikan-timeline {
+            background: #faf8f8;
+            border-radius: 12px;
+            padding: 0.5rem 0;
+            border: 1px solid #f0e0e0;
+        }
+
+        .perbaikan-timeline .perbaikan-item {
+            padding: 0.6rem 1rem;
+            border-bottom: 1px solid #f0e0e0;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .perbaikan-timeline .perbaikan-item:last-child {
+            border-bottom: none;
+        }
+
+        .perbaikan-timeline .perbaikan-item .date {
+            font-size: 0.7rem;
+            color: #8a6a6a;
+            min-width: 80px;
+        }
+
+        .perbaikan-timeline .perbaikan-item .action {
+            flex: 1;
+            font-weight: 500;
+            font-size: 0.85rem;
+        }
+
+        .perbaikan-timeline .perbaikan-item .status-mini {
+            font-size: 0.6rem;
+            padding: 0.1rem 0.6rem;
+            border-radius: 60px;
+            font-weight: 600;
+        }
+
+        .perbaikan-timeline .perbaikan-item .status-mini.closed {
+            background: #e8f5e9;
+            color: #1b5e20;
+        }
+        .perbaikan-timeline .perbaikan-item .status-mini.on-progress {
+            background: #fff3e0;
+            color: #e65100;
+        }
+        .perbaikan-timeline .perbaikan-item .status-mini.open {
+            background: #fce4ec;
+            color: #c62828;
+        }
+
+        .perbaikan-timeline .perbaikan-item .pic-name {
+            font-size: 0.7rem;
+            color: #8a6a6a;
+            min-width: 60px;
+        }
+
+        .perbaikan-timeline .perbaikan-item .foto-thumbs {
+            display: flex;
+            gap: 0.2rem;
+            flex-wrap: wrap;
+        }
+
+        .perbaikan-timeline .perbaikan-item .foto-thumbs .thumb-mini {
+            width: 30px;
+            height: 30px;
+            border-radius: 6px;
+            background: #f0e8e8;
+            border: 1px solid #ddd;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.6rem;
+            cursor: pointer;
+            transition: 0.15s;
+            color: #8a6a6a;
+        }
+
+        .perbaikan-timeline .perbaikan-item .foto-thumbs .thumb-mini:hover {
+            transform: scale(1.1);
+            border-color: #d42a2a;
+        }
+
+        .perbaikan-form-section {
+            background: #faf8f8;
+            border-radius: 12px;
+            padding: 1rem 1.5rem;
+            border: 1px solid #f0e0e0;
+            margin-top: 1rem;
+        }
+
+        .perbaikan-form-section h5 {
+            color: #7a3a3a;
+            font-size: 0.85rem;
+            margin-bottom: 0.8rem;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .perbaikan-form-section .form-group {
+            margin-bottom: 0.8rem;
+        }
+
+        .perbaikan-form-section .form-group label {
+            font-size: 0.75rem;
+            color: #7a4a4a;
+        }
+
+        .perbaikan-form-section .form-group input,
+        .perbaikan-form-section .form-group select {
+            width: 100%;
+            padding: 0.5rem 1rem;
+            border: 1px solid #f0d0d0;
+            border-radius: 12px;
+            font-size: 0.85rem;
+            background: white;
+            transition: 0.15s;
+            outline: none;
+        }
+
+        .perbaikan-form-section .form-group input:focus,
+        .perbaikan-form-section .form-group select:focus {
+            border-color: #d42a2a;
+            box-shadow: 0 0 0 3px rgba(212, 42, 42, 0.08);
+        }
+
+        .perbaikan-form-section .form-group .file-input-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .perbaikan-form-section .form-group .file-input-wrapper input[type="file"] {
+            flex: 1;
+            min-width: 150px;
+            padding: 0.3rem;
+            border: 1px dashed #d42a2a;
+            border-radius: 10px;
+            background: #fff8f8;
+            font-size: 0.75rem;
+        }
+
+        .perbaikan-form-section .form-group .file-input-wrapper .file-count {
+            font-size: 0.65rem;
+            color: #8a6a6a;
         }
     </style>
 </head>
@@ -2079,8 +2585,8 @@
 
                 <div class="chart-row">
                     <div class="chart-box">
-                        <h4><i class="fas fa-chart-bar"></i> Statistik Inspeksi per Bulan</h4>
-                        <canvas id="inspeksiChart"></canvas>
+                        <h4><i class="fas fa-chart-bar"></i> Temuan per Plant</h4>
+                        <canvas id="temuanPlantChart"></canvas>
                     </div>
                     <div class="chart-box">
                         <h4><i class="fas fa-chart-pie"></i> Status Perbaikan</h4>
@@ -2137,12 +2643,10 @@
                     <table>
                         <thead>
                             <tr>
-                                <th>ID</th>
-                                <th>Lokasi</th>
-                                <th>Tanggal</th>
-                                <th>Waktu</th>
-                                <th>Petugas</th>
-                                <th>Alert</th>
+                                <th>Plant</th>
+                                <th>Periode</th>
+                                <th>Tahun</th>
+                                <th>Safety Officer</th>
                                 <th>Status</th>
                                 <th>Aksi</th>
                             </tr>
@@ -2175,7 +2679,7 @@
                                 <th>Lokasi</th>
                                 <th>Keterangan Lokasi</th>
                                 <th>Tanggal</th>
-                                <th>Petugas</th>
+                                <th>Safety Officer</th>
                                 <th>Jml Temuan</th>
                                 <th>Status</th>
                                 <th>Pengesahan</th>
@@ -2209,7 +2713,7 @@
                                 <th>Lokasi</th>
                                 <th>Temuan</th>
                                 <th>Due Date Plant</th>
-                                <th>Tindakan</th>
+                                <th>Tindakan Terakhir</th>
                                 <th>PIC</th>
                                 <th>Progres</th>
                                 <th>Status</th>
@@ -2228,12 +2732,18 @@
                     <form id="inspeksiForm" onsubmit="return false;">
                         <div class="form-row">
                             <div class="form-group">
-                                <label>Lokasi Inspeksi</label>
-                                <input type="text" id="formLokasi" placeholder="Nama lokasi" value="Gudang Logistik">
+                                <label>Lokasi Inspeksi <span style="color:#c62828;">*</span></label>
+                                <div class="select-search-wrapper" id="plantSelectWrapper">
+                                    <input type="text" id="plantSearchInput" placeholder="Cari plant... (ketik nama plant)" autocomplete="off">
+                                    <button class="clear-selection" id="clearPlantSelection">&times;</button>
+                                    <div class="dropdown-list" id="plantDropdown"></div>
+                                    <div id="selectedPlantDisplay"></div>
+                                    <input type="hidden" id="selectedPlant" value="">
+                                </div>
                             </div>
                             <div class="form-group">
-                                <label>Keterangan Lokasi <span style="font-weight:400;color:#8a6a6a;">(contoh: DCL - PMR 1)</span></label>
-                                <input type="text" id="formKeteranganLokasi" placeholder="DCL - PMR 1" value="DCL - PMR 1">
+                                <label>Keterangan Lokasi <span style="font-weight:400;color:#8a6a6a;">(opsional)</span></label>
+                                <input type="text" id="formKeteranganLokasi" placeholder="Detail tambahan lokasi">
                             </div>
                         </div>
                         <div class="form-row">
@@ -2242,8 +2752,8 @@
                                 <input type="date" id="formTanggal">
                             </div>
                             <div class="form-group">
-                                <label>Petugas SHE</label>
-                                <input type="text" id="formPetugas" placeholder="Nama petugas" value="Arif">
+                                <label>Safety Officer</label>
+                                <input type="text" id="formPetugas" placeholder="Nama Safety Officer" value="Arif">
                             </div>
                         </div>
                         <div class="form-row">
@@ -2280,7 +2790,7 @@
                             <div class="form-row" style="margin-bottom:0.5rem;">
                                 <div class="form-group" style="margin-bottom:0.3rem;">
                                     <label style="font-size:0.7rem;">Deskripsi Temuan</label>
-                                    <input type="text" id="temuanInput" placeholder="Contoh: Kabel terbuka" value="Kabel listrik terbuka">
+                                    <input type="text" id="temuanInput" placeholder="Contoh: Kabel terbuka">
                                 </div>
                                 <div class="form-group" style="margin-bottom:0.3rem;">
                                     <label style="font-size:0.7rem;">Kategori</label>
@@ -2322,35 +2832,34 @@
                 <input type="hidden" id="editJadwalId" value="">
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Lokasi</label>
-                        <input type="text" id="jadwalLokasi" placeholder="Nama lokasi" value="Gudang Logistik">
+                        <label>Plant <span style="color:#c62828;">*</span></label>
+                        <div class="select-search-wrapper" id="plantSelectWrapperJadwal">
+                            <input type="text" id="plantSearchInputJadwal" placeholder="Cari plant..." autocomplete="off">
+                            <button class="clear-selection" id="clearPlantSelectionJadwal">&times;</button>
+                            <div class="dropdown-list" id="plantDropdownJadwal"></div>
+                            <div id="selectedPlantDisplayJadwal"></div>
+                            <input type="hidden" id="selectedPlantJadwal" value="">
+                        </div>
                     </div>
                     <div class="form-group">
-                        <label>Tanggal</label>
-                        <input type="date" id="jadwalTanggal">
+                        <label>Periode <span style="color:#c62828;">*</span></label>
+                        <select id="jadwalPeriode">
+                            <option value="1">Periode 1 (Jan - Mar)</option>
+                            <option value="2">Periode 2 (Apr - Jun)</option>
+                            <option value="3">Periode 3 (Jul - Sep)</option>
+                            <option value="4">Periode 4 (Okt - Des)</option>
+                        </select>
                     </div>
                 </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Waktu</label>
-                        <input type="time" id="jadwalWaktu" value="09:00">
+                        <label>Tahun <span style="color:#c62828;">*</span></label>
+                        <input type="number" id="jadwalTahun" value="2026" min="2024" max="2030">
                     </div>
                     <div class="form-group">
-                        <label>Petugas</label>
-                        <input type="text" id="jadwalPetugas" placeholder="Nama petugas" value="Arif">
+                        <label>Safety Officer</label>
+                        <input type="text" id="jadwalPetugas" placeholder="Nama Safety Officer" value="Arif">
                     </div>
-                </div>
-                <div class="form-group full">
-                    <label>Pengaturan Alert <span style="font-weight:400;color:#8a6a6a;">(peringatan sebelum jadwal)</span></label>
-                    <select id="jadwalAlert">
-                        <option value="15">15 menit sebelumnya</option>
-                        <option value="30" selected>30 menit sebelumnya</option>
-                        <option value="60">1 jam sebelumnya</option>
-                        <option value="120">2 jam sebelumnya</option>
-                        <option value="1440">1 hari sebelumnya</option>
-                        <option value="10080">1 minggu sebelumnya</option>
-                        <option value="0">Tidak ada alert</option>
-                    </select>
                 </div>
                 <button type="submit" class="btn-submit" id="submitJadwal"><i class="fas fa-save"></i> Simpan Jadwal</button>
             </form>
@@ -2375,9 +2884,280 @@
         </div>
     </div>
 
+    <!-- MODAL APPROVAL -->
+    <div class="modal-overlay no-print" id="approvalModal">
+        <div class="modal-box">
+            <button class="close-modal" id="closeApprovalModal">&times;</button>
+            <h3><i class="fas fa-stamp"></i> Pengesahan Inspeksi</h3>
+            <div id="approvalContent"></div>
+        </div>
+    </div>
+
     <div id="toastMessage" class="toast-msg no-print"><i class="fas fa-bolt"></i> <span id="toastText"></span></div>
 
     <script>
+        // ========================================================================
+        // ========== PLANT DATA ==========
+        // ========================================================================
+
+        const PLANT_LIST = [
+            { id: 1, name: 'Electrical dan Instrument', code: 'E&I' },
+            { id: 2, name: 'Engineering TD', code: 'ENG-TD' },
+            { id: 3, name: 'Fermentation', code: 'FERM' },
+            { id: 4, name: 'HRGA', code: 'HRGA' },
+            { id: 5, name: 'PMR 1 dan DCL', code: 'PMR1-DCL' },
+            { id: 6, name: 'PMR 2', code: 'PMR2' },
+            { id: 7, name: 'Isolasi dan LF', code: 'ISOLASI-LF' },
+            { id: 8, name: 'IT', code: 'IT' },
+            { id: 9, name: 'Logistic', code: 'LOG' },
+            { id: 10, name: 'Packing', code: 'PACK' },
+            { id: 11, name: 'Polycello dan TMP', code: 'POLY-TMP' },
+            { id: 12, name: 'QC & QA', code: 'QC-QA' },
+            { id: 14, name: 'SHE, WT, IPAL', code: 'SHE-WT-IPAL' },
+            { id: 15, name: 'TMM', code: 'TMM' },
+            { id: 16, name: 'UTILITY', code: 'UTIL' }
+        ];
+
+        const PERIODE_LIST = [
+            { id: 1, name: 'Periode 1', months: 'Jan - Mar' },
+            { id: 2, name: 'Periode 2', months: 'Apr - Jun' },
+            { id: 3, name: 'Periode 3', months: 'Jul - Sep' },
+            { id: 4, name: 'Periode 4', months: 'Okt - Des' }
+        ];
+
+        // ========================================================================
+        // ========== APPROVAL STAGES ==========
+        // ========================================================================
+
+        const APPROVAL_STAGES = [
+            { id: 1, name: 'Safety Officer', title: 'Safety Officer', order: 1 },
+            { id: 2, name: 'Koord. K3L Bagian', title: 'Koordinator K3L Bagian', order: 2 },
+            { id: 3, name: 'Manajer Bagian', title: 'Manajer Bagian', order: 3 },
+            { id: 4, name: 'Ketua P2K3', title: 'Ketua P2K3', order: 4 }
+        ];
+
+        // ========================================================================
+        // ========== SELECT WITH SEARCH ==========
+        // ========================================================================
+
+        let selectedPlant = null;
+        let selectedPlantJadwal = null;
+
+        function initPlantSelect() {
+            // Untuk form inspeksi
+            const input = document.getElementById('plantSearchInput');
+            const dropdown = document.getElementById('plantDropdown');
+            const hiddenInput = document.getElementById('selectedPlant');
+            const display = document.getElementById('selectedPlantDisplay');
+            const clearBtn = document.getElementById('clearPlantSelection');
+
+            function renderDropdown(filter = '') {
+                const filtered = PLANT_LIST.filter(p => 
+                    p.name.toLowerCase().includes(filter.toLowerCase()) ||
+                    p.code.toLowerCase().includes(filter.toLowerCase())
+                );
+
+                if (filtered.length === 0) {
+                    dropdown.innerHTML = `<div class="dropdown-item" style="color:#8a6a6a;">Tidak ada plant ditemukan</div>`;
+                } else {
+                    dropdown.innerHTML = filtered.map(p => {
+                        const nameHighlight = highlightTextPlant(p.name, filter);
+                        const codeHighlight = highlightTextPlant(p.code, filter);
+                        return `
+                            <div class="dropdown-item" data-id="${p.id}" data-name="${p.name}" data-code="${p.code}">
+                                ${nameHighlight}
+                                <span class="plant-code">${codeHighlight}</span>
+                            </div>
+                        `;
+                    }).join('');
+                }
+
+                dropdown.querySelectorAll('.dropdown-item').forEach(item => {
+                    item.addEventListener('click', function() {
+                        const id = parseInt(this.dataset.id);
+                        const name = this.dataset.name;
+                        const code = this.dataset.code;
+                        selectPlant(id, name, code);
+                    });
+                });
+            }
+
+            function selectPlant(id, name, code) {
+                selectedPlant = { id, name, code };
+                hiddenInput.value = id;
+                input.value = name;
+                display.innerHTML = `<span class="selected-value"><i class="fas fa-check-circle"></i> ${name} (${code})</span>`;
+                clearBtn.classList.add('visible');
+                dropdown.classList.remove('show');
+                input.classList.remove('error');
+            }
+
+            function clearPlant() {
+                selectedPlant = null;
+                hiddenInput.value = '';
+                input.value = '';
+                display.innerHTML = '';
+                clearBtn.classList.remove('visible');
+                dropdown.classList.remove('show');
+                input.focus();
+            }
+
+            input.addEventListener('input', function() {
+                const value = this.value.trim();
+                if (value === '') {
+                    dropdown.classList.remove('show');
+                    if (!selectedPlant) {
+                        display.innerHTML = '';
+                        clearBtn.classList.remove('visible');
+                    }
+                    return;
+                }
+                renderDropdown(value);
+                dropdown.classList.add('show');
+                clearBtn.classList.add('visible');
+            });
+
+            input.addEventListener('focus', function() {
+                if (this.value.trim() !== '') {
+                    renderDropdown(this.value.trim());
+                    dropdown.classList.add('show');
+                }
+            });
+
+            document.addEventListener('click', function(e) {
+                const wrapper = document.getElementById('plantSelectWrapper');
+                if (!wrapper.contains(e.target)) {
+                    dropdown.classList.remove('show');
+                }
+            });
+
+            clearBtn.addEventListener('click', clearPlant);
+
+            input.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    const firstItem = dropdown.querySelector('.dropdown-item');
+                    if (firstItem && dropdown.classList.contains('show')) {
+                        firstItem.click();
+                    }
+                }
+                if (e.key === 'Escape') {
+                    dropdown.classList.remove('show');
+                    this.blur();
+                }
+            });
+
+            // ========== Untuk Jadwal ==========
+            const inputJ = document.getElementById('plantSearchInputJadwal');
+            const dropdownJ = document.getElementById('plantDropdownJadwal');
+            const hiddenInputJ = document.getElementById('selectedPlantJadwal');
+            const displayJ = document.getElementById('selectedPlantDisplayJadwal');
+            const clearBtnJ = document.getElementById('clearPlantSelectionJadwal');
+
+            function renderDropdownJ(filter = '') {
+                const filtered = PLANT_LIST.filter(p => 
+                    p.name.toLowerCase().includes(filter.toLowerCase()) ||
+                    p.code.toLowerCase().includes(filter.toLowerCase())
+                );
+
+                if (filtered.length === 0) {
+                    dropdownJ.innerHTML = `<div class="dropdown-item" style="color:#8a6a6a;">Tidak ada plant ditemukan</div>`;
+                } else {
+                    dropdownJ.innerHTML = filtered.map(p => {
+                        const nameHighlight = highlightTextPlant(p.name, filter);
+                        const codeHighlight = highlightTextPlant(p.code, filter);
+                        return `
+                            <div class="dropdown-item" data-id="${p.id}" data-name="${p.name}" data-code="${p.code}">
+                                ${nameHighlight}
+                                <span class="plant-code">${codeHighlight}</span>
+                            </div>
+                        `;
+                    }).join('');
+                }
+
+                dropdownJ.querySelectorAll('.dropdown-item').forEach(item => {
+                    item.addEventListener('click', function() {
+                        const id = parseInt(this.dataset.id);
+                        const name = this.dataset.name;
+                        const code = this.dataset.code;
+                        selectPlantJ(id, name, code);
+                    });
+                });
+            }
+
+            function selectPlantJ(id, name, code) {
+                selectedPlantJadwal = { id, name, code };
+                hiddenInputJ.value = id;
+                inputJ.value = name;
+                displayJ.innerHTML = `<span class="selected-value"><i class="fas fa-check-circle"></i> ${name} (${code})</span>`;
+                clearBtnJ.classList.add('visible');
+                dropdownJ.classList.remove('show');
+                inputJ.classList.remove('error');
+            }
+
+            function clearPlantJ() {
+                selectedPlantJadwal = null;
+                hiddenInputJ.value = '';
+                inputJ.value = '';
+                displayJ.innerHTML = '';
+                clearBtnJ.classList.remove('visible');
+                dropdownJ.classList.remove('show');
+                inputJ.focus();
+            }
+
+            inputJ.addEventListener('input', function() {
+                const value = this.value.trim();
+                if (value === '') {
+                    dropdownJ.classList.remove('show');
+                    if (!selectedPlantJadwal) {
+                        displayJ.innerHTML = '';
+                        clearBtnJ.classList.remove('visible');
+                    }
+                    return;
+                }
+                renderDropdownJ(value);
+                dropdownJ.classList.add('show');
+                clearBtnJ.classList.add('visible');
+            });
+
+            inputJ.addEventListener('focus', function() {
+                if (this.value.trim() !== '') {
+                    renderDropdownJ(this.value.trim());
+                    dropdownJ.classList.add('show');
+                }
+            });
+
+            document.addEventListener('click', function(e) {
+                const wrapper = document.getElementById('plantSelectWrapperJadwal');
+                if (!wrapper.contains(e.target)) {
+                    dropdownJ.classList.remove('show');
+                }
+            });
+
+            clearBtnJ.addEventListener('click', clearPlantJ);
+
+            inputJ.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    const firstItem = dropdownJ.querySelector('.dropdown-item');
+                    if (firstItem && dropdownJ.classList.contains('show')) {
+                        firstItem.click();
+                    }
+                }
+                if (e.key === 'Escape') {
+                    dropdownJ.classList.remove('show');
+                    this.blur();
+                }
+            });
+
+            renderDropdown('');
+            renderDropdownJ('');
+        }
+
+        function highlightTextPlant(text, query) {
+            if (!query || !text) return text;
+            const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+            return text.replace(regex, '<span class="highlight-match">$1</span>');
+        }
+
         // ========================================================================
         // ========== LOGIN SYSTEM ==========
         // ========================================================================
@@ -2393,22 +3173,18 @@
             const errorMessage = document.getElementById('loginError');
 
             if (username === VALID_USERNAME && password === VALID_PASSWORD) {
-                // Login berhasil
                 errorMessage.classList.remove('show');
                 document.getElementById('loginPage').classList.add('hidden');
                 document.getElementById('mainApp').classList.add('visible');
 
-                // Set user info
                 const initial = username.charAt(0).toUpperCase();
                 document.getElementById('userAvatar').textContent = initial + initial;
-                document.getElementById('userName').textContent = username;
+                document.getElementById('userName').textContent = 'Safety Officer';
 
-                showToast('✅ Selamat datang, ' + username + '!');
+                showToast('✅ Selamat datang, Safety Officer!');
 
-                // Initialize app after login
                 setTimeout(initApp, 300);
             } else {
-                // Login gagal
                 errorMessage.textContent = '⚠️ Username atau password salah!';
                 errorMessage.classList.add('show');
                 document.getElementById('loginPassword').value = '';
@@ -2431,7 +3207,6 @@
             }
         }
 
-        // Enter key support for login
         document.addEventListener('keydown', function(event) {
             if (event.key === 'Enter') {
                 const loginPage = document.getElementById('loginPage');
@@ -2445,7 +3220,6 @@
             }
         });
 
-        // Focus on username input when page loads
         window.addEventListener('load', function() {
             document.getElementById('loginUsername').focus();
         });
@@ -2454,12 +3228,12 @@
         // ========== DATA DEMO ==========
         // ========================================================================
 
-        const PETUGAS_LIST = ['Arif', 'Tulus', 'Mustofa', 'Melka'];
+        const SAFETY_OFFICER_LIST = ['Arif', 'Tulus', 'Mustofa', 'Melka'];
         const MANAGER_SHE = 'Nur Hadi';
         const MANAGER_TITLE = 'Manager SHE';
 
-        function getRandomPetugas() {
-            return PETUGAS_LIST[Math.floor(Math.random() * PETUGAS_LIST.length)];
+        function getRandomOfficer() {
+            return SAFETY_OFFICER_LIST[Math.floor(Math.random() * SAFETY_OFFICER_LIST.length)];
         }
 
         function getDateOffset(days) {
@@ -2474,10 +3248,30 @@
             return d.toISOString().split('T')[0];
         }
 
+        // ========================================================================
+        // ========== JADWAL DATA (Periode) ==========
+        // ========================================================================
+
+        let jadwalData = [
+            { id: 'SCH-001', plantId: 1, plantName: 'Electrical dan Instrument', periode: 1, tahun: 2026, officer: 'Arif', status: 'aktif' },
+            { id: 'SCH-002', plantId: 3, plantName: 'Fermentation', periode: 2, tahun: 2026, officer: 'Tulus', status: 'aktif' },
+            { id: 'SCH-003', plantId: 6, plantName: 'PMR 2', periode: 3, tahun: 2026, officer: 'Mustofa', status: 'aktif' },
+            { id: 'SCH-004', plantId: 16, plantName: 'UTILITY', periode: 4, tahun: 2026, officer: 'Melka', status: 'aktif' },
+            { id: 'SCH-005', plantId: 14, plantName: 'SHE, WT, IPAL', periode: 1, tahun: 2026, officer: 'Arif', status: 'aktif' },
+            { id: 'SCH-006', plantId: 9, plantName: 'Logistic', periode: 2, tahun: 2026, officer: 'Tulus', status: 'aktif' },
+            { id: 'SCH-007', plantId: 5, plantName: 'PMR 1 dan DCL', periode: 3, tahun: 2026, officer: 'Melka', status: 'aktif' },
+            { id: 'SCH-008', plantId: 2, plantName: 'Engineering TD', periode: 4, tahun: 2026, officer: 'Mustofa', status: 'aktif' }
+        ];
+
+        // ========================================================================
+        // ========== INSPEKSI DATA ==========
+        // ========================================================================
+
         let inspeksiData = [{
             id: 'INS-001',
-            lokasi: 'Gudang Bahan Kimia',
-            keteranganLokasi: 'DCL - PMR 1A',
+            lokasi: 'Electrical dan Instrument',
+            plantId: 1,
+            keteranganLokasi: 'Ruang Panel E&I Lantai 2',
             lat: -6.200000,
             lng: 106.816666,
             tanggal: getDateOffset(-5),
@@ -2486,78 +3280,86 @@
             dueDate: getDateOffset(-2),
             fotoDekat: ['kimia_dekat1.jpg', 'kimia_dekat2.jpg'],
             fotoJauh: ['kimia_jauh1.jpg'],
-            disahkan: {
-                oleh: MANAGER_SHE,
-                jabatan: MANAGER_TITLE,
-                tanggal: getDateOffset(-3) + ' 15:30'
+            // Approval stages (4 tahap)
+            approvals: {
+                1: { approved: true, by: 'Arif', jabatan: 'Safety Officer', tanggal: getDateOffset(-4) + ' 09:00' },
+                2: { approved: true, by: 'Bambang', jabatan: 'Koord. K3L Bagian', tanggal: getDateOffset(-3) + ' 10:30' },
+                3: { approved: true, by: 'Siti', jabatan: 'Manajer Bagian', tanggal: getDateOffset(-2) + ' 13:15' },
+                4: { approved: true, by: 'Hadi', jabatan: 'Ketua P2K3', tanggal: getDateOffset(-1) + ' 16:00' }
             },
             temuan: [
-                { deskripsi: 'Tumpahan bahan kimia di lantai', kategori: 'Kebocoran' },
-                { deskripsi: 'Label bahaya tidak terbaca', kategori: 'Kesehatan' },
-                { deskripsi: 'APAR tidak terisi penuh', kategori: 'Kebakaran' }
+                { deskripsi: 'Kabel ground tidak terpasang dengan benar', kategori: 'Kelistrikan' },
+                { deskripsi: 'Panel kontrol tidak terkunci', kategori: 'Kecelakaan' }
             ],
             perbaikan: [
-                { tgl: getDateOffset(-4), action: 'Bersihkan tumpahan kimia', status: 'done', pic: 'Arif',
-                    foto: ['bersih1.jpg', 'bersih2.jpg'] },
-                { tgl: getDateOffset(-3), action: 'Ganti label bahaya', status: 'done', pic: 'Tulus',
-                    foto: ['label1.jpg'] },
-                { tgl: getDateOffset(-2), action: 'Isi ulang APAR', status: 'done', pic: 'Melka',
-                    foto: ['apar1.jpg'] }
+                { tgl: getDateOffset(-4), action: 'Perbaiki grounding kabel', status: 'closed', pic: 'Arif',
+                    foto: ['ground1.jpg'] },
+                { tgl: getDateOffset(-3), action: 'Pasang kunci panel', status: 'closed', pic: 'Tulus',
+                    foto: ['kunci1.jpg'] }
             ]
         }, {
             id: 'INS-002',
-            lokasi: 'Lantai Produksi 2',
-            keteranganLokasi: 'DCL - PMR 2B',
+            lokasi: 'Fermentation',
+            plantId: 3,
+            keteranganLokasi: 'Area Fermentasi A2',
             lat: -6.210000,
             lng: 106.820000,
             tanggal: getDateOffset(-3),
             petugas: 'Mustofa',
             status: 'proses',
             dueDate: getDateOffset(3),
-            fotoDekat: ['produksi_dekat1.jpg', 'produksi_dekat2.jpg'],
-            fotoJauh: ['produksi_jauh1.jpg', 'produksi_jauh2.jpg'],
-            disahkan: null,
+            fotoDekat: ['fermentasi_dekat1.jpg'],
+            fotoJauh: ['fermentasi_jauh1.jpg'],
+            approvals: {
+                1: { approved: true, by: 'Mustofa', jabatan: 'Safety Officer', tanggal: getDateOffset(-2) + ' 08:00' },
+                2: { approved: false, by: null, jabatan: 'Koord. K3L Bagian', tanggal: null },
+                3: { approved: false, by: null, jabatan: 'Manajer Bagian', tanggal: null },
+                4: { approved: false, by: null, jabatan: 'Ketua P2K3', tanggal: null }
+            },
             temuan: [
-                { deskripsi: 'Kabel listrik terbuka di lantai', kategori: 'Kelistrikan' },
-                { deskripsi: 'Penerangan ruangan kurang', kategori: 'Kesehatan' },
-                { deskripsi: 'Rak penyimpanan tidak stabil', kategori: 'Kecelakaan' }
+                { deskripsi: 'Suhu fermentasi tidak stabil', kategori: 'Kesehatan' },
+                { deskripsi: 'Kebocoran pada pipa transfer', kategori: 'Kebocoran' }
             ],
             perbaikan: [
-                { tgl: getDateOffset(-2), action: 'Penilaian risiko kelistrikan', status: 'done', pic: 'Tulus',
-                    foto: ['risiko1.jpg'] },
-                { tgl: getDateOffset(-1), action: 'Pengadaan material perbaikan', status: 'progress', pic: 'Melka',
-                    foto: ['material1.jpg', 'material2.jpg'] }
+                { tgl: getDateOffset(-2), action: 'Kalibrasi sensor suhu', status: 'closed', pic: 'Tulus',
+                    foto: ['sensor1.jpg'] },
+                { tgl: getDateOffset(-1), action: 'Perbaiki kebocoran pipa', status: 'on-progress', pic: 'Melka',
+                    foto: ['pipa1.jpg'] }
             ]
         }, {
             id: 'INS-003',
-            lokasi: 'Ruang Server & Data Center',
-            keteranganLokasi: 'DCL - PMR 3C',
+            lokasi: 'PMR 2',
+            plantId: 6,
+            keteranganLokasi: 'Gedung PMR 2 - Lantai 3',
             lat: -6.190000,
             lng: 106.810000,
             tanggal: getDateOffset(-7),
             petugas: 'Melka',
             status: 'tinjau',
             dueDate: getDateOffset(-1),
-            fotoDekat: ['server_dekat1.jpg', 'server_dekat2.jpg'],
-            fotoJauh: ['server_jauh1.jpg'],
-            disahkan: null,
+            fotoDekat: ['pmr2_dekat1.jpg'],
+            fotoJauh: ['pmr2_jauh1.jpg'],
+            approvals: {
+                1: { approved: true, by: 'Melka', jabatan: 'Safety Officer', tanggal: getDateOffset(-6) + ' 11:00' },
+                2: { approved: true, by: 'Dewi', jabatan: 'Koord. K3L Bagian', tanggal: getDateOffset(-5) + ' 09:30' },
+                3: { approved: false, by: null, jabatan: 'Manajer Bagian', tanggal: null },
+                4: { approved: false, by: null, jabatan: 'Ketua P2K3', tanggal: null }
+            },
             temuan: [
-                { deskripsi: 'Suhu ruangan terlalu tinggi (38°C)', kategori: 'Kesehatan' },
-                { deskripsi: 'AC tidak berfungsi optimal', kategori: 'Lainnya' },
-                { deskripsi: 'Kabel jaringan berantakan', kategori: 'Kelistrikan' }
+                { deskripsi: 'APAR tidak terisi penuh', kategori: 'Kebakaran' },
+                { deskripsi: 'Rambu evakuasi tidak terlihat', kategori: 'Kecelakaan' }
             ],
             perbaikan: [
-                { tgl: getDateOffset(-6), action: 'Cek AC & sirkulasi udara', status: 'done', pic: 'Arif',
-                    foto: ['cek_ac1.jpg'] },
-                { tgl: getDateOffset(-4), action: 'Koordinasi teknisi AC', status: 'pending', pic: 'Tulus',
-                    foto: [] },
-                { tgl: getDateOffset(-2), action: 'Rapikan kabel jaringan', status: 'progress', pic: 'Mustofa',
-                    foto: ['kabel1.jpg'] }
+                { tgl: getDateOffset(-6), action: 'Isi ulang APAR', status: 'closed', pic: 'Arif',
+                    foto: ['apar1.jpg'] },
+                { tgl: getDateOffset(-4), action: 'Pasang rambu evakuasi baru', status: 'open', pic: 'Tulus',
+                    foto: [] }
             ]
         }, {
             id: 'INS-004',
-            lokasi: 'Gudang Logistik',
-            keteranganLokasi: 'DCL - PMR 4D',
+            lokasi: 'Logistic',
+            plantId: 9,
+            keteranganLokasi: 'Gudang Logistik - Rak C4',
             lat: -6.180000,
             lng: 106.815000,
             tanggal: getDateOffset(-10),
@@ -2565,124 +3367,79 @@
             status: 'selesai',
             dueDate: getDateOffset(-5),
             fotoDekat: ['logistik_dekat1.jpg'],
-            fotoJauh: ['logistik_jauh1.jpg', 'logistik_jauh2.jpg'],
-            disahkan: {
-                oleh: MANAGER_SHE,
-                jabatan: MANAGER_TITLE,
-                tanggal: getDateOffset(-6) + ' 10:15'
+            fotoJauh: ['logistik_jauh1.jpg'],
+            approvals: {
+                1: { approved: true, by: 'Tulus', jabatan: 'Safety Officer', tanggal: getDateOffset(-9) + ' 10:00' },
+                2: { approved: true, by: 'Rina', jabatan: 'Koord. K3L Bagian', tanggal: getDateOffset(-8) + ' 11:30' },
+                3: { approved: true, by: 'Andi', jabatan: 'Manajer Bagian', tanggal: getDateOffset(-7) + ' 09:00' },
+                4: { approved: true, by: 'Hadi', jabatan: 'Ketua P2K3', tanggal: getDateOffset(-6) + ' 15:00' }
             },
             temuan: [
-                { deskripsi: 'Kebocoran atap gudang', kategori: 'Kebocoran' },
-                { deskripsi: 'Penyimpanan barang tidak sesuai SOP', kategori: 'Kecelakaan' }
+                { deskripsi: 'Rak penyimpanan tidak stabil', kategori: 'Kecelakaan' },
+                { deskripsi: 'Penerangan gudang kurang', kategori: 'Kesehatan' }
             ],
             perbaikan: [
-                { tgl: getDateOffset(-9), action: 'Perbaikan atap bocor', status: 'done', pic: 'Melka',
-                    foto: ['atap1.jpg'] },
-                { tgl: getDateOffset(-7), action: 'Rapikan penyimpanan barang', status: 'done', pic: 'Arif',
-                    foto: ['rak1.jpg', 'rak2.jpg'] }
+                { tgl: getDateOffset(-9), action: 'Perbaiki rak penyimpanan', status: 'closed', pic: 'Melka',
+                    foto: ['rak1.jpg'] },
+                { tgl: getDateOffset(-7), action: 'Tambah lampu penerangan', status: 'closed', pic: 'Arif',
+                    foto: ['lampu1.jpg'] }
             ]
         }, {
             id: 'INS-005',
-            lokasi: 'Area Parkir & Loading Dock',
-            keteranganLokasi: 'DCL - PMR 5E',
+            lokasi: 'UTILITY',
+            plantId: 16,
+            keteranganLokasi: 'Ruang Utility - Pompa Air',
             lat: -6.195000,
             lng: 106.825000,
             tanggal: getDateOffset(-1),
             petugas: 'Mustofa',
             status: 'proses',
             dueDate: getDateOffset(7),
-            fotoDekat: ['parkir_dekat1.jpg', 'parkir_dekat2.jpg'],
-            fotoJauh: ['parkir_jauh1.jpg'],
-            disahkan: null,
+            fotoDekat: ['utility_dekat1.jpg'],
+            fotoJauh: ['utility_jauh1.jpg'],
+            approvals: {
+                1: { approved: true, by: 'Mustofa', jabatan: 'Safety Officer', tanggal: getDateOffset(0) + ' 07:30' },
+                2: { approved: false, by: null, jabatan: 'Koord. K3L Bagian', tanggal: null },
+                3: { approved: false, by: null, jabatan: 'Manajer Bagian', tanggal: null },
+                4: { approved: false, by: null, jabatan: 'Ketua P2K3', tanggal: null }
+            },
             temuan: [
-                { deskripsi: 'Genangan air di area loading', kategori: 'Kesehatan' },
-                { deskripsi: 'Rambu keselamatan hilang', kategori: 'Lainnya' },
-                { deskripsi: 'Penerangan area parkir mati', kategori: 'Kelistrikan' }
+                { deskripsi: 'Bocor pada sambungan pipa', kategori: 'Kebocoran' },
+                { deskripsi: 'Tekanan air tidak stabil', kategori: 'Lainnya' }
             ],
             perbaikan: [
-                { tgl: getDateOffset(0), action: 'Identifikasi sumber genangan', status: 'progress', pic: 'Tulus',
-                    foto: ['genangan1.jpg'] }
+                { tgl: getDateOffset(0), action: 'Identifikasi sumber bocor', status: 'on-progress', pic: 'Tulus',
+                    foto: ['bocor1.jpg'] }
             ]
         }, {
             id: 'INS-006',
-            lokasi: 'Kantin & Ruang Makan',
-            keteranganLokasi: 'DCL - PMR 6F',
+            lokasi: 'SHE, WT, IPAL',
+            plantId: 14,
+            keteranganLokasi: 'Area IPAL - Bak Sedimentasi',
             lat: -6.205000,
             lng: 106.818000,
             tanggal: getDateOffset(-12),
             petugas: 'Melka',
             status: 'selesai',
             dueDate: getDateOffset(-8),
-            fotoDekat: ['kantin_dekat1.jpg'],
-            fotoJauh: ['kantin_jauh1.jpg'],
-            disahkan: {
-                oleh: MANAGER_SHE,
-                jabatan: MANAGER_TITLE,
-                tanggal: getDateOffset(-9) + ' 11:45'
+            fotoDekat: ['ipal_dekat1.jpg'],
+            fotoJauh: ['ipal_jauh1.jpg'],
+            approvals: {
+                1: { approved: true, by: 'Melka', jabatan: 'Safety Officer', tanggal: getDateOffset(-11) + ' 08:00' },
+                2: { approved: true, by: 'Dewi', jabatan: 'Koord. K3L Bagian', tanggal: getDateOffset(-10) + ' 09:30' },
+                3: { approved: true, by: 'Andi', jabatan: 'Manajer Bagian', tanggal: getDateOffset(-9) + ' 13:00' },
+                4: { approved: false, by: null, jabatan: 'Ketua P2K3', tanggal: null }
             },
             temuan: [
-                { deskripsi: 'Kebersihan dapur kurang', kategori: 'Kesehatan' },
-                { deskripsi: 'Tabung gas tidak tersimpan aman', kategori: 'Kebakaran' },
-                { deskripsi: 'Peralatan P3K tidak lengkap', kategori: 'Kesehatan' }
+                { deskripsi: 'Pompa IPAL tidak berfungsi optimal', kategori: 'Lainnya' },
+                { deskripsi: 'Kebersihan area sekitar kurang', kategori: 'Kesehatan' }
             ],
             perbaikan: [
-                { tgl: getDateOffset(-11), action: 'Pembersihan menyeluruh dapur', status: 'done', pic: 'Arif',
-                    foto: ['dapur1.jpg', 'dapur2.jpg'] },
-                { tgl: getDateOffset(-10), action: 'Pasang rak tabung gas', status: 'done', pic: 'Mustofa',
-                    foto: ['gas1.jpg'] },
-                { tgl: getDateOffset(-9), action: 'Lengkapi peralatan P3K', status: 'done', pic: 'Tulus',
-                    foto: ['p3k1.jpg'] }
+                { tgl: getDateOffset(-11), action: 'Perbaiki pompa IPAL', status: 'closed', pic: 'Arif',
+                    foto: ['pompa1.jpg'] },
+                { tgl: getDateOffset(-10), action: 'Bersihkan area IPAL', status: 'closed', pic: 'Mustofa',
+                    foto: ['bersih1.jpg'] }
             ]
-        }];
-
-        let jadwalData = [{
-            id: 'SCH-001',
-            lokasi: 'Gudang Bahan Kimia',
-            tanggal: getDateOffset(1),
-            waktu: '08:00',
-            petugas: 'Arif',
-            alert: 10080,
-            status: 'aktif'
-        }, {
-            id: 'SCH-002',
-            lokasi: 'Lantai Produksi 2',
-            tanggal: getDateOffset(3),
-            waktu: '13:30',
-            petugas: 'Tulus',
-            alert: 60,
-            status: 'aktif'
-        }, {
-            id: 'SCH-003',
-            lokasi: 'Ruang Server & Data Center',
-            tanggal: getDateOffset(5),
-            waktu: '10:00',
-            petugas: 'Mustofa',
-            alert: 30,
-            status: 'aktif'
-        }, {
-            id: 'SCH-004',
-            lokasi: 'Area Parkir & Loading Dock',
-            tanggal: getDateOffset(7),
-            waktu: '09:30',
-            petugas: 'Melka',
-            alert: 10080,
-            status: 'aktif'
-        }, {
-            id: 'SCH-005',
-            lokasi: 'Kantin & Ruang Makan',
-            tanggal: getDateOffset(10),
-            waktu: '14:00',
-            petugas: 'Arif',
-            alert: 1440,
-            status: 'aktif'
-        }, {
-            id: 'SCH-006',
-            lokasi: 'Gudang Logistik',
-            tanggal: getDateOffset(-2),
-            waktu: '11:00',
-            petugas: 'Tulus',
-            alert: 30,
-            status: 'aktif'
         }];
 
         // ========================================================================
@@ -2869,15 +3626,15 @@
 
         function getProgress(item) {
             if (!item.perbaikan || item.perbaikan.length === 0) return 0;
-            const done = item.perbaikan.filter(p => p.status === 'done').length;
+            const done = item.perbaikan.filter(p => p.status === 'closed').length;
             return Math.round((done / item.perbaikan.length) * 100);
         }
 
         function getStatusPerbaikan(item) {
-            if (!item.perbaikan || item.perbaikan.length === 0) return 'proses';
-            const allDone = item.perbaikan.every(p => p.status === 'done');
-            if (allDone) return 'selesai_perbaikan';
-            const hasProgress = item.perbaikan.some(p => p.status === 'progress');
+            if (!item.perbaikan || item.perbaikan.length === 0) return 'open';
+            const allClosed = item.perbaikan.every(p => p.status === 'closed');
+            if (allClosed) return 'selesai_perbaikan';
+            const hasProgress = item.perbaikan.some(p => p.status === 'on-progress');
             if (hasProgress) return 'perbaikan';
             return 'tinjau';
         }
@@ -2917,38 +3674,193 @@
                 `;
         }
 
-        function renderSignature(item) {
-            if (item.disahkan) {
-                return `
-                        <div class="signature-area disetujui">
-                            <div class="signature-text">${item.disahkan.oleh}</div>
-                            <div class="signature-label">${item.disahkan.jabatan} · ${item.disahkan.tanggal}</div>
-                            <span class="status-badge disetujui"><i class="fas fa-check-circle"></i> Disahkan</span>
-                        </div>
-                    `;
-            }
+        // ========================================================================
+        // ========== RENDER APPROVAL STAGES ==========
+        // ========================================================================
+
+        function renderApprovalStages(item) {
+            const approvals = item.approvals || {};
+            
             return `
-                    <div class="signature-area">
-                        <div class="signature-label">Belum disahkan</div>
-                        <button class="btn-sm success" onclick="sahkanInspeksi('${item.id}')" style="margin-top:0.5rem;">
-                            <i class="fas fa-pen-fancy"></i> Sahkan oleh ${MANAGER_SHE}
-                        </button>
-                    </div>
-                `;
+                <div class="approval-stages">
+                    ${APPROVAL_STAGES.map((stage, index) => {
+                        const approval = approvals[stage.id] || { approved: false, by: null, jabatan: stage.title, tanggal: null };
+                        const isCompleted = approval.approved === true;
+                        const isCurrent = !isCompleted && (index === 0 || (approvals[APPROVAL_STAGES[index-1].id] && approvals[APPROVAL_STAGES[index-1].id].approved === true));
+                        const isPending = !isCompleted && !isCurrent;
+
+                        let statusClass = 'waiting';
+                        let statusText = 'Menunggu';
+                        let actionHtml = '';
+
+                        if (isCompleted) {
+                            statusClass = 'done';
+                            statusText = '✅ Disetujui';
+                        } else if (isCurrent) {
+                            statusClass = 'in-progress';
+                            statusText = '⏳ Menunggu Persetujuan';
+                            actionHtml = `
+                                <button class="stage-action-btn approve" onclick="approveStage('${item.id}', ${stage.id})">
+                                    <i class="fas fa-check"></i> Setujui
+                                </button>
+                                <button class="stage-action-btn reject" onclick="rejectStage('${item.id}', ${stage.id})">
+                                    <i class="fas fa-times"></i> Tolak
+                                </button>
+                            `;
+                        } else {
+                            statusClass = 'waiting';
+                            statusText = '⏳ Menunggu';
+                        }
+
+                        const stageClass = isCompleted ? 'completed' : (isCurrent ? 'current' : 'pending');
+
+                        return `
+                            <div class="approval-stage ${stageClass}">
+                                <div class="stage-number">${stage.order}</div>
+                                <div class="stage-info">
+                                    <div class="stage-title">${stage.title}</div>
+                                    <div class="stage-detail">
+                                        ${isCompleted ? `${approval.by} · ${approval.tanggal}` : (isCurrent ? 'Menunggu persetujuan' : 'Belum mencapai tahap ini')}
+                                    </div>
+                                </div>
+                                <span class="stage-status ${statusClass}">${statusText}</span>
+                                ${actionHtml}
+                            </div>
+                        `;
+                    }).join('')}
+                </div>
+            `;
         }
 
-        window.sahkanInspeksi = function(id) {
-            const item = inspeksiData.find(d => d.id === id);
+        // ========================================================================
+        // ========== APPROVAL FUNCTIONS ==========
+        // ========================================================================
+
+        window.approveStage = function(inspeksiId, stageId) {
+            const item = inspeksiData.find(d => d.id === inspeksiId);
             if (!item) { showToast('⚠️ Data tidak ditemukan'); return; }
-            item.disahkan = {
-                oleh: MANAGER_SHE,
-                jabatan: MANAGER_TITLE,
+
+            const stage = APPROVAL_STAGES.find(s => s.id === stageId);
+            if (!stage) { showToast('⚠️ Tahap tidak ditemukan'); return; }
+
+            // Cek apakah stage sebelumnya sudah disetujui
+            const prevStage = APPROVAL_STAGES.find(s => s.order === stage.order - 1);
+            if (prevStage) {
+                const prevApproval = item.approvals && item.approvals[prevStage.id];
+                if (!prevApproval || !prevApproval.approved) {
+                    showToast('⚠️ Tahap sebelumnya belum disetujui!');
+                    return;
+                }
+            }
+
+            // Cek apakah stage ini sudah disetujui
+            if (item.approvals && item.approvals[stageId] && item.approvals[stageId].approved) {
+                showToast('⚠️ Tahap ini sudah disetujui!');
+                return;
+            }
+
+            // Approve
+            if (!item.approvals) item.approvals = {};
+            item.approvals[stageId] = {
+                approved: true,
+                by: stage.name === 'Safety Officer' ? item.petugas : 'Approver',
+                jabatan: stage.title,
                 tanggal: new Date().toLocaleString('id-ID')
             };
+
+            // Jika semua tahap sudah disetujui, update status inspeksi
+            const allApproved = APPROVAL_STAGES.every(s => item.approvals[s.id] && item.approvals[s.id].approved === true);
+            if (allApproved) {
+                item.status = 'selesai';
+                showToast('🎉 Semua tahap pengesahan telah disetujui! Inspeksi selesai.');
+            } else {
+                showToast(`✅ ${stage.title} telah menyetujui inspeksi ${inspeksiId}`);
+            }
+
             refreshAll();
-            showToast(`✅ Inspeksi ${id} telah disahkan oleh ${MANAGER_SHE}`);
-            document.getElementById('detailModal').classList.remove('show');
+            openApprovalModal(inspeksiId);
         };
+
+        window.rejectStage = function(inspeksiId, stageId) {
+            const item = inspeksiData.find(d => d.id === inspeksiId);
+            if (!item) { showToast('⚠️ Data tidak ditemukan'); return; }
+
+            const stage = APPROVAL_STAGES.find(s => s.id === stageId);
+            if (!stage) { showToast('⚠️ Tahap tidak ditemukan'); return; }
+
+            if (confirm(`Tolak inspeksi ${inspeksiId} oleh ${stage.title}?`)) {
+                if (!item.approvals) item.approvals = {};
+                item.approvals[stageId] = {
+                    approved: false,
+                    by: 'Rejected',
+                    jabatan: stage.title,
+                    tanggal: new Date().toLocaleString('id-ID'),
+                    rejected: true
+                };
+                item.status = 'tinjau';
+                showToast(`❌ ${stage.title} menolak inspeksi ${inspeksiId}`);
+                refreshAll();
+                openApprovalModal(inspeksiId);
+            }
+        };
+
+        // ========================================================================
+        // ========== APPROVAL MODAL ==========
+        // ========================================================================
+
+        function openApprovalModal(inspeksiId) {
+            const item = inspeksiData.find(d => d.id === inspeksiId);
+            if (!item) { showToast('⚠️ Data tidak ditemukan'); return; }
+
+            const modal = document.getElementById('approvalModal');
+            const content = document.getElementById('approvalContent');
+
+            content.innerHTML = `
+                <div class="detail-container">
+                    <div class="detail-grid">
+                        <div class="detail-item">
+                            <span class="label">ID Inspeksi</span>
+                            <span class="value" style="color:#b31b1b;font-weight:700;">${item.id}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="label">Lokasi / Plant</span>
+                            <span class="value">${item.lokasi}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="label">Safety Officer</span>
+                            <span class="value">${item.petugas}</span>
+                        </div>
+                        <div class="detail-item">
+                            <span class="label">Status</span>
+                            <span class="value"><span class="status-badge ${item.status}">${item.status.charAt(0).toUpperCase() + item.status.slice(1)}</span></span>
+                        </div>
+                    </div>
+
+                    <div class="detail-section">
+                        <div class="section-title"><i class="fas fa-stamp"></i> Tahap Pengesahan (4 Tahap)</div>
+                        ${renderApprovalStages(item)}
+                    </div>
+
+                    ${item.temuan && item.temuan.length > 0 ? `
+                        <div class="detail-section">
+                            <div class="section-title"><i class="fas fa-list"></i> Daftar Temuan</div>
+                            <ul class="temuan-list-detail">
+                                ${item.temuan.map(t => `<li><span>${t.deskripsi}</span><span class="temuan-kategori">${t.kategori}</span></li>`).join('')}
+                            </ul>
+                        </div>
+                    ` : ''}
+                </div>
+            `;
+
+            modal.classList.add('show');
+        }
+
+        document.getElementById('closeApprovalModal').addEventListener('click', function() {
+            document.getElementById('approvalModal').classList.remove('show');
+        });
+        document.getElementById('approvalModal').addEventListener('click', function(e) {
+            if (e.target === this) this.classList.remove('show');
+        });
 
         // ========================================================================
         // ========== PDF GENERATOR ==========
@@ -2957,8 +3869,11 @@
         window.cetakPDF = function(id) {
             const item = inspeksiData.find(d => d.id === id);
             if (!item) { showToast('⚠️ Data tidak ditemukan'); return; }
-            if (!item.disahkan) {
-                showToast('⚠️ Inspeksi belum disahkan! Silahkan sahkan terlebih dahulu.');
+
+            // Cek apakah semua tahap sudah disetujui
+            const allApproved = APPROVAL_STAGES.every(s => item.approvals && item.approvals[s.id] && item.approvals[s.id].approved === true);
+            if (!allApproved) {
+                showToast('⚠️ Inspeksi belum disetujui semua tahap! Silahkan selesaikan pengesahan terlebih dahulu.');
                 return;
             }
 
@@ -2979,10 +3894,38 @@
                 '<tr><td colspan="3" style="text-align:center;color:#888;">Tidak ada temuan</td></tr>';
 
             const perbaikanRows = item.perbaikan && item.perbaikan.length > 0 ?
-                item.perbaikan.map(p =>
-                    `<tr><td>${p.tgl}</td><td>${p.action}</td><td>${p.pic}</td><td><span style="background:${p.status === 'done' ? '#e8f5e9' : p.status === 'progress' ? '#fff3e0' : '#fce4ec'};padding:0.1rem 0.5rem;border-radius:4px;font-size:0.7rem;">${p.status === 'done' ? '✅ Selesai' : p.status === 'progress' ? '🔄 Progres' : '⏳ Pending'}</span></td></tr>`
-                ).join('') :
+                item.perbaikan.map(p => {
+                    const statusMap = {
+                        'closed': '✅ Selesai',
+                        'on-progress': '🔄 Progres',
+                        'open': '⏳ Pending'
+                    };
+                    return `<tr><td>${p.tgl}</td><td>${p.action}</td><td>${p.pic}</td><td><span style="background:${p.status === 'closed' ? '#e8f5e9' : p.status === 'on-progress' ? '#fff3e0' : '#fce4ec'};padding:0.1rem 0.5rem;border-radius:4px;font-size:0.7rem;">${statusMap[p.status] || p.status}</span></td></tr>`;
+                }).join('') :
                 '<tr><td colspan="4" style="text-align:center;color:#888;">Belum ada tindakan perbaikan</td></tr>';
+
+            // Approval signatures
+            const approvalSignatures = APPROVAL_STAGES.map(s => {
+                const approval = item.approvals && item.approvals[s.id];
+                if (approval && approval.approved) {
+                    return `
+                        <div class="sign-item">
+                            <div style="font-size:0.7rem;color:#888;">${s.title}</div>
+                            <div class="sign-name">${approval.by}</div>
+                            <div style="font-size:0.7rem;color:#666;">${approval.jabatan}</div>
+                            <div class="sign-line"></div>
+                            <div style="font-size:0.6rem;color:#888;">${approval.tanggal}</div>
+                        </div>
+                    `;
+                }
+                return `
+                    <div class="sign-item">
+                        <div style="font-size:0.7rem;color:#888;">${s.title}</div>
+                        <div style="font-size:0.8rem;color:#aaa;">Belum ditandatangani</div>
+                        <div class="sign-line" style="border-color:#ddd;"></div>
+                    </div>
+                `;
+            }).join('');
 
             pdfContainer.innerHTML = `
                     <div class="pdf-header">
@@ -3002,7 +3945,7 @@
                                 <div class="value"><span style="background:${item.status === 'selesai' ? '#e8f5e9' : item.status === 'proses' ? '#fff3e0' : '#fce4ec'};padding:0.1rem 0.6rem;border-radius:60px;font-size:0.75rem;">${item.status.charAt(0).toUpperCase() + item.status.slice(1)}</span></div>
                             </div>
                             <div class="item">
-                                <div class="label">Lokasi</div>
+                                <div class="label">Lokasi / Plant</div>
                                 <div class="value">${item.lokasi}</div>
                             </div>
                             <div class="item">
@@ -3014,7 +3957,7 @@
                                 <div class="value">${item.tanggal}</div>
                             </div>
                             <div class="item">
-                                <div class="label">Petugas SHE</div>
+                                <div class="label">Safety Officer</div>
                                 <div class="value">${item.petugas}</div>
                             </div>
                             <div class="item">
@@ -3061,30 +4004,20 @@
                             <div class="pdf-gallery">${galleryHtml}</div>
                             <div style="font-size:0.7rem;color:#888;margin-top:0.3rem;">${allPhotos.length} foto terupload</div>
                         </div>
+
+                        <div class="section">
+                            <div class="title"><i class="fas fa-stamp"></i> Lembar Pengesahan</div>
+                            <div class="signature-block" style="display:flex;justify-content:space-around;flex-wrap:wrap;gap:1rem;margin-top:0.5rem;">
+                                ${approvalSignatures}
+                            </div>
+                        </div>
                     </div>
 
                     <div class="pdf-footer">
-                        <div class="signature-block">
-                            <div class="sign-item">
-                                <div style="font-weight:600;font-size:0.9rem;margin-bottom:0.5rem;">Mengetahui,</div>
-                                <div class="sign-name">${item.disahkan.oleh}</div>
-                                <div class="sign-title">${item.disahkan.jabatan}</div>
-                                <div class="sign-line"></div>
-                                <div style="font-size:0.7rem;color:#888;">Tanda Tangan &amp; Stempel</div>
-                            </div>
-                            <div class="sign-item">
-                                <div style="font-weight:600;font-size:0.9rem;margin-bottom:0.5rem;">Petugas Inspeksi,</div>
-                                <div class="sign-name">${item.petugas}</div>
-                                <div class="sign-title">Petugas SHE</div>
-                                <div class="sign-line"></div>
-                                <div style="font-size:0.7rem;color:#888;">Tanda Tangan</div>
-                            </div>
-                        </div>
-
                         <div class="legal-text">
                             <i class="fas fa-check-circle"></i>
                             Dokumen ini telah ditandatangani dan disetujui secara elektronik melalui 
-                            <strong>Sistem Informasi K3 SHE Sasa</strong> pada tanggal ${item.disahkan.tanggal}.
+                            <strong>Sistem Informasi K3 SHE Sasa</strong> pada tanggal ${new Date().toLocaleString('id-ID')}.
                             <br>
                             <span style="font-size:0.65rem;">Dokumen ini sah dan berlaku sebagai bukti resmi inspeksi keselamatan dan kesehatan kerja.</span>
                         </div>
@@ -3177,57 +4110,22 @@
         function renderDashboardJadwal() {
             const container = document.getElementById('dashboardJadwalContainer');
             if (!container) return;
-            const now = new Date();
-            const upcoming = jadwalData.filter(j => j.status === 'aktif')
-                .sort((a, b) => {
-                    const da = new Date(`${a.tanggal.split('/').reverse().join('-')}T${a.waktu}`);
-                    const db = new Date(`${b.tanggal.split('/').reverse().join('-')}T${b.waktu}`);
-                    return da - db;
-                })
-                .slice(0, 5);
-
-            if (upcoming.length === 0) {
+            
+            if (jadwalData.length === 0) {
                 container.innerHTML = '<p style="color:#8a6a6a;font-size:0.9rem;padding:0.5rem;">Tidak ada jadwal aktif</p>';
                 return;
             }
 
-            container.innerHTML = upcoming.map(item => {
-                const jadwalTime = new Date(`${item.tanggal.split('/').reverse().join('-')}T${item.waktu}`);
-                const diffMs = jadwalTime - now;
-                const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-                const diffHours = Math.floor((diffMs % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                const diffMin = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
-
-                let alertText = '',
-                    alertClass = '',
-                    isAlertWeek = false;
-                if (item.alert === 10080 && diffDays <= 7 && diffDays > 0) {
-                    alertText = '🔔 1 MINGGU LAGI!';
-                    alertClass = 'danger';
-                    isAlertWeek = true;
-                } else if (diffMs <= 0) {
-                    alertText = '⏰ Waktunya!';
-                    alertClass = 'danger';
-                } else if (diffDays > 0) {
-                    alertText = `${diffDays} hari lagi`;
-                    alertClass = 'success';
-                } else if (diffHours > 0) {
-                    alertText = `${diffHours} jam ${diffMin} menit lagi`;
-                    alertClass = 'warning';
-                } else {
-                    alertText = `${diffMin} menit lagi`;
-                    alertClass = 'danger';
-                }
-
+            container.innerHTML = jadwalData.filter(j => j.status === 'aktif').slice(0, 5).map(item => {
+                const periode = PERIODE_LIST.find(p => p.id === item.periode);
                 return `
-                        <div class="jadwal-card" style="border-left-color: ${diffMs <= 0 ? '#c62828' : diffDays <= 1 ? '#f57f17' : '#2e7d32'};">
+                        <div class="jadwal-card" style="border-left-color: #2e7d32;">
                             <div class="jadwal-info">
-                                <span class="title">${item.lokasi} ${isAlertWeek ? '🔔' : ''}</span>
-                                <span class="detail">${item.tanggal} ${item.waktu} · ${item.petugas}</span>
+                                <span class="title">${item.plantName}</span>
+                                <span class="detail">${periode ? periode.name + ' (' + periode.months + ')' : 'Periode ' + item.periode} ${item.tahun} · ${item.officer}</span>
                             </div>
                             <div class="jadwal-alert">
-                                <span class="status-badge ${alertClass}">${alertText}</span>
-                                ${isAlertWeek ? '<span class="alert-badge danger" style="margin-left:0.5rem;">⚠️ ALERT MINGGUAN</span>' : ''}
+                                <span class="status-badge proses">Aktif</span>
                             </div>
                         </div>
                     `;
@@ -3274,9 +4172,25 @@
                     `<button class="btn-export-temuan" onclick="exportTemuanPerItem('${item.id}')" title="Export temuan ke Excel"><i class="fas fa-file-excel"></i></button>` :
                     '';
 
-                const pdfBtn = item.disahkan ?
+                // Cek apakah semua tahap sudah disetujui
+                const allApproved = APPROVAL_STAGES.every(s => item.approvals && item.approvals[s.id] && item.approvals[s.id].approved === true);
+                const pdfBtn = allApproved ?
                     `<button class="btn-pdf" onclick="cetakPDF('${item.id}')" title="Cetak PDF Laporan"><i class="fas fa-file-pdf"></i></button>` :
-                    `<button class="btn-pdf" disabled title="Harus disahkan terlebih dahulu"><i class="fas fa-file-pdf"></i></button>`;
+                    `<button class="btn-pdf" disabled title="Harus disetujui semua tahap terlebih dahulu"><i class="fas fa-file-pdf"></i></button>`;
+
+                // Approval status display
+                let approvalStatus = 'Belum';
+                let approvalColor = 'menunggu';
+                if (allApproved) {
+                    approvalStatus = '✅ Lengkap';
+                    approvalColor = 'selesai';
+                } else {
+                    const approvedCount = Object.values(item.approvals || {}).filter(a => a && a.approved === true).length;
+                    if (approvedCount > 0) {
+                        approvalStatus = `${approvedCount}/${APPROVAL_STAGES.length}`;
+                        approvalColor = 'proses';
+                    }
+                }
 
                 if (isFull) {
                     return `
@@ -3288,7 +4202,10 @@
                                 <td>${item.petugas}</td>
                                 <td>${jmlTemuan}</td>
                                 <td><span class="status-badge ${item.status}">${item.status.charAt(0).toUpperCase() + item.status.slice(1)}</span></td>
-                                <td>${renderSignature(item)}</td>
+                                <td>
+                                    <span class="status-badge ${approvalColor}">${approvalStatus}</span>
+                                    <button class="btn-sm info" onclick="openApprovalModal('${item.id}')" style="margin-top:0.2rem;"><i class="fas fa-stamp"></i></button>
+                                </td>
                                 <td>${exportBtn} ${pdfBtn}</td>
                             </tr>
                         `;
@@ -3304,6 +4221,7 @@
                                 <td>
                                     <button class="btn-sm info" onclick="openDetailModal('${item.id}')"><i class="fas fa-eye"></i></button>
                                     <button class="btn-sm primary" onclick="openPerbaikanModal('${item.id}')"><i class="fas fa-tools"></i></button>
+                                    <button class="btn-sm warning" onclick="openApprovalModal('${item.id}')"><i class="fas fa-stamp"></i></button>
                                     ${exportBtn}
                                     ${pdfBtn}
                                 </td>
@@ -3317,61 +4235,29 @@
             const tbody = document.getElementById('jadwalTableBody');
             if (!tbody) return;
             const displayData = data !== null ? data : jadwalData;
-            const now = new Date();
             let notifCount = 0;
 
             if (displayData.length === 0) {
                 tbody.innerHTML =
-                    '<tr><td colspan="8" style="text-align:center;padding:2rem;color:#8a6a6a;">Tidak ada data ditemukan</td></tr>';
+                    '<tr><td colspan="6" style="text-align:center;padding:2rem;color:#8a6a6a;">Tidak ada data ditemukan</td></tr>';
                 updateNotifBadge(0);
                 return 0;
             }
 
             tbody.innerHTML = displayData.map(item => {
-                const jadwalTime = new Date(`${item.tanggal.split('/').reverse().join('-')}T${item.waktu}`);
-                const diffMs = jadwalTime - now;
-                const diffMin = Math.floor(diffMs / 60000);
-                const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-
-                let alertStatus = '',
-                    isAlert = false;
-                if (item.alert === 10080 && diffDays <= 7 && diffDays > 0 && diffMin > 0) {
-                    alertStatus =
-                        `<span class="alert-badge danger" style="font-size:0.7rem;"><i class="fas fa-bell"></i> 🔔 1 MINGGU LAGI!</span>`;
-                    isAlert = true;
-                    notifCount++;
-                } else if (item.alert > 0 && diffMin <= item.alert && diffMin > 0) {
-                    alertStatus =
-                        `<span class="alert-badge danger"><i class="fas fa-bell"></i> ${diffMin} menit lagi</span>`;
-                    isAlert = true;
-                    notifCount++;
-                } else if (diffMin <= 0) {
-                    alertStatus = `<span class="alert-badge warning"><i class="fas fa-clock"></i> Terlewat</span>`;
-                } else {
-                    alertStatus =
-                        `<span style="font-size:0.65rem;color:#8a6a6a;">${item.alert === 10080 ? '1 minggu' : item.alert} menit sebelumnya</span>`;
-                }
-
-                if (isAlert && !item._alerted && data === null) {
-                    item._alerted = true;
-                    const timeText = diffDays > 0 ? `${diffDays} hari` : `${diffMin} menit`;
-                    playNotificationSound();
-                    showBrowserNotification('🔔 SHE Sasa - Alert Inspeksi!', `${item.lokasi} - ${timeText} lagi!`);
-                    showToast(`🔔 ALERT! ${item.lokasi} ${timeText} lagi!`);
-                    setTimeout(() => { item._alerted = false; }, 60000);
-                }
-
-                const lokasiDisplay = highlightQuery ? highlightText(item.lokasi, highlightQuery) : item.lokasi;
-                const petugasDisplay = highlightQuery ? highlightText(item.petugas, highlightQuery) : item.petugas;
+                const periode = PERIODE_LIST.find(p => p.id === item.periode);
+                const plant = PLANT_LIST.find(p => p.id === item.plantId);
+                
+                const plantDisplay = highlightQuery ? highlightText(item.plantName, highlightQuery) : item.plantName;
+                const officerDisplay = highlightQuery ? highlightText(item.officer, highlightQuery) : item.officer;
+                const periodeDisplay = highlightQuery && periode ? highlightText(periode.name, highlightQuery) : (periode ? periode.name : 'Periode ' + item.periode);
 
                 return `
                         <tr>
-                            <td><strong>${item.id}</strong></td>
-                            <td>${lokasiDisplay}</td>
-                            <td>${item.tanggal}</td>
-                            <td>${item.waktu}</td>
-                            <td>${petugasDisplay}</td>
-                            <td>${alertStatus}</td>
+                            <td>${plantDisplay} ${plant ? '<span style="font-size:0.6rem;color:#8a6a6a;">('+plant.code+')</span>' : ''}</td>
+                            <td>${periodeDisplay}</td>
+                            <td>${item.tahun}</td>
+                            <td>${officerDisplay}</td>
                             <td><span class="status-badge ${item.status === 'aktif' ? 'proses' : 'selesai'}">${item.status}</span></td>
                             <td>
                                 <button class="btn-sm warning" onclick="editJadwal('${item.id}')"><i class="fas fa-edit"></i></button>
@@ -3426,6 +4312,12 @@
                         </div>
                     `;
 
+                const statusMap = {
+                    'selesai_perbaikan': 'Closed',
+                    'perbaikan': 'On Progress',
+                    'tinjau': 'Open'
+                };
+
                 return `
                         <tr>
                             <td><strong>${item.id}</strong></td>
@@ -3435,7 +4327,7 @@
                             <td>${actionDisplay}</td>
                             <td>${picDisplay}</td>
                             <td>${progressBar}</td>
-                            <td><span class="status-badge ${statusPerbaikan}">${statusPerbaikan === 'selesai_perbaikan' ? 'Selesai' : statusPerbaikan === 'perbaikan' ? 'Perbaikan' : 'Tinjau'}</span></td>
+                            <td><span class="status-badge ${statusPerbaikan}">${statusMap[statusPerbaikan] || statusPerbaikan}</span></td>
                             <td>
                                 <button class="btn-sm primary" onclick="openPerbaikanModal('${item.id}')"><i class="fas fa-edit"></i></button>
                                 <button class="btn-sm info" onclick="openDetailModal('${item.id}')"><i class="fas fa-eye"></i></button>
@@ -3478,6 +4370,87 @@
         }
 
         // ========================================================================
+        // ========== CHART: Temuan per Plant ==========
+        // ========================================================================
+
+        let temuanPlantChart = null;
+
+        function renderTemuanPlantChart() {
+            const ctx = document.getElementById('temuanPlantChart').getContext('2d');
+
+            const plantCounts = {};
+            PLANT_LIST.forEach(p => {
+                plantCounts[p.name] = 0;
+            });
+
+            inspeksiData.forEach(item => {
+                if (item.temuan && item.temuan.length > 0) {
+                    const plantName = item.lokasi;
+                    if (plantCounts[plantName] !== undefined) {
+                        plantCounts[plantName] += item.temuan.length;
+                    }
+                }
+            });
+
+            const labels = Object.keys(plantCounts);
+            const data = Object.values(plantCounts);
+
+            const colors = [
+                '#d42a2a', '#e67e22', '#f1c40f', '#2ecc71', '#3498db',
+                '#9b59b6', '#1abc9c', '#e74c3c', '#2c3e50', '#f39c12',
+                '#2980b9', '#8e44ad', '#16a085', '#c0392b', '#27ae60',
+                '#d35400'
+            ];
+
+            if (temuanPlantChart) {
+                temuanPlantChart.destroy();
+            }
+
+            temuanPlantChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Jumlah Temuan',
+                        data: data,
+                        backgroundColor: colors.slice(0, labels.length),
+                        borderRadius: 6,
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: true,
+                    plugins: {
+                        legend: {
+                            display: false
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                stepSize: 1
+                            }
+                        },
+                        x: {
+                            grid: {
+                                display: false
+                            },
+                            ticks: {
+                                maxRotation: 45,
+                                minRotation: 30,
+                                font: {
+                                    size: 8
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // ========================================================================
         // ========== EXPORT FUNCTIONS ==========
         // ========================================================================
 
@@ -3489,15 +4462,15 @@
             const exportData = item.temuan.map((t, idx) => ({
                 'No': idx + 1,
                 'ID Inspeksi': item.id,
-                'Lokasi': item.lokasi,
+                'Lokasi / Plant': item.lokasi,
                 'Keterangan Lokasi': item.keteranganLokasi || '-',
                 'Tanggal Inspeksi': item.tanggal,
-                'Petugas': item.petugas,
+                'Safety Officer': item.petugas,
                 'Deskripsi Temuan': t.deskripsi,
                 'Kategori': t.kategori,
                 'Status Inspeksi': item.status,
                 'Due Date Plant': item.dueDate || '-',
-                'Pengesahan': item.disahkan ? `${item.disahkan.oleh} - ${item.disahkan.tanggal}` : 'Belum disahkan'
+                'Status Pengesahan': getApprovalStatusText(item)
             }));
 
             const wb = XLSX.utils.book_new();
@@ -3505,12 +4478,19 @@
             ws['!cols'] = [
                 { wch: 5 }, { wch: 12 }, { wch: 25 }, { wch: 20 }, { wch: 15 },
                 { wch: 15 }, { wch: 35 }, { wch: 15 }, { wch: 15 }, { wch: 15 },
-                { wch: 35 }
+                { wch: 25 }
             ];
             XLSX.utils.book_append_sheet(wb, ws, 'Temuan');
             XLSX.writeFile(wb, `Temuan_${item.id}_${new Date().toISOString().slice(0,10)}.xlsx`);
             showToast(`📊 ${item.temuan.length} temuan dari ${item.id} diekspor`);
         };
+
+        function getApprovalStatusText(item) {
+            const allApproved = APPROVAL_STAGES.every(s => item.approvals && item.approvals[s.id] && item.approvals[s.id].approved === true);
+            if (allApproved) return '✅ Lengkap (4/4)';
+            const approvedCount = Object.values(item.approvals || {}).filter(a => a && a.approved === true).length;
+            return `${approvedCount}/${APPROVAL_STAGES.length}`;
+        }
 
         function exportAllTemuan() {
             let allTemuan = [];
@@ -3520,16 +4500,15 @@
                         allTemuan.push({
                             'No': allTemuan.length + 1,
                             'ID Inspeksi': item.id,
-                            'Lokasi': item.lokasi,
+                            'Lokasi / Plant': item.lokasi,
                             'Keterangan Lokasi': item.keteranganLokasi || '-',
                             'Tanggal Inspeksi': item.tanggal,
-                            'Petugas': item.petugas,
+                            'Safety Officer': item.petugas,
                             'Deskripsi Temuan': t.deskripsi,
                             'Kategori': t.kategori,
                             'Status Inspeksi': item.status,
                             'Due Date Plant': item.dueDate || '-',
-                            'Pengesahan': item.disahkan ? `${item.disahkan.oleh} - ${item.disahkan.tanggal}` :
-                                'Belum disahkan'
+                            'Status Pengesahan': getApprovalStatusText(item)
                         });
                     });
                 }
@@ -3542,7 +4521,7 @@
             ws['!cols'] = [
                 { wch: 5 }, { wch: 12 }, { wch: 25 }, { wch: 20 }, { wch: 15 },
                 { wch: 15 }, { wch: 35 }, { wch: 15 }, { wch: 15 }, { wch: 15 },
-                { wch: 35 }
+                { wch: 25 }
             ];
             XLSX.utils.book_append_sheet(wb, ws, 'Semua Temuan');
             XLSX.writeFile(wb, `Semua_Temuan_${new Date().toISOString().slice(0,10)}.xlsx`);
@@ -3552,17 +4531,17 @@
         function exportToExcel(data, filename = 'Data_Inspeksi_K3.xlsx') {
             const exportData = data.map(item => ({
                 'ID': item.id,
-                'Lokasi': item.lokasi,
+                'Lokasi / Plant': item.lokasi,
                 'Keterangan Lokasi': item.keteranganLokasi || '-',
                 'Tanggal': item.tanggal,
-                'Petugas': item.petugas,
+                'Safety Officer': item.petugas,
                 'Jumlah Temuan': item.temuan ? item.temuan.length : 0,
                 'Daftar Temuan': item.temuan ? item.temuan.map(t => `${t.deskripsi} (${t.kategori})`).join('; ') : '-',
                 'Due Date Plant': item.dueDate || '-',
                 'Status': item.status,
                 'Progres Perbaikan': `${getProgress(item)}%`,
                 'Status Perbaikan': getStatusPerbaikan(item),
-                'Pengesahan': item.disahkan ? `${item.disahkan.oleh} - ${item.disahkan.tanggal}` : 'Belum disahkan',
+                'Status Pengesahan': getApprovalStatusText(item),
             }));
             const wb = XLSX.utils.book_new();
             const ws = XLSX.utils.json_to_sheet(exportData);
@@ -3603,30 +4582,6 @@
                 `<span class="overdue-badge"><i class="fas fa-exclamation-circle"></i> OVERDUE</span>` :
                 '';
 
-            let signatureHtml = '';
-            if (item.disahkan) {
-                signatureHtml = `
-                        <div class="signature-box">
-                            <div class="sign-name">${item.disahkan.oleh}</div>
-                            <div class="sign-title">${item.disahkan.jabatan}</div>
-                            <div class="sign-date">${item.disahkan.tanggal}</div>
-                            <div class="sign-badge"><i class="fas fa-check-circle"></i> Disahkan</div>
-                            <div style="margin-top:0.5rem;">
-                                <button class="btn-pdf" onclick="cetakPDF('${item.id}')"><i class="fas fa-file-pdf"></i> Cetak PDF Laporan Resmi</button>
-                            </div>
-                        </div>
-                    `;
-            } else {
-                signatureHtml = `
-                        <div class="signature-empty">
-                            <p style="color:#8a6a6a;margin-bottom:0.5rem;">Belum disahkan</p>
-                            <button class="btn-sm success" onclick="sahkanInspeksi('${item.id}')">
-                                <i class="fas fa-pen-fancy"></i> Sahkan oleh ${MANAGER_SHE}
-                            </button>
-                        </div>
-                    `;
-            }
-
             content.innerHTML = `
                     <div class="detail-container">
                         <div class="detail-grid">
@@ -3639,7 +4594,7 @@
                                 <span class="value"><span class="status-badge ${item.status}">${statusMap[item.status] || item.status}</span></span>
                             </div>
                             <div class="detail-item">
-                                <span class="label"><i class="fas fa-building"></i> Lokasi</span>
+                                <span class="label"><i class="fas fa-building"></i> Lokasi / Plant</span>
                                 <span class="value">${item.lokasi}</span>
                             </div>
                             <div class="detail-item">
@@ -3651,7 +4606,7 @@
                                 <span class="value">${item.tanggal}</span>
                             </div>
                             <div class="detail-item">
-                                <span class="label"><i class="fas fa-user"></i> Petugas SHE</span>
+                                <span class="label"><i class="fas fa-user"></i> Safety Officer</span>
                                 <span class="value">${item.petugas}</span>
                             </div>
                             <div class="detail-item" style="grid-column:1/3;">
@@ -3668,7 +4623,6 @@
                                     <button class="btn-export-temuan" onclick="exportTemuanPerItem('${item.id}')">
                                         <i class="fas fa-file-excel"></i> Export Temuan
                                     </button>
-                                    ${item.disahkan ? `<button class="btn-pdf" onclick="cetakPDF('${item.id}')"><i class="fas fa-file-pdf"></i> Cetak PDF</button>` : ''}
                                 </div>
                             ` : ''}
                         </div>
@@ -3680,8 +4634,11 @@
                         </div>
 
                         <div class="detail-section">
-                            <div class="section-title"><i class="fas fa-stamp"></i> Pengesahan</div>
-                            <div class="detail-signature">${signatureHtml}</div>
+                            <div class="section-title"><i class="fas fa-stamp"></i> Pengesahan (4 Tahap)</div>
+                            ${renderApprovalStages(item)}
+                            <div style="margin-top:0.5rem;">
+                                <button class="btn-sm primary" onclick="openApprovalModal('${item.id}')"><i class="fas fa-stamp"></i> Kelola Pengesahan</button>
+                            </div>
                         </div>
                     </div>
                 `;
@@ -3702,22 +4659,32 @@
         window.openJadwalModal = function(data = null) {
             const modal = document.getElementById('jadwalModal');
             document.getElementById('jadwalModalTitle').textContent = data ? 'Edit Jadwal' : 'Tambah Jadwal';
-            const todayISO = new Date().toISOString().split('T')[0];
+            const currentYear = new Date().getFullYear();
 
             if (data) {
                 document.getElementById('editJadwalId').value = data.id;
-                document.getElementById('jadwalLokasi').value = data.lokasi;
-                document.getElementById('jadwalTanggal').value = data.tanggal.split('/').reverse().join('-');
-                document.getElementById('jadwalWaktu').value = data.waktu;
-                document.getElementById('jadwalPetugas').value = data.petugas;
-                document.getElementById('jadwalAlert').value = data.alert;
+                const plant = PLANT_LIST.find(p => p.id === data.plantId);
+                if (plant) {
+                    document.getElementById('plantSearchInputJadwal').value = plant.name;
+                    document.getElementById('selectedPlantJadwal').value = plant.id;
+                    document.getElementById('selectedPlantDisplayJadwal').innerHTML = 
+                        `<span class="selected-value"><i class="fas fa-check-circle"></i> ${plant.name} (${plant.code})</span>`;
+                    document.getElementById('clearPlantSelectionJadwal').classList.add('visible');
+                    selectedPlantJadwal = plant;
+                }
+                document.getElementById('jadwalPeriode').value = data.periode;
+                document.getElementById('jadwalTahun').value = data.tahun;
+                document.getElementById('jadwalPetugas').value = data.officer;
             } else {
                 document.getElementById('editJadwalId').value = '';
-                document.getElementById('jadwalLokasi').value = '';
-                document.getElementById('jadwalTanggal').value = todayISO;
-                document.getElementById('jadwalWaktu').value = '09:00';
-                document.getElementById('jadwalPetugas').value = getRandomPetugas();
-                document.getElementById('jadwalAlert').value = '30';
+                document.getElementById('plantSearchInputJadwal').value = '';
+                document.getElementById('selectedPlantJadwal').value = '';
+                document.getElementById('selectedPlantDisplayJadwal').innerHTML = '';
+                document.getElementById('clearPlantSelectionJadwal').classList.remove('visible');
+                selectedPlantJadwal = null;
+                document.getElementById('jadwalPeriode').value = '1';
+                document.getElementById('jadwalTahun').value = currentYear;
+                document.getElementById('jadwalPetugas').value = getRandomOfficer();
             }
             modal.classList.add('show');
         };
@@ -3745,40 +4712,47 @@
         document.getElementById('submitJadwal').addEventListener('click', function(e) {
             e.preventDefault();
             const id = document.getElementById('editJadwalId').value;
-            const lokasi = document.getElementById('jadwalLokasi').value.trim();
-            const tanggal = document.getElementById('jadwalTanggal').value;
-            const waktu = document.getElementById('jadwalWaktu').value;
-            const petugas = document.getElementById('jadwalPetugas').value.trim();
-            const alert = parseInt(document.getElementById('jadwalAlert').value);
+            const plantId = document.getElementById('selectedPlantJadwal').value;
+            const periode = parseInt(document.getElementById('jadwalPeriode').value);
+            const tahun = parseInt(document.getElementById('jadwalTahun').value);
+            const officer = document.getElementById('jadwalPetugas').value.trim();
 
-            if (!lokasi || !petugas) { showToast('⚠️ Lokasi dan Petugas wajib diisi'); return; }
-            if (!tanggal) { showToast('⚠️ Tanggal wajib diisi'); return; }
+            if (!plantId) { showToast('⚠️ Silakan pilih Plant terlebih dahulu!'); return; }
+            if (!officer) { showToast('⚠️ Safety Officer wajib diisi!'); return; }
+            if (!tahun || tahun < 2020) { showToast('⚠️ Tahun wajib diisi!'); return; }
 
-            const tanggalFormatted = new Date(tanggal).toLocaleDateString('id-ID');
+            const plant = PLANT_LIST.find(p => p.id == plantId);
+            const plantName = plant ? plant.name : '';
 
             if (id) {
                 const item = jadwalData.find(d => d.id === id);
                 if (item) {
-                    item.lokasi = lokasi;
-                    item.tanggal = tanggalFormatted;
-                    item.waktu = waktu;
-                    item.petugas = petugas;
-                    item.alert = alert;
+                    item.plantId = parseInt(plantId);
+                    item.plantName = plantName;
+                    item.periode = periode;
+                    item.tahun = tahun;
+                    item.officer = officer;
                     showToast(`✅ Jadwal ${id} berhasil diupdate`);
                 }
             } else {
                 const newId = `SCH-${String(jadwalData.length + 1).padStart(3, '0')}`;
                 jadwalData.push({
                     id: newId,
-                    lokasi: lokasi,
-                    tanggal: tanggalFormatted,
-                    waktu: waktu,
-                    petugas: petugas,
-                    alert: alert,
+                    plantId: parseInt(plantId),
+                    plantName: plantName,
+                    periode: periode,
+                    tahun: tahun,
+                    officer: officer,
                     status: 'aktif'
                 });
                 showToast(`✅ Jadwal ${newId} berhasil ditambahkan`);
             }
+
+            document.getElementById('plantSearchInputJadwal').value = '';
+            document.getElementById('selectedPlantJadwal').value = '';
+            document.getElementById('selectedPlantDisplayJadwal').innerHTML = '';
+            document.getElementById('clearPlantSelectionJadwal').classList.remove('visible');
+            selectedPlantJadwal = null;
 
             refreshAll();
             document.getElementById('jadwalModal').classList.remove('show');
@@ -3797,80 +4771,139 @@
             const progress = getProgress(item);
             const statusPerbaikan = getStatusPerbaikan(item);
 
+            const statusMap = {
+                'closed': '✅ Closed',
+                'on-progress': '🔄 On Progress',
+                'open': '⏳ Open'
+            };
+
             let timelineHtml = '';
             if (item.perbaikan && item.perbaikan.length > 0) {
                 timelineHtml = item.perbaikan.map(p => {
                     const fotoList = p.foto && p.foto.length > 0 ? p.foto : [];
                     const galleryHtml = fotoList.length > 0 ?
-                        renderGallery(fotoList, 'Foto Perbaikan') :
+                        fotoList.map(f => `
+                            <div class="thumb-mini" onclick="openLightbox(${JSON.stringify(fotoList)}, ${fotoList.indexOf(f)})" title="${f}">
+                                📷
+                            </div>
+                        `).join('') :
                         '<span style="font-size:0.6rem;color:#c62828;">⚠️ Belum ada foto</span>';
                     return `
                             <div class="perbaikan-item">
                                 <span class="date">${p.tgl}</span>
                                 <span class="action">${p.action}</span>
-                                <span class="status-mini ${p.status}">${p.status === 'done' ? '✅ Selesai' : p.status === 'progress' ? '🔄 Progres' : '⏳ Pending'}</span>
-                                <span style="font-size:0.7rem;color:#8a6a6a;"> - ${p.pic}</span>
-                                ${galleryHtml}
+                                <span class="status-mini ${p.status}">${statusMap[p.status] || p.status}</span>
+                                <span class="pic-name">- ${p.pic}</span>
+                                <div class="foto-thumbs">${galleryHtml}</div>
                             </div>
                         `;
                 }).join('');
             } else {
-                timelineHtml = '<p style="color:#8a6a6a;">Belum ada tindakan perbaikan</p>';
+                timelineHtml = '<div style="padding:0.8rem;color:#8a6a6a;text-align:center;">Belum ada tindakan perbaikan</div>';
             }
 
-            const progressBar = `
-                    <div class="progress-wrapper" style="min-width:200px;">
-                        <div class="progress-bar-container" style="flex:1;">
-                            <div class="progress-fill ${statusPerbaikan}" style="width:${progress}%"></div>
-                        </div>
-                        <span class="progress-text">${progress}%</span>
-                        <span class="progress-label">${statusPerbaikan === 'selesai_perbaikan' ? '✅ Selesai' : statusPerbaikan === 'perbaikan' ? '🔄 Perbaikan' : '⏳ Tinjau'}</span>
-                    </div>
-                `;
+            const statusPerbaikanMap = {
+                'selesai_perbaikan': 'Closed',
+                'perbaikan': 'On Progress',
+                'tinjau': 'Open'
+            };
 
-            const overdueBadge = isOverdue(item.dueDate) ?
-                `<span class="overdue-badge"><i class="fas fa-exclamation-circle"></i> OVERDUE</span>` :
-                '';
+            const allApproved = APPROVAL_STAGES.every(s => item.approvals && item.approvals[s.id] && item.approvals[s.id].approved === true);
 
             content.innerHTML = `
-                    <div style="margin-bottom:1.5rem;">
-                        <p><strong>ID:</strong> ${item.id}</p>
-                        <p><strong>Lokasi:</strong> ${item.lokasi}</p>
-                        <p><strong>Due Date Plant:</strong> ${item.dueDate || '-'} ${overdueBadge}</p>
-                        <p><strong>Status:</strong> <span class="status-badge ${item.status}">${item.status.charAt(0).toUpperCase() + item.status.slice(1)}</span></p>
-                        <div style="margin-top:0.8rem;">
-                            ${progressBar}
+                    <div class="perbaikan-info-box">
+                        <div class="info-row">
+                            <span class="label">ID Inspeksi</span>
+                            <span class="value"><strong>${item.id}</strong></span>
+                        </div>
+                        <div class="info-row">
+                            <span class="label">Lokasi / Plant</span>
+                            <span class="value">${item.lokasi}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="label">Due Date Plant</span>
+                            <span class="value">${item.dueDate || '-'} ${isOverdue(item.dueDate) ? '<span class="overdue-badge"><i class="fas fa-exclamation-circle"></i> OVERDUE</span>' : ''}</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="label">Status</span>
+                            <span class="value"><span class="status-badge ${item.status}">${item.status.charAt(0).toUpperCase() + item.status.slice(1)}</span></span>
+                        </div>
+                        <div class="info-row" style="margin-top:0.3rem;padding-top:0.5rem;border-top:2px solid #f0e0e0;">
+                            <span class="label">Pengesahan</span>
+                            <span class="value">
+                                <span class="status-badge ${allApproved ? 'selesai' : 'proses'}">
+                                    ${allApproved ? '✅ Lengkap (4/4)' : getApprovalStatusText(item)}
+                                </span>
+                                ${!allApproved ? `<button class="btn-sm info" onclick="openApprovalModal('${item.id}')" style="margin-left:0.3rem;font-size:0.55rem;"><i class="fas fa-stamp"></i></button>` : ''}
+                            </span>
+                        </div>
+                        <div class="info-row">
+                            <span class="label">Progres Perbaikan</span>
+                            <span class="value">
+                                <div class="progress-wrapper" style="min-width:150px;">
+                                    <div class="progress-bar-container" style="flex:1;">
+                                        <div class="progress-fill ${statusPerbaikan}" style="width:${progress}%"></div>
+                                    </div>
+                                    <span class="progress-text">${progress}%</span>
+                                    <span class="status-badge ${statusPerbaikan}" style="font-size:0.6rem;">${statusPerbaikanMap[statusPerbaikan] || statusPerbaikan}</span>
+                                </div>
+                            </span>
                         </div>
                     </div>
+
                     <h4 style="color:#7a3a3a;font-size:0.9rem;margin-bottom:0.8rem;"><i class="fas fa-history"></i> Timeline Perbaikan</h4>
                     <div class="perbaikan-timeline">
                         ${timelineHtml}
                     </div>
-                    <div style="margin-top:1rem;border-top:1px solid #f0e0e0;padding-top:1rem;">
-                        <h5 style="color:#7a3a3a;font-size:0.85rem;margin-bottom:0.8rem;"><i class="fas fa-camera"></i> Tambah Progres (wajib foto)</h5>
+
+                    <div class="perbaikan-form-section">
+                        <h5><i class="fas fa-camera"></i> Tambah Progres</h5>
                         <div class="form-group">
-                            <label style="font-size:0.75rem;">Tindakan</label>
-                            <input type="text" id="newAction" placeholder="Deskripsi tindakan..." style="width:100%;padding:0.5rem 1rem;border:1px solid #f0d0d0;border-radius:12px;">
+                            <label>Tindakan <span style="color:#c62828;">*</span></label>
+                            <input type="text" id="newAction" placeholder="Deskripsi tindakan...">
+                        </div>
+                        <div class="form-row" style="grid-template-columns:1fr 1fr;">
+                            <div class="form-group">
+                                <label>Status <span style="color:#c62828;">*</span></label>
+                                <select id="newStatus">
+                                    <option value="on-progress">🔄 On Progress</option>
+                                    <option value="closed">✅ Closed</option>
+                                    <option value="open">⏳ Open</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label>PIC <span style="color:#c62828;">*</span></label>
+                                <input type="text" id="newPIC" placeholder="Nama PIC" value="${getRandomOfficer()}">
+                            </div>
                         </div>
                         <div class="form-group">
-                            <label style="font-size:0.75rem;">PIC</label>
-                            <input type="text" id="newPIC" placeholder="Nama..." value="${getRandomPetugas()}" style="width:100%;padding:0.5rem 1rem;border:1px solid #f0d0d0;border-radius:12px;">
+                            <label>Foto Perbaikan <span style="color:#c62828;">*</span></label>
+                            <div class="file-input-wrapper">
+                                <input type="file" id="newFoto" accept="image/*" multiple>
+                                <span class="file-count" id="newFotoCount">Belum ada file</span>
+                            </div>
                         </div>
-                        <div class="form-group">
-                            <label style="font-size:0.75rem;color:#c62828;">Foto Perbaikan <span style="color:#c62828;">*wajib</span></label>
-                            <input type="file" id="newFoto" accept="image/*" multiple style="width:100%;padding:0.4rem;border:1px dashed #d42a2a;border-radius:10px;background:#fff8f8;">
-                        </div>
-                        <button class="btn-sm primary" onclick="tambahPerbaikanCustom('${item.id}')" style="margin-top:0.5rem;"><i class="fas fa-plus"></i> Tambah</button>
+                        <button class="btn-sm primary" onclick="tambahPerbaikanCustom('${item.id}')" style="margin-top:0.5rem;padding:0.5rem 1.5rem;">
+                            <i class="fas fa-plus"></i> Tambah Progres
+                        </button>
                     </div>
                 `;
+
+            document.getElementById('newFoto').addEventListener('change', function() {
+                const count = this.files.length;
+                document.getElementById('newFotoCount').textContent = count > 0 ? `${count} file dipilih` : 'Belum ada file';
+            });
+
             modal.classList.add('show');
         };
 
         window.tambahPerbaikanCustom = function(id) {
             const item = inspeksiData.find(d => d.id === id);
             if (!item) { showToast('⚠️ Data tidak ditemukan'); return; }
+            
             const action = document.getElementById('newAction').value.trim();
-            const pic = document.getElementById('newPIC').value.trim() || getRandomPetugas();
+            const status = document.getElementById('newStatus').value;
+            const pic = document.getElementById('newPIC').value.trim() || getRandomOfficer();
             const fotoInput = document.getElementById('newFoto');
             const fotoFiles = Array.from(fotoInput.files).map(f => f.name);
 
@@ -3879,11 +4912,26 @@
 
             const today = new Date().toLocaleDateString('id-ID');
             item.perbaikan = item.perbaikan || [];
-            item.perbaikan.push({ tgl: today, action: action, status: 'progress', pic: pic, foto: fotoFiles });
+            item.perbaikan.push({ 
+                tgl: today, 
+                action: action, 
+                status: status, 
+                pic: pic, 
+                foto: fotoFiles 
+            });
+            
+            const allClosed = item.perbaikan.every(p => p.status === 'closed');
+            if (allClosed) {
+                item.status = 'selesai';
+            } else {
+                item.status = 'proses';
+            }
+            
             refreshAll();
             showToast(`✅ Tindakan "${action}" ditambahkan dengan ${fotoFiles.length} foto`);
             document.getElementById('newAction').value = '';
             document.getElementById('newFoto').value = '';
+            document.getElementById('newFotoCount').textContent = 'Belum ada file';
             openPerbaikanModal(id);
         };
 
@@ -3945,26 +4993,60 @@
 
         document.getElementById('submitInspeksi').addEventListener('click', function(e) {
             e.preventDefault();
+            
+            const selectedPlantId = document.getElementById('selectedPlant').value;
+            if (!selectedPlantId) {
+                showToast('⚠️ Silakan pilih Lokasi / Plant terlebih dahulu!');
+                document.getElementById('plantSearchInput').focus();
+                document.getElementById('plantSearchInput').classList.add('error');
+                setTimeout(() => {
+                    document.getElementById('plantSearchInput').classList.remove('error');
+                }, 3000);
+                return;
+            }
+
             const temuanData = document.getElementById('temuanData').value;
             const temuan = temuanData ? JSON.parse(temuanData) : [];
             if (temuan.length === 0) { showToast('⚠️ Tambahkan minimal 1 temuan!'); return; }
 
-            const lokasi = document.getElementById('formLokasi').value.trim();
+            const plant = PLANT_LIST.find(p => p.id == selectedPlantId);
+            const lokasi = plant ? plant.name : '';
             const keteranganLokasi = document.getElementById('formKeteranganLokasi').value.trim();
             const tanggal = document.getElementById('formTanggal').value;
-            const petugas = document.getElementById('formPetugas').value.trim() || getRandomPetugas();
+            const petugas = document.getElementById('formPetugas').value.trim() || getRandomOfficer();
             const status = document.getElementById('formStatus').value;
             const dueDate = document.getElementById('formDueDate').value;
             const fotoDekat = Array.from(document.getElementById('fotoDekat').files).map(f => f.name);
             const fotoJauh = Array.from(document.getElementById('fotoJauh').files).map(f => f.name);
 
-            if (!lokasi) { showToast('⚠️ Lokasi wajib diisi!'); return; }
             if (!tanggal) { showToast('⚠️ Tanggal inspeksi wajib diisi!'); return; }
 
             const newId = `INS-${String(inspeksiData.length + 1).padStart(3, '0')}`;
+            
+            // Inisialisasi approval dengan tahap 1 (Safety Officer) otomatis disetujui oleh petugas
+            const initialApprovals = {};
+            APPROVAL_STAGES.forEach((s, index) => {
+                if (index === 0) {
+                    initialApprovals[s.id] = {
+                        approved: true,
+                        by: petugas,
+                        jabatan: s.title,
+                        tanggal: new Date().toLocaleString('id-ID')
+                    };
+                } else {
+                    initialApprovals[s.id] = {
+                        approved: false,
+                        by: null,
+                        jabatan: s.title,
+                        tanggal: null
+                    };
+                }
+            });
+
             const newInspeksi = {
                 id: newId,
                 lokasi: lokasi,
+                plantId: parseInt(selectedPlantId),
                 keteranganLokasi: keteranganLokasi || '-',
                 lat: -6.200000,
                 lng: 106.816666,
@@ -3974,12 +5056,12 @@
                 dueDate: dueDate ? new Date(dueDate).toLocaleDateString('id-ID') : '-',
                 fotoDekat: fotoDekat.length ? fotoDekat : ['-'],
                 fotoJauh: fotoJauh.length ? fotoJauh : ['-'],
-                disahkan: null,
+                approvals: initialApprovals,
                 temuan: temuan,
                 perbaikan: temuan.map((t, idx) => ({
                     tgl: new Date().toLocaleDateString('id-ID'),
                     action: `Temuan ${idx+1}: ${t.deskripsi}`,
-                    status: 'progress',
+                    status: 'open',
                     pic: petugas,
                     foto: []
                 }))
@@ -3991,8 +5073,15 @@
             document.getElementById('temuanInput').value = '';
             document.getElementById('fotoDekat').value = '';
             document.getElementById('fotoJauh').value = '';
+            
+            document.getElementById('selectedPlant').value = '';
+            document.getElementById('plantSearchInput').value = '';
+            document.getElementById('selectedPlantDisplay').innerHTML = '';
+            document.getElementById('clearPlantSelection').classList.remove('visible');
+            selectedPlant = null;
+            
             refreshAll();
-            showToast(`✅ Inspeksi ${newId} berhasil disimpan dengan ${temuan.length} temuan!`);
+            showToast(`✅ Inspeksi ${newId} berhasil disimpan! Tahap 1 (Safety Officer) sudah disetujui.`);
             this.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Menyimpan...';
             setTimeout(() => { this.innerHTML = '<i class="fas fa-save"></i> Simpan Inspeksi'; }, 1000);
         });
@@ -4004,7 +5093,7 @@
         function updateStats() {
             const total = inspeksiData.length;
             const totalTemuan = inspeksiData.reduce((sum, d) => sum + (d.temuan ? d.temuan.length : 0), 0);
-            const selesaiPerbaikan = inspeksiData.filter(d => d.perbaikan && d.perbaikan.every(p => p.status === 'done'))
+            const selesaiPerbaikan = inspeksiData.filter(d => d.perbaikan && d.perbaikan.every(p => p.status === 'closed'))
                 .length;
             document.getElementById('statTotalInspeksi').textContent = total;
             document.getElementById('statTotalTemuan').textContent = totalTemuan;
@@ -4018,23 +5107,19 @@
             });
             renderDashboardJadwal();
             updateStats();
+            renderTemuanPlantChart();
 
             if (perbaikanChart) {
                 const counts = {
-                    selesai: inspeksiData.filter(d => d.perbaikan && d.perbaikan.every(p => p.status === 'done'))
+                    selesai: inspeksiData.filter(d => d.perbaikan && d.perbaikan.every(p => p.status === 'closed'))
                         .length,
-                    perbaikan: inspeksiData.filter(d => d.perbaikan && d.perbaikan.some(p => p.status === 'progress'))
+                    perbaikan: inspeksiData.filter(d => d.perbaikan && d.perbaikan.some(p => p.status === 'on-progress'))
                         .length,
-                    tinjau: inspeksiData.filter(d => d.perbaikan && d.perbaikan.some(p => p.status === 'pending'))
+                    tinjau: inspeksiData.filter(d => d.perbaikan && d.perbaikan.some(p => p.status === 'open'))
                         .length,
                 };
                 perbaikanChart.data.datasets[0].data = [counts.selesai, counts.perbaikan, counts.tinjau];
                 perbaikanChart.update();
-            }
-            if (inspeksiChart) {
-                const monthCounts = [3, 5, 4, 6, 3, 7, 5, inspeksiData.length];
-                inspeksiChart.data.datasets[0].data = monthCounts;
-                inspeksiChart.update();
             }
         }
 
@@ -4042,32 +5127,21 @@
         // ========== CHARTS ==========
         // ========================================================================
 
-        let inspeksiChart, perbaikanChart;
+        let perbaikanChart;
 
         function initCharts() {
-            const ctx1 = document.getElementById('inspeksiChart').getContext('2d');
-            inspeksiChart = new Chart(ctx1, {
-                type: 'bar',
-                data: {
-                    labels: ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu'],
-                    datasets: [{ label: 'Inspeksi', data: [3, 5, 4, 6, 3, 7, 5, inspeksiData.length],
-                        backgroundColor: '#d42a2a', borderRadius: 8 }]
-                },
-                options: { responsive: true, plugins: { legend: { display: false } },
-                    scales: { y: { beginAtZero: true }, x: { grid: { display: false } } } }
-            });
+            renderTemuanPlantChart();
 
             const ctx2 = document.getElementById('perbaikanChart').getContext('2d');
             const counts = {
-                selesai: inspeksiData.filter(d => d.perbaikan && d.perbaikan.every(p => p.status === 'done')).length,
-                perbaikan: inspeksiData.filter(d => d.perbaikan && d.perbaikan.some(p => p.status === 'progress'))
-                .length,
-                tinjau: inspeksiData.filter(d => d.perbaikan && d.perbaikan.some(p => p.status === 'pending')).length,
+                selesai: inspeksiData.filter(d => d.perbaikan && d.perbaikan.every(p => p.status === 'closed')).length,
+                perbaikan: inspeksiData.filter(d => d.perbaikan && d.perbaikan.some(p => p.status === 'on-progress')).length,
+                tinjau: inspeksiData.filter(d => d.perbaikan && d.perbaikan.some(p => p.status === 'open')).length,
             };
             perbaikanChart = new Chart(ctx2, {
                 type: 'doughnut',
                 data: {
-                    labels: ['Selesai', 'Perbaikan', 'Tinjau'],
+                    labels: ['Closed', 'On Progress', 'Open'],
                     datasets: [{ data: [counts.selesai, counts.perbaikan, counts.tinjau],
                         backgroundColor: ['#2e7d32', '#f57f17', '#c62828'], borderColor: 'white', borderWidth: 2 }]
                 },
@@ -4121,10 +5195,10 @@
 
                 const dataToSync = inspeksiData.map(item => ({
                     'ID': item.id,
-                    'Lokasi': item.lokasi,
+                    'Lokasi / Plant': item.lokasi,
                     'Keterangan Lokasi': item.keteranganLokasi || '-',
                     'Tanggal': item.tanggal,
-                    'Petugas': item.petugas,
+                    'Safety Officer': item.petugas,
                     'Jumlah Temuan': item.temuan ? item.temuan.length : 0,
                     'Daftar Temuan': item.temuan ? item.temuan.map(t => `${t.deskripsi} (${t.kategori})`).join('; ') :
                         '-',
@@ -4132,7 +5206,7 @@
                     'Status': item.status,
                     'Progres Perbaikan': `${getProgress(item)}%`,
                     'Status Perbaikan': getStatusPerbaikan(item),
-                    'Pengesahan': item.disahkan ? `${item.disahkan.oleh} - ${item.disahkan.tanggal}` : 'Belum disahkan',
+                    'Status Pengesahan': getApprovalStatusText(item),
                 }));
 
                 const wb = XLSX.utils.book_new();
@@ -4183,11 +5257,12 @@
         // ========================================================================
 
         function initApp() {
+            initPlantSelect();
+
             document.getElementById('formTanggal').value = new Date().toISOString().split('T')[0];
             const defaultDueDate = new Date();
             defaultDueDate.setDate(defaultDueDate.getDate() + 14);
             document.getElementById('formDueDate').value = defaultDueDate.toISOString().split('T')[0];
-            document.getElementById('jadwalTanggal').value = new Date().toISOString().split('T')[0];
 
             setupSearch('searchInspeksiInput', 'clearSearchInspeksi', 'searchInspeksiCount',
                 () => inspeksiData, renderInspeksiWithSearch, ['id', 'lokasi', 'petugas', 'status', 'dueDate']);
@@ -4198,7 +5273,7 @@
                 ]);
 
             setupSearch('searchJadwalInput', 'clearSearchJadwal', 'searchJadwalCount',
-                () => jadwalData, renderJadwalWithSearch, ['id', 'lokasi', 'petugas', 'status']);
+                () => jadwalData, renderJadwalWithSearch, ['plantName', 'officer', 'status']);
 
             setupSearch('searchPerbaikanInput', 'clearSearchPerbaikan', 'searchPerbaikanCount',
                 () => inspeksiData, renderPerbaikanWithSearch, ['id', 'lokasi', 'petugas', 'dueDate']);
@@ -4216,17 +5291,11 @@
 
             console.log('🚀 SHE Sasa K3 System - DEMO MODE ACTIVE');
             console.log(`📊 ${inspeksiData.length} inspeksi, ${jadwalData.length} jadwal`);
-            console.log(`👤 Petugas: ${PETUGAS_LIST.join(', ')}`);
-            console.log(`👔 Manager SHE: ${MANAGER_SHE}`);
-            console.log('🕐 Jam realtime dengan detik aktif');
-            console.log('📊 Export Excel per temuan');
-            console.log('🔔 Notifikasi suara dan browser aktif!');
-            console.log('🖼️ Preview gambar dengan lightbox');
-            console.log('📌 Overdue badge dengan animasi berkedip');
-            console.log('📄 PDF Laporan Resmi untuk inspeksi yang telah disahkan!');
+            console.log(`🏭 ${PLANT_LIST.length} Plant terdaftar`);
+            console.log(`👤 Safety Officers: ${SAFETY_OFFICER_LIST.join(', ')}`);
+            console.log(`📋 4 Tahap Pengesahan: ${APPROVAL_STAGES.map(s => s.title).join(' → ')}`);
         }
 
-        // Login listener for Enter key
         document.getElementById('loginPassword').addEventListener('keydown', function(e) {
             if (e.key === 'Enter') {
                 document.getElementById('loginForm').dispatchEvent(new Event('submit'));
