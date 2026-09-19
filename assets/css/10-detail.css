@@ -1,0 +1,278 @@
+/* 10-detail.css — Timeline perbaikan (definisi pertama), modal detail inspeksi, galeri detail, tanda tangan, highlight pencarian.
+   Diekstrak apa adanya dari index.html baris 1617-1888 (commit 4734b5c).
+   URUTAN MUAT PENTING: prefix angka menentukan urutan <link>. Jangan ditukar —
+   beberapa selektor sengaja didefinisikan ulang dan bergantung pada urutan ini.
+   Lihat docs/DECISIONS.md K-5. */
+
+.perbaikan-timeline .perbaikan-item {
+    padding: 0.5rem 0.8rem;
+    border-bottom: 1px solid #f0e0e0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.perbaikan-timeline .perbaikan-item:last-child {
+    border-bottom: none;
+}
+
+.perbaikan-timeline .perbaikan-item .date {
+    font-size: 0.7rem;
+    color: #8a6a6a;
+    min-width: 80px;
+}
+
+.perbaikan-timeline .perbaikan-item .action {
+    flex: 1;
+    font-weight: 500;
+}
+
+.perbaikan-timeline .perbaikan-item .status-mini {
+    font-size: 0.65rem;
+    padding: 0.1rem 0.6rem;
+    border-radius: 60px;
+}
+
+.perbaikan-timeline .perbaikan-item .status-mini.closed {
+    background: #e8f5e9;
+    color: #1b5e20;
+}
+.perbaikan-timeline .perbaikan-item .status-mini.on-progress {
+    background: #fff3e0;
+    color: #e65100;
+}
+.perbaikan-timeline .perbaikan-item .status-mini.open {
+    background: #fce4ec;
+    color: #c62828;
+}
+
+.perbaikan-timeline .perbaikan-item .pic-name {
+    font-size: 0.7rem;
+    color: #8a6a6a;
+    min-width: 60px;
+}
+
+.perbaikan-timeline .perbaikan-item .foto-thumbs {
+    display: flex;
+    gap: 0.2rem;
+    flex-wrap: wrap;
+}
+
+.perbaikan-timeline .perbaikan-item .foto-thumbs .thumb-mini {
+    width: 30px;
+    height: 30px;
+    border-radius: 6px;
+    background: #f0e8e8;
+    border: 1px solid #ddd;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.6rem;
+    cursor: pointer;
+    transition: 0.15s;
+    color: #8a6a6a;
+}
+
+.perbaikan-timeline .perbaikan-item .foto-thumbs .thumb-mini:hover {
+    transform: scale(1.1);
+    border-color: #d42a2a;
+}
+
+.detail-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1.2rem;
+}
+
+.detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.8rem 1.5rem;
+    background: #faf8f8;
+    border-radius: 12px;
+    padding: 1.2rem 1.5rem;
+    border: 1px solid #f0e0e0;
+}
+
+.detail-grid .detail-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.1rem;
+}
+
+.detail-grid .detail-item .label {
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: #8a6a6a;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.detail-grid .detail-item .value {
+    font-size: 0.95rem;
+    font-weight: 500;
+    color: #2a1a1a;
+}
+
+.detail-grid .detail-item .value .status-badge {
+    font-size: 0.7rem;
+}
+
+.detail-section {
+    background: #faf8f8;
+    border-radius: 12px;
+    padding: 1rem 1.5rem;
+    border: 1px solid #f0e0e0;
+}
+
+.detail-section .section-title {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #8a6a6a;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.6rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.detail-section .section-title i {
+    color: #d42a2a;
+}
+
+.temuan-list-detail {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.temuan-list-detail li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.4rem 0.6rem;
+    border-bottom: 1px solid #f0e0e0;
+    font-size: 0.85rem;
+}
+
+.temuan-list-detail li:last-child {
+    border-bottom: none;
+}
+
+.temuan-list-detail li .temuan-kategori {
+    font-size: 0.6rem;
+    padding: 0.1rem 0.6rem;
+    border-radius: 60px;
+    background: #f0e8e8;
+    color: #7a4a4a;
+    font-weight: 600;
+}
+
+.detail-gallery {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-top: 0.3rem;
+}
+
+.detail-gallery .gallery-item {
+    width: 70px;
+    height: 70px;
+    border-radius: 12px;
+    background: #f0e8e8;
+    border: 2px solid #e0d0d0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.8rem;
+    cursor: pointer;
+    transition: 0.2s;
+    position: relative;
+    overflow: hidden;
+}
+
+.detail-gallery .gallery-item:hover {
+    transform: scale(1.1);
+    border-color: #d42a2a;
+    box-shadow: 0 4px 16px rgba(200, 40, 40, 0.25);
+}
+
+.detail-gallery .gallery-item .file-name {
+    font-size: 0.5rem;
+    color: #8a6a6a;
+    text-align: center;
+    word-break: break-all;
+    position: absolute;
+    bottom: 2px;
+    background: rgba(0, 0, 0, 0.7);
+    color: white;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.45rem;
+    width: 90%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.detail-gallery .gallery-item .preview-icon {
+    font-size: 2rem;
+}
+
+.detail-signature {
+    margin-top: 0.3rem;
+}
+
+.detail-signature .signature-box {
+    border: 2px solid #2e7d32;
+    border-radius: 12px;
+    padding: 1rem 1.5rem;
+    background: #f0f8f0;
+    text-align: center;
+}
+
+.detail-signature .signature-box .sign-name {
+    font-size: 1.2rem;
+    font-weight: 600;
+    color: #1b5e20;
+}
+
+.detail-signature .signature-box .sign-title {
+    font-size: 0.75rem;
+    color: #4a7a4a;
+}
+
+.detail-signature .signature-box .sign-date {
+    font-size: 0.7rem;
+    color: #6a8a6a;
+    margin-top: 0.2rem;
+}
+
+.detail-signature .signature-box .sign-badge {
+    display: inline-block;
+    margin-top: 0.3rem;
+    padding: 0.2rem 0.8rem;
+    border-radius: 60px;
+    font-size: 0.65rem;
+    font-weight: 600;
+    background: #e8f5e9;
+    color: #1b5e20;
+}
+
+.detail-signature .signature-empty {
+    border: 2px dashed #d42a2a;
+    border-radius: 12px;
+    padding: 1rem;
+    text-align: center;
+    background: #fff8f8;
+}
+
+.highlight {
+    background: #ffeb3b;
+    padding: 0 2px;
+    border-radius: 2px;
+    font-weight: 600;
+}
+

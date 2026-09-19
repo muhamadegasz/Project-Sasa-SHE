@@ -1,0 +1,208 @@
+/* 09-calendar.css — Kalender dashboard, legenda, kartu jadwal, badge DEMO.
+   Diekstrak apa adanya dari index.html baris 1415-1616 (commit 4734b5c).
+   URUTAN MUAT PENTING: prefix angka menentukan urutan <link>. Jangan ditukar —
+   beberapa selektor sengaja didefinisikan ulang dan bergantung pada urutan ini.
+   Lihat docs/DECISIONS.md K-5. */
+
+.calendar-container {
+    background: white;
+    border-radius: 1.5rem;
+    padding: 1rem;
+    border: 1px solid #f0e0e0;
+}
+
+.calendar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    padding: 0 0.5rem;
+}
+
+.calendar-header .month-year {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #b31b1b;
+}
+
+.calendar-header .nav-btn {
+    background: none;
+    border: none;
+    font-size: 1.2rem;
+    color: #8a6a6a;
+    cursor: pointer;
+    padding: 0.3rem 0.8rem;
+    border-radius: 8px;
+    transition: 0.2s;
+}
+
+.calendar-header .nav-btn:hover {
+    background: #f0e8e8;
+    color: #d42a2a;
+}
+
+.calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+}
+
+.calendar-grid .day-name {
+    text-align: center;
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: #8a6a6a;
+    padding: 0.3rem 0;
+    text-transform: uppercase;
+}
+
+.calendar-grid .day-cell {
+    text-align: center;
+    padding: 0.3rem 0;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    min-height: 40px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: #faf8f8;
+    cursor: default;
+    transition: 0.15s;
+    border: 1px solid transparent;
+    position: relative;
+}
+
+.calendar-grid .day-cell.other-month {
+    color: #ccc;
+    background: #f9f9f9;
+}
+
+.calendar-grid .day-cell.today {
+    border-color: #d42a2a;
+    background: #fff5f5;
+}
+
+.calendar-grid .day-cell.has-event {
+    background: #e8f5e9;
+    border-color: #2e7d32;
+    cursor: pointer;
+}
+
+.calendar-grid .day-cell.has-event:hover {
+    transform: scale(1.03);
+    box-shadow: 0 2px 8px rgba(46, 125, 50, 0.15);
+}
+
+.calendar-grid .day-cell .day-number {
+    font-weight: 600;
+    font-size: 0.85rem;
+}
+
+.calendar-grid .day-cell .event-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    margin-top: 2px;
+}
+
+.calendar-grid .day-cell .event-dot.scheduled {
+    background: #d42a2a;
+}
+
+.calendar-grid .day-cell .event-dot.completed {
+    background: #2e7d32;
+}
+
+.calendar-grid .day-cell .event-dot.overdue {
+    background: #c62828;
+    animation: blink 1s infinite;
+}
+
+.calendar-grid .day-cell .event-dot.mixed {
+    background: linear-gradient(45deg, #d42a2a 50%, #2e7d32 50%);
+}
+
+.calendar-legend {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    margin-top: 0.8rem;
+    flex-wrap: wrap;
+}
+
+.calendar-legend .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    font-size: 0.6rem;
+    color: #8a6a6a;
+}
+
+.calendar-legend .legend-item .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+}
+
+.calendar-legend .legend-item .dot.scheduled {
+    background: #d42a2a;
+}
+
+.calendar-legend .legend-item .dot.completed {
+    background: #2e7d32;
+}
+
+.calendar-legend .legend-item .dot.overdue {
+    background: #c62828;
+}
+
+.calendar-legend .legend-item .dot.mixed {
+    background: linear-gradient(45deg, #d42a2a 50%, #2e7d32 50%);
+}
+
+.jadwal-card {
+    background: white;
+    border-radius: 1rem;
+    padding: 0.8rem 1.2rem;
+    border-left: 4px solid #d42a2a;
+    margin-bottom: 0.5rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.jadwal-card .jadwal-info {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+}
+
+.jadwal-card .jadwal-info .title {
+    font-weight: 600;
+    color: #3a2a2a;
+}
+
+.jadwal-card .jadwal-info .detail {
+    font-size: 0.75rem;
+    color: #8a6a6a;
+}
+
+.jadwal-card .jadwal-alert {
+    font-weight: 700;
+    font-size: 0.75rem;
+}
+
+.demo-badge {
+    background: #ffd54f;
+    color: #7a3a3a;
+    padding: 0.2rem 0.8rem;
+    border-radius: 60px;
+    font-size: 0.6rem;
+    font-weight: 700;
+    margin-left: 0.5rem;
+}
+

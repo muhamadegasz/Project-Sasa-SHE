@@ -1,0 +1,20 @@
+/* 01-base.css — Reset, box-sizing, font stack, dan background dasar body.
+   Diekstrak apa adanya dari index.html baris 15-28 (commit 4734b5c).
+   URUTAN MUAT PENTING: prefix angka menentukan urutan <link>. Jangan ditukar —
+   beberapa selektor sengaja didefinisikan ulang dan bergantung pada urutan ini.
+   Lihat docs/DECISIONS.md K-5. */
+
+/* ========== RESET & BASE ========== */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: 'Segoe UI', Roboto, system-ui, sans-serif;
+}
+
+body {
+    background: #f5f0f0;
+    min-height: 100vh;
+    padding: 1.5rem;
+}
+

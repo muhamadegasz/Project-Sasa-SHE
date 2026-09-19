@@ -1,0 +1,331 @@
+/* 05-tables.css — Pembungkus tabel, header tabel, tombol export/sync, kotak pencarian, tabel, status badge, badge overdue.
+   Diekstrak apa adanya dari index.html baris 565-889 (commit 4734b5c).
+   URUTAN MUAT PENTING: prefix angka menentukan urutan <link>. Jangan ditukar —
+   beberapa selektor sengaja didefinisikan ulang dan bergantung pada urutan ini.
+   Lihat docs/DECISIONS.md K-5. */
+
+.table-wrap {
+    background: white;
+    border-radius: 1.5rem;
+    padding: 1.2rem 1.5rem;
+    border: 1px solid #f0e0e0;
+    overflow-x: auto;
+}
+
+.table-wrap .table-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1rem;
+    flex-wrap: wrap;
+    gap: 0.8rem;
+}
+
+.table-wrap .table-header h4 {
+    color: #7a3a3a;
+    font-size: 0.9rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.table-wrap .table-header h4 i {
+    color: #d42a2a;
+}
+
+.btn-export {
+    background: #d42a2a;
+    color: white;
+    border: none;
+    padding: 0.4rem 1.2rem;
+    border-radius: 60px;
+    font-weight: 600;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.btn-export:hover {
+    background: #b82222;
+    transform: scale(1.02);
+}
+
+.btn-export-temuan {
+    background: #2e7d32;
+    color: white;
+    border: none;
+    padding: 0.3rem 0.8rem;
+    border-radius: 60px;
+    font-weight: 600;
+    font-size: 0.65rem;
+    cursor: pointer;
+    transition: 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.btn-export-temuan:hover {
+    background: #1b5e20;
+    transform: scale(1.02);
+}
+
+.btn-pdf {
+    background: #c62828;
+    color: white;
+    border: none;
+    padding: 0.3rem 0.8rem;
+    border-radius: 60px;
+    font-weight: 600;
+    font-size: 0.65rem;
+    cursor: pointer;
+    transition: 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.btn-pdf:hover {
+    background: #b71c1c;
+    transform: scale(1.02);
+}
+
+.btn-pdf:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.btn-sync {
+    background: #1a73e8;
+    color: white;
+    border: none;
+    padding: 0.4rem 1.2rem;
+    border-radius: 60px;
+    font-weight: 600;
+    font-size: 0.8rem;
+    cursor: pointer;
+    transition: 0.15s;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.btn-sync:hover {
+    background: #1557b0;
+    transform: scale(1.02);
+}
+
+.btn-sync i {
+    color: white;
+}
+
+.btn-sync:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.search-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    background: #f5f0f0;
+    border-radius: 60px;
+    padding: 0.2rem 0.2rem 0.2rem 1rem;
+    border: 1px solid #f0e0e0;
+    transition: 0.2s;
+    min-width: 200px;
+}
+
+.search-wrapper:focus-within {
+    border-color: #d42a2a;
+    box-shadow: 0 0 0 3px rgba(212, 42, 42, 0.08);
+    background: white;
+}
+
+.search-wrapper .search-icon {
+    color: #8a6a6a;
+    font-size: 0.8rem;
+}
+
+.search-wrapper input {
+    border: none;
+    background: transparent;
+    padding: 0.5rem 0.2rem;
+    font-size: 0.85rem;
+    outline: none;
+    width: 150px;
+    color: #3a2a2a;
+}
+
+.search-wrapper input::placeholder {
+    color: #b0a0a0;
+}
+
+.search-wrapper .clear-search {
+    background: none;
+    border: none;
+    color: #8a6a6a;
+    cursor: pointer;
+    padding: 0.3rem 0.8rem;
+    font-size: 0.9rem;
+    display: none;
+    border-radius: 60px;
+    transition: 0.15s;
+}
+
+.search-wrapper .clear-search:hover {
+    color: #d42a2a;
+    background: rgba(212, 42, 42, 0.08);
+}
+
+.search-wrapper .clear-search.visible {
+    display: block;
+}
+
+.search-wrapper .search-count {
+    font-size: 0.65rem;
+    color: #8a6a6a;
+    padding: 0.2rem 0.6rem;
+    background: white;
+    border-radius: 60px;
+    border: 1px solid #f0e0e0;
+    white-space: nowrap;
+}
+
+.table-header-right {
+    display: flex;
+    align-items: center;
+    gap: 0.8rem;
+    flex-wrap: wrap;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.82rem;
+}
+
+th {
+    text-align: left;
+    padding: 0.6rem 0.4rem;
+    border-bottom: 2px solid #f0e0e0;
+    color: #7a4a4a;
+    font-weight: 600;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+td {
+    padding: 0.5rem 0.4rem;
+    border-bottom: 1px solid #f5eeee;
+    color: #3a2a2a;
+    vertical-align: middle;
+}
+
+.status-badge {
+    padding: 0.2rem 0.8rem;
+    border-radius: 60px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    display: inline-block;
+}
+
+.status-badge.selesai {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+
+.status-badge.proses {
+    background: #fff3e0;
+    color: #e65100;
+}
+
+.status-badge.tinjau {
+    background: #fce4ec;
+    color: #c62828;
+}
+
+.status-badge.perbaikan {
+    background: #fff8e1;
+    color: #f57f17;
+}
+
+.status-badge.selesai_perbaikan {
+    background: #e8f5e9;
+    color: #1b5e20;
+}
+
+.status-badge.terlambat {
+    background: #ffcdd2;
+    color: #c62828;
+}
+
+.status-badge.disetujui {
+    background: #e8f5e9;
+    color: #1b5e20;
+}
+
+.status-badge.menunggu {
+    background: #fff3e0;
+    color: #e65100;
+}
+
+.status-badge.aktif {
+    background: #e3f2fd;
+    color: #0d47a1;
+}
+
+.status-badge.closed {
+    background: #e8f5e9;
+    color: #1b5e20;
+}
+.status-badge.on-progress {
+    background: #fff3e0;
+    color: #e65100;
+}
+.status-badge.open {
+    background: #fce4ec;
+    color: #c62828;
+}
+
+.status-badge.approved {
+    background: #e8f5e9;
+    color: #1b5e20;
+}
+.status-badge.pending {
+    background: #fff3e0;
+    color: #e65100;
+}
+
+.overdue-badge {
+    display: inline-block;
+    padding: 0.15rem 0.6rem;
+    border-radius: 60px;
+    font-size: 0.6rem;
+    font-weight: 700;
+    background: #c62828;
+    color: white;
+    animation: blink 0.8s infinite;
+    margin-left: 4px;
+}
+
+.overdue-badge i {
+    margin-right: 3px;
+}
+
+@keyframes blink {
+    0%,
+    100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.3;
+    }
+}
+

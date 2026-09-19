@@ -1,0 +1,190 @@
+/* 11-lightbox.css — Lightbox pratinjau foto, lonceng notifikasi, dan wadah PDF tersembunyi.
+   Diekstrak apa adanya dari index.html baris 1889-2072 (commit 4734b5c).
+   URUTAN MUAT PENTING: prefix angka menentukan urutan <link>. Jangan ditukar —
+   beberapa selektor sengaja didefinisikan ulang dan bergantung pada urutan ini.
+   Lihat docs/DECISIONS.md K-5. */
+
+.lightbox-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.92);
+    z-index: 9999;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    cursor: zoom-out;
+}
+
+.lightbox-overlay.show {
+    display: flex;
+    opacity: 1;
+}
+
+.lightbox-overlay .lightbox-close {
+    position: fixed;
+    top: 1.5rem;
+    right: 2rem;
+    color: white;
+    font-size: 2.8rem;
+    cursor: pointer;
+    z-index: 10001;
+    background: rgba(0, 0, 0, 0.3);
+    border: none;
+    transition: 0.2s;
+    opacity: 0.8;
+    width: 50px;
+    height: 50px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.lightbox-overlay .lightbox-close:hover {
+    opacity: 1;
+    transform: rotate(90deg);
+    background: rgba(255, 0, 0, 0.3);
+}
+
+.lightbox-overlay .lightbox-content {
+    max-width: 90vw;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    animation: zoomIn 0.25s ease;
+}
+
+@keyframes zoomIn {
+    0% {
+        transform: scale(0.8);
+        opacity: 0;
+    }
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+.lightbox-overlay .lightbox-content .lightbox-image {
+    max-width: 85vw;
+    max-height: 70vh;
+    border-radius: 12px;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+    object-fit: contain;
+    background: #1a1a1a;
+}
+
+.lightbox-overlay .lightbox-content .lightbox-info {
+    color: rgba(255, 255, 255, 0.9);
+    margin-top: 1rem;
+    font-size: 0.9rem;
+    text-align: center;
+    background: rgba(0, 0, 0, 0.6);
+    padding: 0.5rem 1.5rem;
+    border-radius: 60px;
+    backdrop-filter: blur(10px);
+}
+
+.lightbox-overlay .lightbox-content .lightbox-info i {
+    margin-right: 8px;
+    color: #ffb0b0;
+}
+
+.lightbox-overlay .lightbox-nav {
+    position: fixed;
+    top: 50%;
+    transform: translateY(-50%);
+    background: rgba(255, 255, 255, 0.15);
+    color: white;
+    border: none;
+    padding: 1.2rem 1.5rem;
+    font-size: 1.8rem;
+    cursor: pointer;
+    border-radius: 60px;
+    transition: 0.2s;
+    backdrop-filter: blur(10px);
+    z-index: 10001;
+}
+
+.lightbox-overlay .lightbox-nav:hover {
+    background: rgba(255, 255, 255, 0.3);
+    transform: translateY(-50%) scale(1.1);
+}
+
+.lightbox-overlay .lightbox-nav.prev {
+    left: 1.5rem;
+}
+
+.lightbox-overlay .lightbox-nav.next {
+    right: 1.5rem;
+}
+
+.lightbox-overlay .lightbox-counter {
+    position: fixed;
+    bottom: 1.5rem;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255, 255, 255, 0.7);
+    font-size: 0.85rem;
+    background: rgba(0, 0, 0, 0.5);
+    padding: 0.4rem 1.2rem;
+    border-radius: 60px;
+    backdrop-filter: blur(10px);
+}
+
+.notif-bell {
+    position: relative;
+    cursor: pointer;
+}
+
+.notif-bell .notif-dot {
+    position: absolute;
+    top: -4px;
+    right: -4px;
+    width: 10px;
+    height: 10px;
+    background: #c62828;
+    border-radius: 50%;
+    border: 2px solid white;
+    animation: pulse-dot 1s infinite;
+    display: none;
+}
+
+.notif-bell .notif-dot.active {
+    display: block;
+}
+
+@keyframes pulse-dot {
+    0%,
+    100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.3);
+    }
+}
+
+.notif-bell .notif-count {
+    background: #c62828;
+    color: white;
+    border-radius: 60px;
+    padding: 0.1rem 0.5rem;
+    font-size: 0.6rem;
+    font-weight: 700;
+    margin-left: 4px;
+    min-width: 18px;
+    text-align: center;
+}
+
+.pdf-content {
+    display: none;
+}
+

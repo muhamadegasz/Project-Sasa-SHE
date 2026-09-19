@@ -1,0 +1,226 @@
+/* 06-forms.css — Progress bar, tombol kecil (btn-sm), section form, input, dan tombol submit.
+   Diekstrak apa adanya dari index.html baris 890-1109 (commit 4734b5c).
+   URUTAN MUAT PENTING: prefix angka menentukan urutan <link>. Jangan ditukar —
+   beberapa selektor sengaja didefinisikan ulang dan bergantung pada urutan ini.
+   Lihat docs/DECISIONS.md K-5. */
+
+.progress-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-width: 120px;
+}
+
+.progress-wrapper .progress-bar-container {
+    flex: 1;
+    height: 8px;
+    background: #f0e0e0;
+    border-radius: 10px;
+    overflow: hidden;
+    min-width: 50px;
+}
+
+.progress-wrapper .progress-bar-container .progress-fill {
+    height: 100%;
+    border-radius: 10px;
+    transition: width 0.5s ease;
+}
+
+.progress-wrapper .progress-bar-container .progress-fill.selesai {
+    background: #2e7d32;
+}
+
+.progress-wrapper .progress-bar-container .progress-fill.proses {
+    background: #f57f17;
+}
+
+.progress-wrapper .progress-bar-container .progress-fill.tinjau {
+    background: #c62828;
+}
+
+.progress-wrapper .progress-bar-container .progress-fill.perbaikan {
+    background: #f57f17;
+}
+
+.progress-wrapper .progress-bar-container .progress-fill.selesai_perbaikan {
+    background: #2e7d32;
+}
+
+.progress-wrapper .progress-text {
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: #4a3a3a;
+    min-width: 35px;
+    text-align: right;
+}
+
+.progress-wrapper .progress-label {
+    font-size: 0.6rem;
+    color: #8a6a6a;
+    min-width: 55px;
+}
+
+.btn-sm {
+    padding: 0.2rem 0.8rem;
+    border: none;
+    border-radius: 60px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: 0.15s;
+}
+
+.btn-sm.primary {
+    background: #d42a2a;
+    color: white;
+}
+
+.btn-sm.primary:hover {
+    background: #b82222;
+}
+
+.btn-sm.danger {
+    background: #c62828;
+    color: white;
+}
+
+.btn-sm.success {
+    background: #2e7d32;
+    color: white;
+}
+
+.btn-sm.warning {
+    background: #f57f17;
+    color: white;
+}
+
+.btn-sm.info {
+    background: #0d47a1;
+    color: white;
+}
+
+.btn-sm.outline {
+    background: transparent;
+    border: 1px solid #d42a2a;
+    color: #d42a2a;
+}
+
+.btn-sm.outline:hover {
+    background: #fff0f0;
+}
+
+.form-section {
+    background: white;
+    border-radius: 1.5rem;
+    padding: 1.8rem 2rem;
+    border: 1px solid #f0e0e0;
+    max-width: 1100px;
+    margin: 0 auto;
+}
+
+.form-section h4 {
+    color: #7a3a3a;
+    font-size: 1.1rem;
+    margin-bottom: 1.5rem;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.2rem;
+}
+
+.form-group {
+    margin-bottom: 1rem;
+}
+
+.form-group.full {
+    grid-column: 1 / -1;
+}
+
+.form-group label {
+    display: block;
+    font-weight: 500;
+    font-size: 0.8rem;
+    color: #7a4a4a;
+    margin-bottom: 0.3rem;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+    width: 100%;
+    padding: 0.7rem 1rem;
+    border: 1px solid #f0d0d0;
+    border-radius: 12px;
+    font-size: 0.9rem;
+    background: white;
+    transition: 0.15s;
+    outline: none;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+    border-color: #d42a2a;
+    box-shadow: 0 0 0 3px rgba(212, 42, 42, 0.08);
+}
+
+.form-group textarea {
+    resize: vertical;
+    min-height: 60px;
+}
+
+.form-group .file-input-group {
+    display: flex;
+    gap: 0.8rem;
+    flex-wrap: wrap;
+}
+
+.form-group .file-input-group .file-item {
+    flex: 1;
+    min-width: 150px;
+}
+
+.form-group .file-input-group .file-item label {
+    font-size: 0.7rem;
+    color: #8a6a6a;
+}
+
+.form-group .file-input-group .file-item input[type="file"] {
+    padding: 0.4rem;
+    border: 1px dashed #d42a2a;
+    border-radius: 10px;
+    background: #fff8f8;
+    font-size: 0.8rem;
+    width: 100%;
+}
+
+.btn-submit {
+    background: #d42a2a;
+    color: white;
+    border: none;
+    padding: 0.8rem 2.5rem;
+    border-radius: 60px;
+    font-weight: 600;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: 0.2s;
+    box-shadow: 0 8px 20px -8px rgba(200, 40, 40, 0.3);
+    margin-top: 0.5rem;
+}
+
+.btn-submit:hover {
+    background: #b82222;
+    transform: scale(1.01);
+}
+
+.btn-submit:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+

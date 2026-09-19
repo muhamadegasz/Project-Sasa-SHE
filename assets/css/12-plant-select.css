@@ -1,0 +1,118 @@
+/* 12-plant-select.css — Komponen select-with-search untuk pemilihan plant.
+   Diekstrak apa adanya dari index.html baris 2073-2184 (commit 4734b5c).
+   URUTAN MUAT PENTING: prefix angka menentukan urutan <link>. Jangan ditukar —
+   beberapa selektor sengaja didefinisikan ulang dan bergantung pada urutan ini.
+   Lihat docs/DECISIONS.md K-5. */
+
+/* ========== SELECT WITH SEARCH STYLES ========== */
+.select-search-wrapper {
+    position: relative;
+    width: 100%;
+}
+
+.select-search-wrapper input {
+    width: 100%;
+    padding: 0.7rem 1rem;
+    border: 1px solid #f0d0d0;
+    border-radius: 12px;
+    font-size: 0.9rem;
+    background: white;
+    transition: 0.15s;
+    outline: none;
+    padding-right: 35px;
+}
+
+.select-search-wrapper input:focus {
+    border-color: #d42a2a;
+    box-shadow: 0 0 0 3px rgba(212, 42, 42, 0.08);
+}
+
+.select-search-wrapper input.error {
+    border-color: #c62828;
+    box-shadow: 0 0 0 3px rgba(198, 40, 40, 0.15);
+}
+
+.select-search-wrapper .dropdown-list {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    max-height: 200px;
+    overflow-y: auto;
+    background: white;
+    border: 1px solid #f0d0d0;
+    border-radius: 12px;
+    margin-top: 4px;
+    z-index: 100;
+    display: none;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.1);
+}
+
+.select-search-wrapper .dropdown-list.show {
+    display: block;
+}
+
+.select-search-wrapper .dropdown-list .dropdown-item {
+    padding: 0.6rem 1rem;
+    cursor: pointer;
+    transition: 0.15s;
+    font-size: 0.85rem;
+    border-bottom: 1px solid #f5eeee;
+}
+
+.select-search-wrapper .dropdown-list .dropdown-item:hover {
+    background: #f5f0f0;
+}
+
+.select-search-wrapper .dropdown-list .dropdown-item.selected {
+    background: #d42a2a;
+    color: white;
+}
+
+.select-search-wrapper .dropdown-list .dropdown-item .highlight-match {
+    background: #ffeb3b;
+    font-weight: 600;
+    padding: 0 2px;
+}
+
+.select-search-wrapper .dropdown-list .dropdown-item .plant-code {
+    font-size: 0.65rem;
+    color: #8a6a6a;
+    margin-left: 8px;
+    font-weight: 600;
+}
+
+.select-search-wrapper .selected-value {
+    display: inline-block;
+    padding: 0.2rem 0.8rem;
+    background: #e8f5e9;
+    color: #2e7d32;
+    border-radius: 60px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    margin-top: 0.3rem;
+}
+
+.select-search-wrapper .selected-value i {
+    margin-right: 4px;
+    color: #2e7d32;
+}
+
+.select-search-wrapper .clear-selection {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    color: #c62828;
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 0 4px;
+    display: none;
+}
+
+.select-search-wrapper .clear-selection.visible {
+    display: block;
+}
+

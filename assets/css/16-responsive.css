@@ -1,0 +1,154 @@
+/* 16-responsive.css — Breakpoint @media 900px dan 480px. Wajib dimuat terakhir agar override-nya berlaku.
+   Diekstrak apa adanya dari index.html baris 2610-2757 (commit 4734b5c).
+   URUTAN MUAT PENTING: prefix angka menentukan urutan <link>. Jangan ditukar —
+   beberapa selektor sengaja didefinisikan ulang dan bergantung pada urutan ini.
+   Lihat docs/DECISIONS.md K-5. */
+
+/* ========== RESPONSIVE ========== */
+@media (max-width: 900px) {
+    .chart-row {
+        grid-template-columns: 1fr;
+    }
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+    .app-wrapper {
+        padding: 1rem;
+    }
+    .app-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.8rem;
+    }
+    .header-right {
+        width: 100%;
+        justify-content: flex-start;
+    }
+    .nav-tabs {
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        padding: 0.3rem;
+    }
+    .nav-tab {
+        padding: 0.4rem 1rem;
+        font-size: 0.8rem;
+        white-space: nowrap;
+    }
+    .stats-grid {
+        grid-template-columns: repeat(2, 1fr);
+    }
+    .form-group .file-input-group {
+        flex-direction: column;
+    }
+    .detail-grid {
+        grid-template-columns: 1fr;
+        gap: 0.5rem;
+    }
+    .search-wrapper {
+        min-width: 150px;
+    }
+    .search-wrapper input {
+        width: 100px;
+    }
+    .table-header-right {
+        width: 100%;
+    }
+    .lightbox-overlay .lightbox-nav {
+        padding: 0.8rem 1rem;
+        font-size: 1.2rem;
+    }
+    .lightbox-overlay .lightbox-nav.prev {
+        left: 0.5rem;
+    }
+    .lightbox-overlay .lightbox-nav.next {
+        right: 0.5rem;
+    }
+    .approval-stage {
+        flex-wrap: wrap;
+        gap: 0.3rem;
+    }
+    .approval-stage .stage-action-btn {
+        font-size: 0.55rem;
+        padding: 0.1rem 0.4rem;
+    }
+    .calendar-grid .day-cell {
+        min-height: 30px;
+        font-size: 0.7rem;
+        padding: 0.15rem 0;
+    }
+    .calendar-grid .day-cell .day-number {
+        font-size: 0.7rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .login-container {
+        padding: 30px 20px;
+        width: 100%;
+    }
+    .login-header h1 {
+        font-size: 24px;
+    }
+    .login-icon .hard-hat {
+        width: 60px;
+        height: 60px;
+        font-size: 1.8rem;
+    }
+    .login-header .company-name {
+        font-size: 1.1rem;
+    }
+    .stats-grid {
+        grid-template-columns: 1fr;
+    }
+    .modal-box {
+        padding: 1.2rem;
+    }
+    .detail-grid {
+        padding: 1rem;
+    }
+    .detail-section {
+        padding: 0.8rem 1rem;
+    }
+    .search-wrapper {
+        min-width: 120px;
+    }
+    .search-wrapper input {
+        width: 70px;
+        font-size: 0.75rem;
+    }
+    .lightbox-overlay .lightbox-close {
+        top: 0.8rem;
+        right: 0.8rem;
+        font-size: 1.8rem;
+        width: 40px;
+        height: 40px;
+    }
+    .lightbox-overlay .lightbox-content .lightbox-image {
+        max-height: 55vh;
+    }
+    .progress-wrapper {
+        flex-wrap: wrap;
+        gap: 0.2rem;
+    }
+    .progress-wrapper .progress-label {
+        min-width: 40px;
+    }
+    .approval-stage .stage-info .stage-title {
+        font-size: 0.7rem;
+    }
+    .approval-stage .stage-info .stage-detail {
+        font-size: 0.6rem;
+    }
+    .calendar-grid .day-cell {
+        min-height: 25px;
+        font-size: 0.6rem;
+        padding: 0.1rem 0;
+    }
+    .calendar-grid .day-cell .day-number {
+        font-size: 0.6rem;
+    }
+    .calendar-grid .day-cell .event-dot {
+        width: 4px;
+        height: 4px;
+    }
+}

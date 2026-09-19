@@ -1,0 +1,256 @@
+/* 02-login.css — Halaman login: container, header, form, tombol, pesan error, footer demo.
+   Diekstrak apa adanya dari index.html baris 29-278 (commit 4734b5c).
+   URUTAN MUAT PENTING: prefix angka menentukan urutan <link>. Jangan ditukar —
+   beberapa selektor sengaja didefinisikan ulang dan bergantung pada urutan ini.
+   Lihat docs/DECISIONS.md K-5. */
+
+/* ========== LOGIN STYLES ========== */
+.login-page {
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    padding: 1.5rem;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 9999;
+    transition: opacity 0.6s ease, transform 0.6s ease;
+    background: linear-gradient(135deg, rgba(180, 20, 20, 0.85) 0%, rgba(120, 10, 10, 0.9) 50%, rgba(60, 5, 5, 0.95) 100%);
+    background-image: url('https://lh3.googleusercontent.com/u/0/d/1Dgbvx6U_DIitViiFL2BkcEP2S_TSvZSs');
+    background-size: cover;
+    background-position: center;
+    background-blend-mode: overlay;
+}
+
+.login-page::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 0;
+}
+
+.login-page.hidden {
+    opacity: 0;
+    transform: scale(1.1);
+    pointer-events: none;
+}
+
+.login-container {
+    background: rgba(255, 255, 255, 0.95);
+    backdrop-filter: blur(20px);
+    border-radius: 24px;
+    box-shadow: 0 30px 60px rgba(0, 0, 0, 0.4);
+    padding: 50px 40px;
+    width: 420px;
+    max-width: 92%;
+    animation: fadeIn 0.6s ease-in-out;
+    position: relative;
+    z-index: 1;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-30px) scale(0.95);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+    }
+}
+
+.login-header {
+    text-align: center;
+    margin-bottom: 35px;
+}
+
+.login-header .company-name {
+    font-size: 1.4rem;
+    font-weight: 700;
+    color: #b31b1b;
+    letter-spacing: 2px;
+}
+
+.login-header .company-name span {
+    color: #d42a2a;
+}
+
+.login-header .company-tagline {
+    font-size: 0.7rem;
+    color: #8a6a6a;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-top: 2px;
+}
+
+.login-icon {
+    font-size: 50px;
+    margin-bottom: 12px;
+}
+
+.login-icon .hard-hat {
+    background: linear-gradient(135deg, #d42a2a, #b31b1b);
+    color: white;
+    width: 75px;
+    height: 75px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2.4rem;
+    box-shadow: 0 12px 30px -8px rgba(180, 20, 20, 0.4);
+    border: 3px solid rgba(255, 255, 255, 0.15);
+}
+
+.login-header h1 {
+    font-size: 28px;
+    color: #2a1a1a;
+    margin: 12px 0 4px;
+}
+
+.login-header .login-sub {
+    color: #888;
+    font-size: 14px;
+}
+
+.form-group {
+    margin-bottom: 20px;
+    position: relative;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 600;
+    color: #444;
+    font-size: 14px;
+}
+
+.form-group input {
+    width: 100%;
+    padding: 14px 15px;
+    padding-right: 45px;
+    border: 2px solid #e8e8e8;
+    border-radius: 12px;
+    font-size: 14px;
+    transition: all 0.3s;
+    outline: none;
+    background: #f8f9fc;
+}
+
+.form-group input:focus {
+    border-color: #d42a2a;
+    background: white;
+    box-shadow: 0 0 0 4px rgba(212, 42, 42, 0.08);
+}
+
+.form-group .input-icon {
+    position: absolute;
+    right: 15px;
+    top: 42px;
+    color: #aaa;
+    font-size: 1.1rem;
+}
+
+.login-btn {
+    width: 100%;
+    padding: 15px;
+    background: linear-gradient(135deg, #d42a2a, #b31b1b);
+    border: none;
+    border-radius: 12px;
+    color: white;
+    font-size: 16px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+    margin-top: 8px;
+    letter-spacing: 1px;
+}
+
+.login-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 10px 25px -8px rgba(180, 20, 20, 0.4);
+}
+
+.login-btn:active {
+    transform: translateY(0);
+}
+
+.login-btn i {
+    margin-right: 8px;
+}
+
+.error-message {
+    background: #fee;
+    color: #c0392b;
+    padding: 12px 16px;
+    border-radius: 10px;
+    font-size: 14px;
+    margin-bottom: 20px;
+    display: none;
+    border-left: 4px solid #c0392b;
+}
+
+.error-message.show {
+    display: block;
+    animation: shake 0.5s;
+}
+
+@keyframes shake {
+    0%,
+    100% {
+        transform: translateX(0);
+    }
+    25% {
+        transform: translateX(-8px);
+    }
+    75% {
+        transform: translateX(8px);
+    }
+}
+
+.login-footer {
+    text-align: center;
+    margin-top: 25px;
+    color: #888;
+    font-size: 13px;
+}
+
+.login-footer span {
+    color: #d42a2a;
+    font-weight: 600;
+}
+
+.login-footer .demo-cred {
+    background: #f5f0f0;
+    padding: 0.4rem 1.2rem;
+    border-radius: 60px;
+    display: inline-block;
+    font-size: 0.75rem;
+    color: #555;
+    margin-top: 0.5rem;
+}
+
+.login-footer .demo-cred code {
+    background: #e0e0e0;
+    padding: 0.1rem 0.6rem;
+    border-radius: 4px;
+    font-weight: 600;
+    color: #d42a2a;
+}
+
+.login-footer .company-footer {
+    margin-top: 1rem;
+    font-size: 0.65rem;
+    color: #aaa;
+    letter-spacing: 1px;
+}
+

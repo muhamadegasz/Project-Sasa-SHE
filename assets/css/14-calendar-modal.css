@@ -1,0 +1,81 @@
+/* 14-calendar-modal.css — Modal detail jadwal yang dibuka dari kalender.
+   Diekstrak apa adanya dari index.html baris 2367-2441 (commit 4734b5c).
+   URUTAN MUAT PENTING: prefix angka menentukan urutan <link>. Jangan ditukar —
+   beberapa selektor sengaja didefinisikan ulang dan bergantung pada urutan ini.
+   Lihat docs/DECISIONS.md K-5. */
+
+/* ========== MODAL KALENDER ========== */
+#calendarModal .modal-box {
+    max-width: 550px;
+}
+
+.calendar-event-list {
+    max-height: 350px;
+    overflow-y: auto;
+}
+
+.calendar-event-item {
+    display: flex;
+    gap: 0.8rem;
+    padding: 0.7rem 0.8rem;
+    border-bottom: 1px solid #f0e0e0;
+    align-items: flex-start;
+    transition: 0.15s;
+}
+
+.calendar-event-item:hover {
+    background: #faf8f8;
+    border-radius: 8px;
+}
+
+.calendar-event-item:last-child {
+    border-bottom: none;
+}
+
+.calendar-event-item .event-icon {
+    font-size: 1.4rem;
+    flex-shrink: 0;
+    margin-top: 2px;
+}
+
+.calendar-event-item .event-detail {
+    flex: 1;
+}
+
+.calendar-event-item .event-title {
+    font-size: 0.9rem;
+    color: #2a1a1a;
+}
+
+.calendar-event-item .event-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: 0.2rem;
+}
+
+.calendar-event-item .event-status {
+    font-size: 0.65rem;
+    padding: 0.1rem 0.6rem;
+    border-radius: 60px;
+    font-weight: 600;
+}
+
+.calendar-event-item .event-status.scheduled {
+    background: #fff3e0;
+    color: #e65100;
+}
+
+.calendar-event-item .event-status.completed {
+    background: #e8f5e9;
+    color: #1b5e20;
+}
+
+.calendar-event-item .event-meta-item {
+    font-size: 0.65rem;
+    color: #8a6a6a;
+    background: #f5f0f0;
+    padding: 0.1rem 0.6rem;
+    border-radius: 60px;
+}
+

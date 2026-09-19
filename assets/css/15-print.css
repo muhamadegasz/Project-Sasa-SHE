@@ -1,0 +1,174 @@
+/* 15-print.css — Aturan @media print dan tata letak dokumen PDF.
+   Diekstrak apa adanya dari index.html baris 2442-2609 (commit 4734b5c).
+   URUTAN MUAT PENTING: prefix angka menentukan urutan <link>. Jangan ditukar —
+   beberapa selektor sengaja didefinisikan ulang dan bergantung pada urutan ini.
+   Lihat docs/DECISIONS.md K-5. */
+
+/* ========== PDF PRINT ========== */
+@media print {
+    body * {
+        visibility: hidden;
+    }
+    .pdf-content,
+    .pdf-content * {
+        visibility: visible;
+    }
+    .pdf-content {
+        display: block !important;
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        padding: 2rem;
+        background: white;
+    }
+    .no-print {
+        display: none !important;
+    }
+    .pdf-content .pdf-header {
+        text-align: center;
+        border-bottom: 3px solid #b31b1b;
+        padding-bottom: 1rem;
+        margin-bottom: 1.5rem;
+    }
+    .pdf-content .pdf-header h1 {
+        color: #b31b1b;
+        font-size: 1.8rem;
+    }
+    .pdf-content .pdf-header h1 span {
+        color: #d42a2a;
+    }
+    .pdf-content .pdf-header .sub {
+        color: #666;
+        font-size: 0.9rem;
+    }
+    .pdf-content .pdf-body {
+        padding: 0.5rem 0;
+    }
+    .pdf-content .pdf-body .info-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 0.5rem 2rem;
+        background: #f9f9f9;
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 1rem;
+    }
+    .pdf-content .pdf-body .info-grid .item .label {
+        font-size: 0.7rem;
+        color: #888;
+        text-transform: uppercase;
+        font-weight: 600;
+    }
+    .pdf-content .pdf-body .info-grid .item .value {
+        font-size: 0.95rem;
+        font-weight: 500;
+        color: #222;
+    }
+    .pdf-content .pdf-body .section {
+        margin-top: 1rem;
+        border-top: 1px solid #eee;
+        padding-top: 0.8rem;
+    }
+    .pdf-content .pdf-body .section .title {
+        font-size: 0.8rem;
+        font-weight: 600;
+        color: #b31b1b;
+        margin-bottom: 0.5rem;
+    }
+    .pdf-content .pdf-body .section table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 0.8rem;
+    }
+    .pdf-content .pdf-body .section table th {
+        background: #f0e0e0;
+        padding: 0.4rem 0.6rem;
+        text-align: left;
+        border: 1px solid #ddd;
+    }
+    .pdf-content .pdf-body .section table td {
+        padding: 0.3rem 0.6rem;
+        border: 1px solid #ddd;
+    }
+    .pdf-content .pdf-footer {
+        margin-top: 2rem;
+        border-top: 2px solid #b31b1b;
+        padding-top: 1rem;
+        text-align: center;
+    }
+    .pdf-content .pdf-footer .signature-block {
+        display: flex;
+        justify-content: center;
+        gap: 3rem;
+        margin: 1rem 0;
+        flex-wrap: wrap;
+    }
+    .pdf-content .pdf-footer .signature-block .sign-item {
+        text-align: center;
+        min-width: 150px;
+    }
+    .pdf-content .pdf-footer .signature-block .sign-item .sign-line {
+        border-top: 1px solid #222;
+        width: 150px;
+        margin: 0.3rem auto;
+    }
+    .pdf-content .pdf-footer .signature-block .sign-item .sign-name {
+        font-weight: 600;
+        font-size: 0.9rem;
+    }
+    .pdf-content .pdf-footer .signature-block .sign-item .sign-title {
+        font-size: 0.7rem;
+        color: #666;
+    }
+    .pdf-content .pdf-footer .legal-text {
+        font-size: 0.7rem;
+        color: #888;
+        font-style: italic;
+        margin-top: 0.5rem;
+        padding: 0.5rem;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        background: #f9f9f9;
+    }
+    .pdf-content .pdf-footer .legal-text i {
+        color: #b31b1b;
+        margin-right: 5px;
+    }
+    .pdf-content .pdf-stamp {
+        position: absolute;
+        bottom: 100px;
+        right: 50px;
+        opacity: 0.15;
+        font-size: 4rem;
+        color: #b31b1b;
+        transform: rotate(-15deg);
+        font-weight: 700;
+        border: 4px solid #b31b1b;
+        padding: 0.5rem 1.5rem;
+        border-radius: 16px;
+    }
+    .pdf-content .pdf-stamp small {
+        display: block;
+        font-size: 0.8rem;
+        font-weight: 400;
+    }
+    .pdf-gallery {
+        display: flex;
+        gap: 0.5rem;
+        flex-wrap: wrap;
+        margin: 0.3rem 0;
+    }
+    .pdf-gallery .pdf-thumb {
+        width: 50px;
+        height: 50px;
+        background: #f0e8e8;
+        border: 1px solid #ddd;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+    }
+}
+
