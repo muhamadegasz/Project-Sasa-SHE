@@ -99,7 +99,7 @@ Kredensial demo: `sasapolkesma` / `sasapolkesma`.
 | D-4 | Tambah tindakan perbaikan (G-4) lalu kembali ke Dashboard | Kedua chart **dan** statistik ter-update |
 | D-5 | Klik "Kelola" di header kalender | Pindah ke panel Penjadwalan, tab aktif ikut berubah |
 | D-6 | Klik setiap tab navigasi bergantian | Panel yang benar tampil, tab aktif ter-highlight, search direset |
-| D-7 | Jam di header | Berdetak tiap detik, format 24 jam; tanggal berbahasa Indonesia |
+| D-7 | Header aplikasi | Hanya berisi logo, lonceng notifikasi, dan profil pengguna. Badge jam, "Online", dan tanggal sudah **dihapus** (K-6) — ketiganya tidak boleh muncul |
 
 ---
 

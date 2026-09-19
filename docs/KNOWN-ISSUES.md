@@ -5,7 +5,7 @@ Tujuan dokumen ini: memisahkan "perilaku yang memang begitu" dari "perilaku yang
 supaya aturan *preserve behavior* selama refactoring punya acuan yang jujur.
 
 Tanggal audit: 2026-09-19
-Baseline commit: `4734b5c` · Nomor baris disegarkan setelah Phase 2 (JS pindah ke `src/legacy-app.js`).
+Baseline commit: `4734b5c` · Nomor baris disegarkan setelah Phase 3.
 
 Status:
 - **FIX** — akan diperbaiki selama refactoring (fase disebutkan)
@@ -19,8 +19,8 @@ Status:
 | | |
 |---|---|
 | Severity | HIGH |
-| Status | **FIX** — Phase 3 (escaping) + Phase 7 (komponen lightbox) |
-| Lokasi | `src/legacy-app.js:754`, `src/legacy-app.js:1870`, `src/legacy-app.js:2105` |
+| Status | **SELESAI** — diperbaiki pada Phase 3. Argumen atribut kini disandikan jsArg(). Phase 7 masih akan mengganti polanya dengan komponen + event delegation. |
+| Lokasi | `src/legacy-app.js:711`, `src/legacy-app.js:1824`, `src/legacy-app.js:2059` |
 
 Markup dibangun dengan `onclick="openLightbox(${JSON.stringify(images)}, ${idx})"`.
 `JSON.stringify` menghasilkan tanda kutip ganda, sedangkan atribut juga memakai kutip ganda,
@@ -52,12 +52,12 @@ dan escape seluruh nilai atribut.
 |---|---|
 | Severity | MEDIUM |
 | Status | **FIX** — Phase 10 (lifecycle) |
-| Lokasi | `index.html:53`, `src/legacy-app.js:590`, `src/legacy-app.js:2618` |
+| Lokasi | `index.html:53`, `src/legacy-app.js:580`, `src/legacy-app.js:2570` |
 
 Tiga jalur memicu submit untuk satu penekanan Enter:
 1. `onsubmit="handleLogin(event)"` pada `<form>` (submit implisit browser)
-2. listener `keydown` pada `document` (baris 590 di `src/legacy-app.js`) yang memanggil `form.dispatchEvent(new Event('submit'))`
-3. listener `keydown` pada `#loginPassword` (baris 2618 di `src/legacy-app.js`) yang melakukan hal yang sama
+2. listener `keydown` pada `document` (baris 580 di `src/legacy-app.js`) yang memanggil `form.dispatchEvent(new Event('submit'))`
+3. listener `keydown` pada `#loginPassword` (baris 2570 di `src/legacy-app.js`) yang melakukan hal yang sama
 
 Akibatnya `setTimeout(initApp, 300)` terjadwal 2–3 kali, yang langsung memicu D-3.
 Login lewat klik tombol "Masuk" hanya memanggil sekali.
@@ -70,7 +70,7 @@ Login lewat klik tombol "Masuk" hanya memanggil sekali.
 |---|---|
 | Severity | HIGH |
 | Status | **FIX** — Phase 10 (lifecycle) |
-| Lokasi | `src/legacy-app.js:2460` (`initCharts`), bandingkan `src/legacy-app.js:1702` |
+| Lokasi | `src/legacy-app.js:2414` (`initCharts`), bandingkan `src/legacy-app.js:1656` |
 
 `renderTemuanPlantChart()` sudah benar (`destroy()` sebelum `new Chart()`), tetapi
 `initCharts()` membuat `perbaikanChart` **tanpa** destroy.
@@ -96,7 +96,7 @@ sebelum exception terjadi.
 |---|---|
 | Severity | LOW |
 | Status | **DITUNDA** — butuh aturan bisnis |
-| Lokasi | `src/legacy-app.js:1515`–`src/legacy-app.js:1567` |
+| Lokasi | `src/legacy-app.js:1471`–`src/legacy-app.js:1523` |
 
 `notifCount` diinisialisasi `0` di `renderJadwalTable()` dan **tidak pernah di-increment**,
 lalu diteruskan ke `updateNotifBadge()`.
@@ -118,7 +118,7 @@ Selama refactoring: struktur `updateNotifBadge(count)` dipertahankan apa adanya.
 |---|---|
 | Severity | LOW |
 | Status | **FIX (sebagian)** — Phase 11 |
-| Lokasi | `src/legacy-app.js:2507`, `src/legacy-app.js:2549` |
+| Lokasi | `src/legacy-app.js:2461`, `src/legacy-app.js:2503` |
 
 Dua hal berbeda:
 
@@ -137,7 +137,7 @@ Dua hal berbeda:
 |---|---|
 | Severity | LOW (kosmetik) |
 | Status | **FIX** — Phase 11 |
-| Lokasi | `src/legacy-app.js:1419` |
+| Lokasi | `src/legacy-app.js:1375` |
 
 Baris "Tidak ada data ditemukan" memakai `colspan="10"`, sedangkan tabel Dashboard punya
 7 kolom dan tabel Inspeksi punya 9 kolom.
@@ -150,7 +150,7 @@ Baris "Tidak ada data ditemukan" memakai `colspan="10"`, sedangkan tabel Dashboa
 |---|---|
 | Severity | CATATAN |
 | Status | **CATATAN** — tidak diubah, tapi wajib dipahami saat verifikasi |
-| Lokasi | `src/legacy-app.js:77`–`src/legacy-app.js:137` |
+| Lokasi | `src/legacy-app.js:73`–`src/legacy-app.js:133` |
 
 Diuji dengan menjalankan `generateWeeklySchedule()` sebanyak 2000 kali di Node:
 
@@ -192,5 +192,5 @@ deterministik, sehingga perbandingan baseline antar fase dapat diandalkan.
 - **Tanggal bersifat relatif.** `getDateOffset()` menghitung dari hari ini, sehingga nilai tanggal
   pada data demo berubah setiap hari. Saat membandingkan baseline antar hari, bandingkan
   *struktur dan status*, bukan string tanggal.
-- **Dead code** yang akan dihapus pada Phase 11: `renderGallery()` di `src/legacy-app.js:744` (didefinisikan, tidak dipakai),
+- **Dead code** yang akan dihapus pada Phase 11: `renderGallery()` di `src/legacy-app.js:701` (didefinisikan, tidak dipakai),
   `<audio id="alertSound">` (tidak pernah disentuh), field `lat`/`lng` (tidak pernah dirender).

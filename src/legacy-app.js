@@ -9,6 +9,10 @@
    strict mode. Sudah dipindai: tidak ada assignment ke variabel tak
    terdeklarasi dan tidak ada deklarasi function di dalam blok. */
 
+import { escapeHtml, highlight, jsArg, svgText } from './shared/html.js';
+import { formatDate, getDateOffset, isOverdue } from './shared/date.js';
+import { reportError } from './shared/errors.js';
+
 // ========================================================================
 // ========== PLANT DATA ==========
 // ========================================================================
@@ -53,17 +57,9 @@ const APPROVAL_STAGES = [
 // ========== HELPERS ==========
 // ========================================================================
 
-function formatDate(dateStr) {
-    if (!dateStr) return '-';
-    const d = new Date(dateStr);
-    return d.toLocaleDateString('id-ID');
-}
-
-function getDateOffset(days) {
-    const d = new Date();
-    d.setDate(d.getDate() + days);
-    return d.toLocaleDateString('id-ID');
-}
+// formatDate, getDateOffset, dan isOverdue dipindahkan ke shared/date.js.
+// highlightText dan highlightTextPlant digantikan highlight() di shared/html.js,
+// yang meng-escape teksnya — versi lama menyisipkan data mentah ke innerHTML.
 
 function getRandomOfficer() {
     const officers = ['Arif', 'Tulus', 'Mustofa', 'Melka'];
@@ -341,10 +337,10 @@ function initPlantSelect() {
             dropdown.innerHTML = `<div class="dropdown-item" style="color:#8a6a6a;">Tidak ada plant ditemukan</div>`;
         } else {
             dropdown.innerHTML = filtered.map(p => {
-                const nameHighlight = highlightTextPlant(p.name, filter);
-                const codeHighlight = highlightTextPlant(p.code, filter);
+                const nameHighlight = highlight(p.name, filter, 'highlight-match');
+                const codeHighlight = highlight(p.code, filter, 'highlight-match');
                 return `
-                    <div class="dropdown-item" data-id="${p.id}" data-name="${p.name}" data-code="${p.code}">
+                    <div class="dropdown-item" data-id="${escapeHtml(p.id)}" data-name="${escapeHtml(p.name)}" data-code="${escapeHtml(p.code)}">
                         ${nameHighlight}
                         <span class="plant-code">${codeHighlight}</span>
                     </div>
@@ -366,7 +362,7 @@ function initPlantSelect() {
         selectedPlant = { id, name, code };
         hiddenInput.value = id;
         input.value = name;
-        display.innerHTML = `<span class="selected-value"><i class="fas fa-check-circle"></i> ${name} (${code})</span>`;
+        display.innerHTML = `<span class="selected-value"><i class="fas fa-check-circle"></i> ${escapeHtml(name)} (${escapeHtml(code)})</span>`;
         clearBtn.classList.add('visible');
         dropdown.classList.remove('show');
         input.classList.remove('error');
@@ -443,10 +439,10 @@ function initPlantSelect() {
             dropdownJ.innerHTML = `<div class="dropdown-item" style="color:#8a6a6a;">Tidak ada plant ditemukan</div>`;
         } else {
             dropdownJ.innerHTML = filtered.map(p => {
-                const nameHighlight = highlightTextPlant(p.name, filter);
-                const codeHighlight = highlightTextPlant(p.code, filter);
+                const nameHighlight = highlight(p.name, filter, 'highlight-match');
+                const codeHighlight = highlight(p.code, filter, 'highlight-match');
                 return `
-                    <div class="dropdown-item" data-id="${p.id}" data-name="${p.name}" data-code="${p.code}">
+                    <div class="dropdown-item" data-id="${escapeHtml(p.id)}" data-name="${escapeHtml(p.name)}" data-code="${escapeHtml(p.code)}">
                         ${nameHighlight}
                         <span class="plant-code">${codeHighlight}</span>
                     </div>
@@ -468,7 +464,7 @@ function initPlantSelect() {
         selectedPlantJadwal = { id, name, code };
         hiddenInputJ.value = id;
         inputJ.value = name;
-        displayJ.innerHTML = `<span class="selected-value"><i class="fas fa-check-circle"></i> ${name} (${code})</span>`;
+        displayJ.innerHTML = `<span class="selected-value"><i class="fas fa-check-circle"></i> ${escapeHtml(name)} (${escapeHtml(code)})</span>`;
         clearBtnJ.classList.add('visible');
         dropdownJ.classList.remove('show');
         inputJ.classList.remove('error');
@@ -530,12 +526,6 @@ function initPlantSelect() {
 
     renderDropdown('');
     renderDropdownJ('');
-}
-
-function highlightTextPlant(text, query) {
-    if (!query || !text) return text;
-    const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-    return text.replace(regex, '<span class="highlight-match">$1</span>');
 }
 
 // ========================================================================
@@ -604,27 +594,11 @@ window.addEventListener('load', function() {
     document.getElementById('loginUsername').focus();
 });
 
-// ========================================================================
-// ========== CLOCK REAL TIME ==========
-// ========================================================================
-
-function updateClock() {
-    const now = new Date();
-    const dateStr = now.toLocaleDateString('id-ID', {
-        weekday: 'long',
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric'
-    });
-    document.getElementById('currentDate').textContent = dateStr;
-    const timeStr = now.toLocaleTimeString('id-ID', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false
-    });
-    document.getElementById('currentTime').textContent = timeStr;
-}
+// Badge jam, status "Online", dan tanggal semuanya dihapus dari header
+// (docs/DECISIONS.md K-6). Fungsi updateClock/updateHeaderDate beserta
+// interval-nya ikut dihapus karena elemen tujuannya sudah tidak ada —
+// menyentuh #currentTime / #currentDate akan melempar TypeError dan
+// mematikan initApp() di tengah jalan.
 
 // ========================================================================
 // ========== LIGHTBOX ==========
@@ -643,7 +617,7 @@ function openLightbox(images, index = 0) {
     const counter = document.getElementById('lightboxCounter');
 
     img.src =
-        `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='400'%3E%3Crect width='600' height='400' fill='%232a2a2a'/%3E%3Ctext x='50%25' y='45%25' text-anchor='middle' fill='%23666' font-size='40' font-family='sans-serif'%3E📷%3C/text%3E%3Ctext x='50%25' y='60%25' text-anchor='middle' fill='%23888' font-size='20' font-family='sans-serif'%3E${images[index]}%3C/text%3E%3C/svg%3E`;
+        `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='400'%3E%3Crect width='600' height='400' fill='%232a2a2a'/%3E%3Ctext x='50%25' y='45%25' text-anchor='middle' fill='%23666' font-size='40' font-family='sans-serif'%3E📷%3C/text%3E%3Ctext x='50%25' y='60%25' text-anchor='middle' fill='%23888' font-size='20' font-family='sans-serif'%3E${svgText(images[index])}%3C/text%3E%3C/svg%3E`;
     info.textContent = images[index];
     counter.textContent = `${index + 1} dari ${images.length}`;
     document.getElementById('lightboxPrev').style.display = images.length > 1 ? 'flex' : 'none';
@@ -665,7 +639,7 @@ function navigateLightbox(direction) {
     const info = document.getElementById('lightboxFileName');
     const counter = document.getElementById('lightboxCounter');
     img.src =
-        `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='400'%3E%3Crect width='600' height='400' fill='%232a2a2a'/%3E%3Ctext x='50%25' y='45%25' text-anchor='middle' fill='%23666' font-size='40' font-family='sans-serif'%3E📷%3C/text%3E%3Ctext x='50%25' y='60%25' text-anchor='middle' fill='%23888' font-size='20' font-family='sans-serif'%3E${lightboxImages[currentLightboxIndex]}%3C/text%3E%3C/svg%3E`;
+        `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='400'%3E%3Crect width='600' height='400' fill='%232a2a2a'/%3E%3Ctext x='50%25' y='45%25' text-anchor='middle' fill='%23666' font-size='40' font-family='sans-serif'%3E📷%3C/text%3E%3Ctext x='50%25' y='60%25' text-anchor='middle' fill='%23888' font-size='20' font-family='sans-serif'%3E${svgText(lightboxImages[currentLightboxIndex])}%3C/text%3E%3C/svg%3E`;
     info.textContent = lightboxImages[currentLightboxIndex];
     counter.textContent = `${currentLightboxIndex + 1} dari ${lightboxImages.length}`;
 }
@@ -724,23 +698,6 @@ function getStatusPerbaikan(item) {
     return 'tinjau';
 }
 
-function isOverdue(dueDate) {
-    if (!dueDate || dueDate === '-') return false;
-    const today = new Date();
-    const parts = dueDate.split('/');
-    if (parts.length === 3) {
-        const due = new Date(parts[2], parts[1] - 1, parts[0]);
-        return due < today;
-    }
-    return false;
-}
-
-function highlightText(text, query) {
-    if (!query || !text) return text;
-    const regex = new RegExp(`(${query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
-    return text.replace(regex, '<span class="highlight">$1</span>');
-}
-
 function renderGallery(images, label = '') {
     if (!images || images.length === 0 || images[0] === '-') {
         return `<div class="thumb-placeholder"><i class="fas fa-image"></i></div>`;
@@ -750,9 +707,9 @@ function renderGallery(images, label = '') {
                 ${images.map((img, idx) => `
                     <img class="thumb" 
                          src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='45' height='45'%3E%3Crect width='45' height='45' fill='%23f0e8e8'/%3E%3Ctext x='50%25' y='55%25' text-anchor='middle' fill='%238a6a6a' font-size='8' font-family='sans-serif'%3E📷%3C/text%3E%3C/svg%3E" 
-                         alt="${img}" 
-                         onclick="openLightbox(${JSON.stringify(images)}, ${idx})"
-                         title="Klik untuk preview: ${img}"
+                         alt="${escapeHtml(img)}"
+                         onclick="openLightbox(${jsArg(images)}, ${idx})"
+                         title="Klik untuk preview: ${escapeHtml(img)}"
                          style="cursor:pointer;">
                 `).join('')}
             </div>
@@ -785,10 +742,10 @@ function renderApprovalStages(item) {
                     statusClass = 'in-progress';
                     statusText = '⏳ Menunggu Persetujuan';
                     actionHtml = `
-                        <button class="stage-action-btn approve" onclick="approveStage('${item.id}', ${stage.id})">
+                        <button class="stage-action-btn approve" onclick="approveStage(${jsArg(item.id)}, ${stage.id})">
                             <i class="fas fa-check"></i> Setujui
                         </button>
-                        <button class="stage-action-btn reject" onclick="rejectStage('${item.id}', ${stage.id})">
+                        <button class="stage-action-btn reject" onclick="rejectStage(${jsArg(item.id)}, ${stage.id})">
                             <i class="fas fa-times"></i> Tolak
                         </button>
                     `;
@@ -803,9 +760,9 @@ function renderApprovalStages(item) {
                     <div class="approval-stage ${stageClass}">
                         <div class="stage-number">${stage.order}</div>
                         <div class="stage-info">
-                            <div class="stage-title">${stage.title}</div>
+                            <div class="stage-title">${escapeHtml(stage.title)}</div>
                             <div class="stage-detail">
-                                ${isCompleted ? `${approval.by} · ${approval.tanggal}` : (isCurrent ? 'Menunggu persetujuan' : 'Belum mencapai tahap ini')}
+                                ${isCompleted ? `${escapeHtml(approval.by)} · ${escapeHtml(approval.tanggal)}` : (isCurrent ? 'Menunggu persetujuan' : 'Belum mencapai tahap ini')}
                             </div>
                         </div>
                         <span class="stage-status ${statusClass}">${statusText}</span>
@@ -901,19 +858,19 @@ function openApprovalModal(inspeksiId) {
             <div class="detail-grid">
                 <div class="detail-item">
                     <span class="label">ID Inspeksi</span>
-                    <span class="value" style="color:#b31b1b;font-weight:700;">${item.id}</span>
+                    <span class="value" style="color:#b31b1b;font-weight:700;">${escapeHtml(item.id)}</span>
                 </div>
                 <div class="detail-item">
                     <span class="label">Lokasi / Plant</span>
-                    <span class="value">${item.lokasi}</span>
+                    <span class="value">${escapeHtml(item.lokasi)}</span>
                 </div>
                 <div class="detail-item">
                     <span class="label">Safety Officer</span>
-                    <span class="value">${item.petugas}</span>
+                    <span class="value">${escapeHtml(item.petugas)}</span>
                 </div>
                 <div class="detail-item">
                     <span class="label">Status</span>
-                    <span class="value"><span class="status-badge ${item.status}">${item.status.charAt(0).toUpperCase() + item.status.slice(1)}</span></span>
+                    <span class="value"><span class="status-badge ${escapeHtml(item.status)}">${escapeHtml(item.status.charAt(0).toUpperCase() + item.status.slice(1))}</span></span>
                 </div>
             </div>
 
@@ -926,7 +883,7 @@ function openApprovalModal(inspeksiId) {
                 <div class="detail-section">
                     <div class="section-title"><i class="fas fa-list"></i> Daftar Temuan</div>
                     <ul class="temuan-list-detail">
-                        ${item.temuan.map(t => `<li><span>${t.deskripsi}</span><span class="temuan-kategori">${t.kategori}</span></li>`).join('')}
+                        ${item.temuan.map(t => `<li><span>${escapeHtml(t.deskripsi)}</span><span class="temuan-kategori">${escapeHtml(t.kategori)}</span></li>`).join('')}
                     </ul>
                 </div>
             ` : ''}
@@ -969,7 +926,7 @@ window.cetakPDF = function(id) {
 
     const temuanRows = item.temuan && item.temuan.length > 0 ?
         item.temuan.map((t, idx) =>
-            `<tr><td>${idx + 1}</td><td>${t.deskripsi}</td><td><span style="background:#f0e8e8;padding:0.1rem 0.5rem;border-radius:4px;font-size:0.7rem;">${t.kategori}</span></td></tr>`
+            `<tr><td>${idx + 1}</td><td>${escapeHtml(t.deskripsi)}</td><td><span style="background:#f0e8e8;padding:0.1rem 0.5rem;border-radius:4px;font-size:0.7rem;">${escapeHtml(t.kategori)}</span></td></tr>`
         ).join('') :
         '<tr><td colspan="3" style="text-align:center;color:#888;">Tidak ada temuan</td></tr>';
 
@@ -980,7 +937,7 @@ window.cetakPDF = function(id) {
                 'on-progress': '🔄 Progres',
                 'open': '⏳ Pending'
             };
-            return `<tr><td>${p.tgl}</td><td>${p.action}</td><td>${p.pic}</td><td><span style="background:${p.status === 'closed' ? '#e8f5e9' : p.status === 'on-progress' ? '#fff3e0' : '#fce4ec'};padding:0.1rem 0.5rem;border-radius:4px;font-size:0.7rem;">${statusMap[p.status] || p.status}</span></td></tr>`;
+            return `<tr><td>${escapeHtml(p.tgl)}</td><td>${escapeHtml(p.action)}</td><td>${escapeHtml(p.pic)}</td><td><span style="background:${p.status === 'closed' ? '#e8f5e9' : p.status === 'on-progress' ? '#fff3e0' : '#fce4ec'};padding:0.1rem 0.5rem;border-radius:4px;font-size:0.7rem;">${escapeHtml(statusMap[p.status] || p.status)}</span></td></tr>`;
         }).join('') :
         '<tr><td colspan="4" style="text-align:center;color:#888;">Belum ada tindakan perbaikan</td></tr>';
 
@@ -989,17 +946,17 @@ window.cetakPDF = function(id) {
         if (approval && approval.approved) {
             return `
                 <div class="sign-item">
-                    <div style="font-size:0.7rem;color:#888;">${s.title}</div>
-                    <div class="sign-name">${approval.by}</div>
-                    <div style="font-size:0.7rem;color:#666;">${approval.jabatan}</div>
+                    <div style="font-size:0.7rem;color:#888;">${escapeHtml(s.title)}</div>
+                    <div class="sign-name">${escapeHtml(approval.by)}</div>
+                    <div style="font-size:0.7rem;color:#666;">${escapeHtml(approval.jabatan)}</div>
                     <div class="sign-line"></div>
-                    <div style="font-size:0.6rem;color:#888;">${approval.tanggal}</div>
+                    <div style="font-size:0.6rem;color:#888;">${escapeHtml(approval.tanggal)}</div>
                 </div>
             `;
         }
         return `
             <div class="sign-item">
-                <div style="font-size:0.7rem;color:#888;">${s.title}</div>
+                <div style="font-size:0.7rem;color:#888;">${escapeHtml(s.title)}</div>
                 <div style="font-size:0.8rem;color:#aaa;">Belum ditandatangani</div>
                 <div class="sign-line" style="border-color:#ddd;"></div>
             </div>
@@ -1017,31 +974,31 @@ window.cetakPDF = function(id) {
                 <div class="info-grid">
                     <div class="item">
                         <div class="label">ID Inspeksi</div>
-                        <div class="value" style="color:#b31b1b;font-weight:700;">${item.id}</div>
+                        <div class="value" style="color:#b31b1b;font-weight:700;">${escapeHtml(item.id)}</div>
                     </div>
                     <div class="item">
                         <div class="label">Status</div>
-                        <div class="value"><span style="background:${item.status === 'selesai' ? '#e8f5e9' : item.status === 'proses' ? '#fff3e0' : '#fce4ec'};padding:0.1rem 0.6rem;border-radius:60px;font-size:0.75rem;">${item.status.charAt(0).toUpperCase() + item.status.slice(1)}</span></div>
+                        <div class="value"><span style="background:${item.status === 'selesai' ? '#e8f5e9' : item.status === 'proses' ? '#fff3e0' : '#fce4ec'};padding:0.1rem 0.6rem;border-radius:60px;font-size:0.75rem;">${escapeHtml(item.status.charAt(0).toUpperCase() + item.status.slice(1))}</span></div>
                     </div>
                     <div class="item">
                         <div class="label">Lokasi / Plant</div>
-                        <div class="value">${item.lokasi}</div>
+                        <div class="value">${escapeHtml(item.lokasi)}</div>
                     </div>
                     <div class="item">
                         <div class="label">Keterangan Lokasi</div>
-                        <div class="value">${item.keteranganLokasi || '-'}</div>
+                        <div class="value">${escapeHtml(item.keteranganLokasi || '-')}</div>
                     </div>
                     <div class="item">
                         <div class="label">Tanggal Inspeksi</div>
-                        <div class="value">${item.tanggal}</div>
+                        <div class="value">${escapeHtml(item.tanggal)}</div>
                     </div>
                     <div class="item">
                         <div class="label">Safety Officer</div>
-                        <div class="value">${item.petugas}</div>
+                        <div class="value">${escapeHtml(item.petugas)}</div>
                     </div>
                     <div class="item">
                         <div class="label">Due Date ke Plant</div>
-                        <div class="value">${item.dueDate || '-'}</div>
+                        <div class="value">${escapeHtml(item.dueDate || '-')}</div>
                     </div>
                     <div class="item">
                         <div class="label">Jumlah Temuan</div>
@@ -1139,8 +1096,7 @@ window.cetakPDF = function(id) {
     html2pdf().set(opt).from(element).save().then(() => {
         showToast(`✅ PDF Laporan ${item.id} berhasil dicetak!`);
     }).catch((err) => {
-        console.error('PDF error:', err);
-        showToast('⚠️ Gagal membuat PDF: ' + err.message);
+        showToast(reportError('cetak PDF ' + item.id, err, '⚠️ Gagal membuat PDF. Coba ulangi beberapa saat lagi.'));
     });
 };
 
@@ -1245,7 +1201,7 @@ function renderCalendar() {
 
         html += `
             <div class="day-cell ${isToday ? 'today' : ''} ${hasEvent ? 'has-event' : ''}" 
-                 ${hasEvent ? `onclick="showDayEvents('${dateKey}')"` : ''}>
+                 ${hasEvent ? `onclick="showDayEvents(${jsArg(dateKey)})"` : ''}>
                 <span class="day-number">${day}</span>
                 ${hasEvent ? `<div class="event-dot ${dotClass}"></div>` : ''}
             </div>
@@ -1330,12 +1286,12 @@ function showDayEvents(dateKey) {
         <div class="calendar-event-item">
             <div class="event-icon">🏭</div>
             <div class="event-detail">
-                <div class="event-title"><strong>${e.plant}</strong></div>
+                <div class="event-title"><strong>${escapeHtml(e.plant)}</strong></div>
                 <div class="event-meta">
-                    <span class="event-status ${e.status.includes('Realisasi') || e.status.includes('dilaksanakan') ? 'completed' : 'scheduled'}">${e.status}</span>
-                    ${e.periode ? `<span class="event-meta-item">📅 Periode ${e.periode}</span>` : ''}
-                    ${e.minggu ? `<span class="event-meta-item">📌 Minggu ke-${e.minggu}</span>` : ''}
-                    ${e.officer ? `<span class="event-meta-item">👤 ${e.officer}</span>` : ''}
+                    <span class="event-status ${e.status.includes('Realisasi') || e.status.includes('dilaksanakan') ? 'completed' : 'scheduled'}">${escapeHtml(e.status)}</span>
+                    ${e.periode ? `<span class="event-meta-item">📅 Periode ${escapeHtml(e.periode)}</span>` : ''}
+                    ${e.minggu ? `<span class="event-meta-item">📌 Minggu ke-${escapeHtml(e.minggu)}</span>` : ''}
+                    ${e.officer ? `<span class="event-meta-item">👤 ${escapeHtml(e.officer)}</span>` : ''}
                 </div>
             </div>
         </div>
@@ -1344,7 +1300,7 @@ function showDayEvents(dateKey) {
     content.innerHTML = `
         <div style="margin-bottom:1rem;font-size:0.9rem;color:#7a4a4a;">
             <i class="fas fa-calendar-day" style="color:#d42a2a;"></i> 
-            <strong>${formatDate(dateKey)}</strong>
+            <strong>${escapeHtml(formatDate(dateKey))}</strong>
         </div>
         <div class="calendar-event-list">
             ${eventHtml}
@@ -1430,8 +1386,8 @@ function renderInspeksiTable(data, tbodyId, isFull, highlightQuery = '') {
         const temuanPreview = item.temuan && item.temuan.length > 0 ? item.temuan[0].deskripsi : '-';
         const moreTemuan = jmlTemuan > 1 ? ` +${jmlTemuan - 1} lagi` : '';
 
-        const lokasiDisplay = highlightQuery ? highlightText(item.lokasi, highlightQuery) : item.lokasi;
-        const temuanDisplay = highlightQuery ? highlightText(temuanPreview, highlightQuery) : temuanPreview;
+        const lokasiDisplay = highlight(item.lokasi, highlightQuery);
+        const temuanDisplay = highlight(temuanPreview, highlightQuery);
 
         const progressBar = `
                 <div class="progress-wrapper">
@@ -1448,12 +1404,12 @@ function renderInspeksiTable(data, tbodyId, isFull, highlightQuery = '') {
             '';
 
         const exportBtn = item.temuan && item.temuan.length > 0 ?
-            `<button class="btn-export-temuan" onclick="exportTemuanPerItem('${item.id}')" title="Export temuan ke Excel"><i class="fas fa-file-excel"></i></button>` :
+            `<button class="btn-export-temuan" onclick="exportTemuanPerItem(${jsArg(item.id)})" title="Export temuan ke Excel"><i class="fas fa-file-excel"></i></button>` :
             '';
 
         const allApproved = APPROVAL_STAGES.every(s => item.approvals && item.approvals[s.id] && item.approvals[s.id].approved === true);
         const pdfBtn = allApproved ?
-            `<button class="btn-pdf" onclick="cetakPDF('${item.id}')" title="Cetak PDF Laporan"><i class="fas fa-file-pdf"></i></button>` :
+            `<button class="btn-pdf" onclick="cetakPDF(${jsArg(item.id)})" title="Cetak PDF Laporan"><i class="fas fa-file-pdf"></i></button>` :
             `<button class="btn-pdf" disabled title="Harus disetujui semua tahap terlebih dahulu"><i class="fas fa-file-pdf"></i></button>`;
 
         let approvalStatus = 'Belum';
@@ -1472,16 +1428,16 @@ function renderInspeksiTable(data, tbodyId, isFull, highlightQuery = '') {
         if (isFull) {
             return `
                     <tr>
-                        <td><strong>${item.id}</strong></td>
+                        <td><strong>${escapeHtml(item.id)}</strong></td>
                         <td>${lokasiDisplay}</td>
-                        <td>${item.keteranganLokasi || '-'}</td>
-                        <td>${item.tanggal}</td>
-                        <td>${item.petugas}</td>
+                        <td>${escapeHtml(item.keteranganLokasi || '-')}</td>
+                        <td>${escapeHtml(item.tanggal)}</td>
+                        <td>${escapeHtml(item.petugas)}</td>
                         <td>${jmlTemuan}</td>
-                        <td><span class="status-badge ${item.status}">${item.status.charAt(0).toUpperCase() + item.status.slice(1)}</span></td>
+                        <td><span class="status-badge ${escapeHtml(item.status)}">${escapeHtml(item.status.charAt(0).toUpperCase() + item.status.slice(1))}</span></td>
                         <td>
                             <span class="status-badge ${approvalColor}">${approvalStatus}</span>
-                            <button class="btn-sm info" onclick="openApprovalModal('${item.id}')" style="margin-top:0.2rem;"><i class="fas fa-stamp"></i></button>
+                            <button class="btn-sm info" onclick="openApprovalModal(${jsArg(item.id)})" style="margin-top:0.2rem;"><i class="fas fa-stamp"></i></button>
                         </td>
                         <td>${exportBtn} ${pdfBtn}</td>
                     </tr>
@@ -1489,16 +1445,16 @@ function renderInspeksiTable(data, tbodyId, isFull, highlightQuery = '') {
         } else {
             return `
                     <tr>
-                        <td><strong>${item.id}</strong></td>
+                        <td><strong>${escapeHtml(item.id)}</strong></td>
                         <td>${lokasiDisplay}</td>
                         <td>${temuanDisplay}${moreTemuan}</td>
-                        <td>${item.dueDate || '-'} ${overdueBadge}</td>
-                        <td><span class="status-badge ${item.status}">${item.status.charAt(0).toUpperCase() + item.status.slice(1)}</span></td>
+                        <td>${escapeHtml(item.dueDate || '-')} ${overdueBadge}</td>
+                        <td><span class="status-badge ${escapeHtml(item.status)}">${escapeHtml(item.status.charAt(0).toUpperCase() + item.status.slice(1))}</span></td>
                         <td>${progressBar}</td>
                         <td>
-                            <button class="btn-sm info" onclick="openDetailModal('${item.id}')"><i class="fas fa-eye"></i></button>
-                            <button class="btn-sm primary" onclick="openPerbaikanModal('${item.id}')"><i class="fas fa-tools"></i></button>
-                            <button class="btn-sm warning" onclick="openApprovalModal('${item.id}')"><i class="fas fa-stamp"></i></button>
+                            <button class="btn-sm info" onclick="openDetailModal(${jsArg(item.id)})"><i class="fas fa-eye"></i></button>
+                            <button class="btn-sm primary" onclick="openPerbaikanModal(${jsArg(item.id)})"><i class="fas fa-tools"></i></button>
+                            <button class="btn-sm warning" onclick="openApprovalModal(${jsArg(item.id)})"><i class="fas fa-stamp"></i></button>
                             ${exportBtn}
                             ${pdfBtn}
                         </td>
@@ -1527,9 +1483,9 @@ function renderJadwalTable(data = null, highlightQuery = '') {
         const periode = PERIODE_LIST.find(p => p.id === item.periode);
         const plant = PLANT_LIST.find(p => p.id === item.plantId);
         
-        const plantDisplay = highlightQuery ? highlightText(item.plantName, highlightQuery) : item.plantName;
-        const officerDisplay = highlightQuery ? highlightText(item.officer, highlightQuery) : item.officer;
-        const periodeDisplay = highlightQuery && periode ? highlightText(periode.name, highlightQuery) : (periode ? periode.name : 'Periode ' + item.periode);
+        const plantDisplay = highlight(item.plantName, highlightQuery);
+        const officerDisplay = highlight(item.officer, highlightQuery);
+        const periodeDisplay = highlight(periode ? periode.name : 'Periode ' + item.periode, highlightQuery);
         const tanggalJadwalDisplay = item.tanggalJadwal ? formatDate(item.tanggalJadwal) : '-';
         const tanggalRealisasiDisplay = item.tanggalRealisasi ? formatDate(item.tanggalRealisasi) : '-';
         const mingguDisplay = item.minggu ? `Minggu ${item.minggu}` : '-';
@@ -1548,16 +1504,16 @@ function renderJadwalTable(data = null, highlightQuery = '') {
 
         return `
                 <tr>
-                    <td>${plantDisplay} ${plant ? '<span style="font-size:0.6rem;color:#8a6a6a;">('+plant.code+')</span>' : ''}</td>
+                    <td>${plantDisplay} ${plant ? '<span style="font-size:0.6rem;color:#8a6a6a;">(' + escapeHtml(plant.code) + ')</span>' : ''}</td>
                     <td>${periodeDisplay}</td>
-                    <td>${mingguDisplay}</td>
-                    <td>${tanggalJadwalDisplay} ${isOverdueSchedule ? '<span class="overdue-badge"><i class="fas fa-exclamation-circle"></i> OVERDUE</span>' : ''}</td>
-                    <td>${tanggalRealisasiDisplay}</td>
+                    <td>${escapeHtml(mingguDisplay)}</td>
+                    <td>${escapeHtml(tanggalJadwalDisplay)} ${isOverdueSchedule ? '<span class="overdue-badge"><i class="fas fa-exclamation-circle"></i> OVERDUE</span>' : ''}</td>
+                    <td>${escapeHtml(tanggalRealisasiDisplay)}</td>
                     <td>${officerDisplay}</td>
                     <td><span class="status-badge ${statusClass}">${statusText}</span></td>
                     <td>
-                        <button class="btn-sm warning" onclick="editJadwal('${item.id}')"><i class="fas fa-edit"></i></button>
-                        <button class="btn-sm danger" onclick="hapusJadwal('${item.id}')"><i class="fas fa-trash"></i></button>
+                        <button class="btn-sm warning" onclick="editJadwal(${jsArg(item.id)})"><i class="fas fa-edit"></i></button>
+                        <button class="btn-sm danger" onclick="hapusJadwal(${jsArg(item.id)})"><i class="fas fa-trash"></i></button>
                     </td>
                 </tr>
             `;
@@ -1588,12 +1544,10 @@ function renderPerbaikanTable(data = null, highlightQuery = '') {
         const temuanText = item.temuan && item.temuan.length > 0 ? item.temuan[0].deskripsi : '-';
         const overdue = isOverdue(item.dueDate);
 
-        const lokasiDisplay = highlightQuery ? highlightText(item.lokasi, highlightQuery) : item.lokasi;
-        const temuanDisplay = highlightQuery ? highlightText(temuanText, highlightQuery) : temuanText;
-        const actionDisplay = highlightQuery && lastAction ? highlightText(lastAction.action, highlightQuery) :
-            (lastAction ? lastAction.action : '-');
-        const picDisplay = highlightQuery && lastAction ? highlightText(lastAction.pic, highlightQuery) : (
-            lastAction ? lastAction.pic : '-');
+        const lokasiDisplay = highlight(item.lokasi, highlightQuery);
+        const temuanDisplay = highlight(temuanText, highlightQuery);
+        const actionDisplay = highlight(lastAction ? lastAction.action : '-', highlightQuery);
+        const picDisplay = highlight(lastAction ? lastAction.pic : '-', highlightQuery);
 
         const overdueBadge = overdue ?
             `<span class="overdue-badge"><i class="fas fa-exclamation-circle"></i> OVERDUE</span>` :
@@ -1616,17 +1570,17 @@ function renderPerbaikanTable(data = null, highlightQuery = '') {
 
         return `
                 <tr>
-                    <td><strong>${item.id}</strong></td>
+                    <td><strong>${escapeHtml(item.id)}</strong></td>
                     <td>${lokasiDisplay}</td>
                     <td>${temuanDisplay}</td>
-                    <td>${item.dueDate || '-'} ${overdueBadge}</td>
+                    <td>${escapeHtml(item.dueDate || '-')} ${overdueBadge}</td>
                     <td>${actionDisplay}</td>
                     <td>${picDisplay}</td>
                     <td>${progressBar}</td>
                     <td><span class="status-badge ${statusPerbaikan}">${statusMap[statusPerbaikan] || statusPerbaikan}</span></td>
                     <td>
-                        <button class="btn-sm primary" onclick="openPerbaikanModal('${item.id}')"><i class="fas fa-edit"></i></button>
-                        <button class="btn-sm info" onclick="openDetailModal('${item.id}')"><i class="fas fa-eye"></i></button>
+                        <button class="btn-sm primary" onclick="openPerbaikanModal(${jsArg(item.id)})"><i class="fas fa-edit"></i></button>
+                        <button class="btn-sm info" onclick="openDetailModal(${jsArg(item.id)})"><i class="fas fa-eye"></i></button>
                     </td>
                 </tr>
             `;
@@ -1860,16 +1814,16 @@ window.openDetailModal = function(id) {
 
     const temuanHtml = item.temuan && item.temuan.length > 0 ?
         item.temuan.map(t =>
-            `<li><span>${t.deskripsi}</span><span class="temuan-kategori">${t.kategori}</span></li>`
+            `<li><span>${escapeHtml(t.deskripsi)}</span><span class="temuan-kategori">${escapeHtml(t.kategori)}</span></li>`
         ).join('') :
         '<li style="color:#8a6a6a;">Tidak ada temuan</li>';
 
     const allPhotos = [...(item.fotoDekat || []), ...(item.fotoJauh || [])];
     const galleryHtml = allPhotos.length > 0 && allPhotos[0] !== '-' ?
         allPhotos.map((img, idx) =>
-                `<div class="gallery-item" onclick="openLightbox(${JSON.stringify(allPhotos)}, ${idx})" title="Klik untuk preview">
+                `<div class="gallery-item" onclick="openLightbox(${jsArg(allPhotos)}, ${idx})" title="Klik untuk preview">
                     <span class="preview-icon">📷</span>
-                    <span class="file-name">${img}</span>
+                    <span class="file-name">${escapeHtml(img)}</span>
                 </div>`
             ).join('') :
         '<div style="color:#8a6a6a;font-size:0.8rem;">Tidak ada foto</div>';
@@ -1883,31 +1837,31 @@ window.openDetailModal = function(id) {
                 <div class="detail-grid">
                     <div class="detail-item">
                         <span class="label"><i class="fas fa-hashtag"></i> ID Inspeksi</span>
-                        <span class="value" style="color:#b31b1b;font-weight:700;">${item.id}</span>
+                        <span class="value" style="color:#b31b1b;font-weight:700;">${escapeHtml(item.id)}</span>
                     </div>
                     <div class="detail-item">
                         <span class="label"><i class="fas fa-map-marker-alt"></i> Status</span>
-                        <span class="value"><span class="status-badge ${item.status}">${statusMap[item.status] || item.status}</span></span>
+                        <span class="value"><span class="status-badge ${escapeHtml(item.status)}">${escapeHtml(statusMap[item.status] || item.status)}</span></span>
                     </div>
                     <div class="detail-item">
                         <span class="label"><i class="fas fa-building"></i> Lokasi / Plant</span>
-                        <span class="value">${item.lokasi}</span>
+                        <span class="value">${escapeHtml(item.lokasi)}</span>
                     </div>
                     <div class="detail-item">
                         <span class="label"><i class="fas fa-tag"></i> Keterangan Lokasi</span>
-                        <span class="value">${item.keteranganLokasi || '-'}</span>
+                        <span class="value">${escapeHtml(item.keteranganLokasi || '-')}</span>
                     </div>
                     <div class="detail-item">
                         <span class="label"><i class="fas fa-calendar-day"></i> Tanggal Inspeksi</span>
-                        <span class="value">${item.tanggal}</span>
+                        <span class="value">${escapeHtml(item.tanggal)}</span>
                     </div>
                     <div class="detail-item">
                         <span class="label"><i class="fas fa-user"></i> Safety Officer</span>
-                        <span class="value">${item.petugas}</span>
+                        <span class="value">${escapeHtml(item.petugas)}</span>
                     </div>
                     <div class="detail-item" style="grid-column:1/3;">
                         <span class="label"><i class="fas fa-clock"></i> Due Date ke Plant</span>
-                        <span class="value">${item.dueDate || '-'} ${overdueBadge}</span>
+                        <span class="value">${escapeHtml(item.dueDate || '-')} ${overdueBadge}</span>
                     </div>
                 </div>
 
@@ -1916,7 +1870,7 @@ window.openDetailModal = function(id) {
                     <ul class="temuan-list-detail">${temuanHtml}</ul>
                     ${item.temuan && item.temuan.length > 0 ? `
                         <div style="margin-top:0.5rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
-                            <button class="btn-export-temuan" onclick="exportTemuanPerItem('${item.id}')">
+                            <button class="btn-export-temuan" onclick="exportTemuanPerItem(${jsArg(item.id)})">
                                 <i class="fas fa-file-excel"></i> Export Temuan
                             </button>
                         </div>
@@ -1933,7 +1887,7 @@ window.openDetailModal = function(id) {
                     <div class="section-title"><i class="fas fa-stamp"></i> Pengesahan (4 Tahap)</div>
                     ${renderApprovalStages(item)}
                     <div style="margin-top:0.5rem;">
-                        <button class="btn-sm primary" onclick="openApprovalModal('${item.id}')"><i class="fas fa-stamp"></i> Kelola Pengesahan</button>
+                        <button class="btn-sm primary" onclick="openApprovalModal(${jsArg(item.id)})"><i class="fas fa-stamp"></i> Kelola Pengesahan</button>
                     </div>
                 </div>
             </div>
@@ -1971,7 +1925,7 @@ window.openJadwalModal = function(data = null) {
             document.getElementById('plantSearchInputJadwal').value = plant.name;
             document.getElementById('selectedPlantJadwal').value = plant.id;
             document.getElementById('selectedPlantDisplayJadwal').innerHTML = 
-                `<span class="selected-value"><i class="fas fa-check-circle"></i> ${plant.name} (${plant.code})</span>`;
+                `<span class="selected-value"><i class="fas fa-check-circle"></i> ${escapeHtml(plant.name)} (${escapeHtml(plant.code)})</span>`;
             document.getElementById('clearPlantSelectionJadwal').classList.add('visible');
             selectedPlantJadwal = plant;
         }
@@ -2102,17 +2056,17 @@ window.openPerbaikanModal = function(id) {
             const fotoList = p.foto && p.foto.length > 0 ? p.foto : [];
             const galleryHtml = fotoList.length > 0 ?
                 fotoList.map(f => `
-                    <div class="thumb-mini" onclick="openLightbox(${JSON.stringify(fotoList)}, ${fotoList.indexOf(f)})" title="${f}">
+                    <div class="thumb-mini" onclick="openLightbox(${jsArg(fotoList)}, ${fotoList.indexOf(f)})" title="${escapeHtml(f)}">
                         📷
                     </div>
                 `).join('') :
                 '<span style="font-size:0.6rem;color:#c62828;">⚠️ Belum ada foto</span>';
             return `
                     <div class="perbaikan-item">
-                        <span class="date">${p.tgl}</span>
-                        <span class="action">${p.action}</span>
-                        <span class="status-mini ${p.status}">${statusMap[p.status] || p.status}</span>
-                        <span class="pic-name">- ${p.pic}</span>
+                        <span class="date">${escapeHtml(p.tgl)}</span>
+                        <span class="action">${escapeHtml(p.action)}</span>
+                        <span class="status-mini ${escapeHtml(p.status)}">${escapeHtml(statusMap[p.status] || p.status)}</span>
+                        <span class="pic-name">- ${escapeHtml(p.pic)}</span>
                         <div class="foto-thumbs">${galleryHtml}</div>
                     </div>
                 `;
@@ -2133,19 +2087,19 @@ window.openPerbaikanModal = function(id) {
             <div class="perbaikan-info-box">
                 <div class="info-row">
                     <span class="label">ID Inspeksi</span>
-                    <span class="value"><strong>${item.id}</strong></span>
+                    <span class="value"><strong>${escapeHtml(item.id)}</strong></span>
                 </div>
                 <div class="info-row">
                     <span class="label">Lokasi / Plant</span>
-                    <span class="value">${item.lokasi}</span>
+                    <span class="value">${escapeHtml(item.lokasi)}</span>
                 </div>
                 <div class="info-row">
                     <span class="label">Due Date Plant</span>
-                    <span class="value">${item.dueDate || '-'} ${isOverdue(item.dueDate) ? '<span class="overdue-badge"><i class="fas fa-exclamation-circle"></i> OVERDUE</span>' : ''}</span>
+                    <span class="value">${escapeHtml(item.dueDate || '-')} ${isOverdue(item.dueDate) ? '<span class="overdue-badge"><i class="fas fa-exclamation-circle"></i> OVERDUE</span>' : ''}</span>
                 </div>
                 <div class="info-row">
                     <span class="label">Status</span>
-                    <span class="value"><span class="status-badge ${item.status}">${item.status.charAt(0).toUpperCase() + item.status.slice(1)}</span></span>
+                    <span class="value"><span class="status-badge ${escapeHtml(item.status)}">${escapeHtml(item.status.charAt(0).toUpperCase() + item.status.slice(1))}</span></span>
                 </div>
                 <div class="info-row" style="margin-top:0.3rem;padding-top:0.5rem;border-top:2px solid #f0e0e0;">
                     <span class="label">Pengesahan</span>
@@ -2153,7 +2107,7 @@ window.openPerbaikanModal = function(id) {
                         <span class="status-badge ${allApproved ? 'selesai' : 'proses'}">
                             ${allApproved ? '✅ Lengkap (4/4)' : getApprovalStatusText(item)}
                         </span>
-                        ${!allApproved ? `<button class="btn-sm info" onclick="openApprovalModal('${item.id}')" style="margin-left:0.3rem;font-size:0.55rem;"><i class="fas fa-stamp"></i></button>` : ''}
+                        ${!allApproved ? `<button class="btn-sm info" onclick="openApprovalModal(${jsArg(item.id)})" style="margin-left:0.3rem;font-size:0.55rem;"><i class="fas fa-stamp"></i></button>` : ''}
                     </span>
                 </div>
                 <div class="info-row">
@@ -2192,7 +2146,7 @@ window.openPerbaikanModal = function(id) {
                     </div>
                     <div class="form-group">
                         <label>PIC <span style="color:#c62828;">*</span></label>
-                        <input type="text" id="newPIC" placeholder="Nama PIC" value="${getRandomOfficer()}">
+                        <input type="text" id="newPIC" placeholder="Nama PIC" value="${escapeHtml(getRandomOfficer())}">
                     </div>
                 </div>
                 <div class="form-group">
@@ -2202,7 +2156,7 @@ window.openPerbaikanModal = function(id) {
                         <span class="file-count" id="newFotoCount">Belum ada file</span>
                     </div>
                 </div>
-                <button class="btn-sm primary" onclick="tambahPerbaikanCustom('${item.id}')" style="margin-top:0.5rem;padding:0.5rem 1.5rem;">
+                <button class="btn-sm primary" onclick="tambahPerbaikanCustom(${jsArg(item.id)})" style="margin-top:0.5rem;padding:0.5rem 1.5rem;">
                     <i class="fas fa-plus"></i> Tambah Progres
                 </button>
             </div>
@@ -2276,7 +2230,7 @@ function renderTemuanList() {
     } else {
         container.innerHTML = temuanList.map((item, index) => `
                 <div class="temuan-item" style="display:flex;justify-content:space-between;align-items:center;padding:0.4rem 0.6rem;border-bottom:1px solid #f0e0e0;">
-                    <span><span class="status-badge" style="font-size:0.6rem;">${item.kategori}</span> ${item.deskripsi}</span>
+                    <span><span class="status-badge" style="font-size:0.6rem;">${escapeHtml(item.kategori)}</span> ${escapeHtml(item.deskripsi)}</span>
                     <button class="btn-sm danger" onclick="hapusTemuan(${index})"><i class="fas fa-trash"></i></button>
                 </div>
             `).join('');
@@ -2542,7 +2496,7 @@ async function syncToGoogleSheets(btn) {
         URL.revokeObjectURL(link.href);
         showToast('✅ File Excel siap! Upload ke Google Sheets.');
     } catch (error) {
-        showToast('⚠️ Gagal: ' + error.message);
+        showToast(reportError('siapkan file Excel', error, '⚠️ Gagal menyiapkan file Excel. Coba ulangi beberapa saat lagi.'));
     } finally {
         if (btn) {
             btn.disabled = false;
@@ -2600,8 +2554,6 @@ function initApp() {
     renderTemuanList();
     initCharts();
     refreshAll();
-    updateClock();
-    setInterval(updateClock, 1000);
 
     setInterval(() => {
         renderJadwalTable();

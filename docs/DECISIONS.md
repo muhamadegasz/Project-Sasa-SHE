@@ -130,3 +130,92 @@ ROUND-TRIP IDENTIK (byte-for-byte)
   sebagai langkah tersendiri dengan verifikasi visual, bukan diselundupkan ke dalam ekstraksi.
 - 16 permintaan HTTP untuk CSS. Tidak menjadi masalah di lingkungan lokal maupun HTTP/2;
   jika kelak mengganggu, penggabungan adalah urusan build, bukan struktur sumber.
+
+---
+
+## K-6 — Badge jam, status "Online", dan tanggal dihapus dari header
+
+**Tanggal:** 2026-09-19 · **Status:** diminta pemilik project · **Fase:** dikerjakan bersamaan Phase 2
+
+Ketiga badge informasi dihapus dari header aplikasi:
+
+- badge jam berjalan (`#currentTime`)
+- badge indikator "● Online"
+- badge tanggal (`#currentDate`, contoh: "Sabtu, 19 September 2026")
+
+Header kini hanya berisi logo, lonceng notifikasi, dan profil pengguna.
+
+**Ini perubahan UI yang disengaja, bukan refactoring.** Dicatat di sini supaya tidak
+disalahartikan sebagai regresi saat membandingkan dengan baseline Phase 0.
+
+### Yang ikut berubah
+
+| Berkas | Perubahan | Alasan |
+|---|---|---|
+| `index.html` | 3 baris `<span class="header-badge">` dihapus | permintaan |
+| `src/legacy-app.js` | fungsi `updateClock()` dihapus seluruhnya, beserta pemanggilan dan `setInterval`-nya di `initApp()` | `#currentTime` dan `#currentDate` sudah tidak ada; menyentuhnya akan melempar `TypeError` dan **mematikan `initApp()` di tengah jalan**, sehingga dashboard tidak termuat sama sekali |
+| `assets/css/03-layout.css` | `.header-badge .dot`, `.header-badge .clock`, `.header-badge .clock i`, `@keyframes pulse` dihapus | menjadi mati setelah badge-nya hilang |
+
+Yang **tidak** disentuh dan tetap dipakai:
+
+- `.header-badge` dan `.header-badge i` — masih dipakai lonceng notifikasi
+- `.dot` di `09-calendar.css` — selektor berbeda (legenda kalender)
+- `@keyframes pulse-dot` di `11-lightbox.css` — berbeda dari `pulse`, masih dipakai lonceng
+
+### Konsekuensi
+
+Satu dari dua `setInterval` di `initApp()` hilang. Yang tersisa hanya interval 10 detik
+untuk menyegarkan tabel jadwal dan kalender.
+
+Item **D-7** pada `VERIFICATION.md` ("Jam di header berdetak tiap detik") tidak berlaku lagi
+dan sudah diganti menjadi pemeriksaan bahwa ketiga badge tersebut **tidak** muncul.
+
+Catatan: status "Online" memang hanya hiasan — tidak pernah terhubung ke pemeriksaan
+konektivitas apa pun. Menghapusnya justru menghilangkan indikator yang menyesatkan.
+
+---
+
+## K-7 — Batas escaping: apa yang di-escape dan apa yang tidak
+
+**Tanggal:** 2026-09-19 · **Status:** diputuskan saat Phase 3 · **Fase:** 3
+
+Escaping diterapkan **bertarget**, bukan menyeluruh membabi buta. Dari 267 interpolasi di
+`legacy-app.js`, 73 dibungkus `escapeHtml()`, 10 dikonversi ke `highlight()`, dan 17 argumen
+handler inline disandikan `jsArg()`.
+
+### Yang di-escape
+
+Setiap nilai data yang berakhir di `innerHTML`: deskripsi temuan, keterangan lokasi, nama
+Safety Officer, PIC, tindakan perbaikan, nama plant, kode plant, nama file foto, tanggal,
+status, dan seluruh data pengesahan.
+
+### Yang sengaja TIDAK di-escape
+
+| Kategori | Alasan |
+|---|---|
+| Potongan HTML buatan program (`progressBar`, `overdueBadge`, `exportBtn`, `pdfBtn`, `timelineHtml`) | memang markup, bukan data |
+| Label status konstanta (`statusText`, `statusMap[...]`) | nilai literal di dalam kode |
+| Angka (`progress`, `jmlTemuan`, `stage.order`, `idx`) | tidak dapat membawa markup |
+| String untuk `showToast()` dan `confirm()` | masuk lewat `textContent`, bukan HTML |
+| **Sel Excel** pada keempat jalur ekspor | meng-escape sel spreadsheet akan memunculkan `&amp;` di dalam file hasil ekspor — salah konteks |
+| Nama file PDF/XLSX | bukan konteks HTML |
+
+Perbedaan konteks inilah alasan escaping dikerjakan per baris dengan asersi jumlah kecocokan,
+bukan dengan cari-ganti global: ekspresi yang sama (`t.deskripsi`) muncul baik di template
+HTML maupun di sel Excel, dan perlakuannya harus berbeda.
+
+### Kenapa highlight() menggantikan ternary
+
+Pola lama `q ? highlightText(x, q) : x` punya dua lubang: hasil highlight tidak di-escape,
+**dan** cabang "tanpa query" mengembalikan data mentah. `highlight(x, q)` menangani keduanya —
+tanpa query ia mengembalikan teks yang di-escape.
+
+Urutannya juga dibalik: teks dipecah dulu berdasarkan query, baru tiap potongan di-escape.
+Meng-escape lebih dulu akan membuat query dapat mencocokkan bagian dari entity (misalnya
+"amp" di dalam `&amp;`) dan menghasilkan markup rusak.
+
+### Modul yang TIDAK dibuat
+
+Rencana Phase 3 menyebut `src/shared/dom.js`. Tidak dibuat — belum ada konsumennya. Helper
+DOM baru masuk akal pada Phase 7 dan 9 saat komponen dan controller dibentuk. Membuatnya
+sekarang berarti abstraksi tanpa manfaat.

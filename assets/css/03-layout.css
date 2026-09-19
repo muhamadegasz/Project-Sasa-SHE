@@ -94,38 +94,10 @@
     color: #d42a2a;
 }
 
-.header-badge .dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: #3fbe7a;
-    display: inline-block;
-    animation: pulse 2s infinite;
-}
-
-.header-badge .clock {
-    font-weight: 600;
-    color: #b31b1b;
-    font-size: 0.9rem;
-    letter-spacing: 0.5px;
-    min-width: 90px;
-    text-align: center;
-}
-
-.header-badge .clock i {
-    color: #b31b1b;
-    font-size: 0.8rem;
-}
-
-@keyframes pulse {
-    0%,
-    100% {
-        opacity: 1;
-    }
-    50% {
-        opacity: 0.3;
-    }
-}
+/* .header-badge .dot, .header-badge .clock, .header-badge .clock i dan
+   @keyframes pulse dihapus bersama badge jam & status Online.
+   Lihat docs/DECISIONS.md K-6. Catatan: .dot di 09-calendar.css adalah
+   selektor lain (legenda kalender) dan tetap dipakai. */
 
 .user-profile {
     display: flex;
