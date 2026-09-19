@@ -10,308 +10,34 @@
    terdeklarasi dan tidak ada deklarasi function di dalam blok. */
 
 import { escapeHtml, highlight, jsArg, svgText } from './shared/html.js';
-import { formatDate, getDateOffset, isOverdue } from './shared/date.js';
+import { formatDate, isOverdue } from './shared/date.js';
 import { reportError } from './shared/errors.js';
 
-// ========================================================================
-// ========== PLANT DATA ==========
-// ========================================================================
-
-const PLANT_LIST = [
-    { id: 1, name: 'Electrical dan Instrument', code: 'E&I' },
-    { id: 2, name: 'Engineering TD', code: 'ENG-TD' },
-    { id: 3, name: 'Fermentation', code: 'FERM' },
-    { id: 4, name: 'HRGA', code: 'HRGA' },
-    { id: 5, name: 'PMR 1 dan DCL', code: 'PMR1-DCL' },
-    { id: 6, name: 'PMR 2', code: 'PMR2' },
-    { id: 7, name: 'Isolasi dan LF', code: 'ISOLASI-LF' },
-    { id: 8, name: 'IT', code: 'IT' },
-    { id: 9, name: 'Logistic', code: 'LOG' },
-    { id: 10, name: 'Packing', code: 'PACK' },
-    { id: 11, name: 'Polycello dan TMP', code: 'POLY-TMP' },
-    { id: 12, name: 'QC & QA', code: 'QC-QA' },
-    { id: 14, name: 'SHE, WT, IPAL', code: 'SHE-WT-IPAL' },
-    { id: 15, name: 'TMM', code: 'TMM' },
-    { id: 16, name: 'UTILITY', code: 'UTIL' }
-];
-
-const PERIODE_LIST = [
-    { id: 1, name: 'Periode 1', months: 'Jan - Mar' },
-    { id: 2, name: 'Periode 2', months: 'Apr - Jun' },
-    { id: 3, name: 'Periode 3', months: 'Jul - Sep' },
-    { id: 4, name: 'Periode 4', months: 'Okt - Des' }
-];
+import { APPROVAL_STAGES, PERIODE_LIST } from './config/constants.js';
+import { isValidDemoLogin, DEMO_DISPLAY_NAME } from './config/demo-auth.js';
+import { getRandomOfficer } from './data/officers.js';
+import * as inspectionRepository from './repositories/inspection-repository.js';
+import * as scheduleRepository from './repositories/schedule-repository.js';
+import * as plantRepository from './repositories/plant-repository.js';
 
 // ========================================================================
-// ========== APPROVAL STAGES ==========
+// ========== CATATAN MIGRASI ==========
 // ========================================================================
-
-const APPROVAL_STAGES = [
-    { id: 1, name: 'Safety Officer', title: 'Safety Officer', order: 1 },
-    { id: 2, name: 'Koord. K3L Bagian', title: 'Koordinator K3L Bagian', order: 2 },
-    { id: 3, name: 'Manajer Bagian', title: 'Manajer Bagian', order: 3 },
-    { id: 4, name: 'Ketua P2K3', title: 'Ketua P2K3', order: 4 }
-];
-
+//
+// Sudah dipindahkan keluar dari berkas ini:
+//   Phase 3  formatDate, isOverdue, getDateOffset   -> shared/date.js
+//            highlightText, highlightTextPlant      -> highlight() di shared/html.js
+//                                                      (versi baru meng-escape teksnya)
+//   Phase 4  PLANT_LIST                             -> data/plants.js
+//            PERIODE_LIST, APPROVAL_STAGES          -> config/constants.js
+//            VALID_USERNAME, VALID_PASSWORD         -> config/demo-auth.js
+//            getRandomOfficer                       -> data/officers.js
+//            generateWeeklySchedule                 -> data/schedules.seed.js
+//            inspeksiData (literal)                 -> data/inspections.seed.js
+//            inspeksiData, jadwalData (state)       -> repositories/
+//
+// Berikutnya: aturan bisnis ke domain/ (Phase 5), operasi ke services/ (Phase 6).
 // ========================================================================
-// ========== HELPERS ==========
-// ========================================================================
-
-// formatDate, getDateOffset, dan isOverdue dipindahkan ke shared/date.js.
-// highlightText dan highlightTextPlant digantikan highlight() di shared/html.js,
-// yang meng-escape teksnya — versi lama menyisipkan data mentah ke innerHTML.
-
-function getRandomOfficer() {
-    const officers = ['Arif', 'Tulus', 'Mustofa', 'Melka'];
-    return officers[Math.floor(Math.random() * officers.length)];
-}
-
-// ========================================================================
-// ========== GENERATE JADWAL MINGGUAN (DIKURANGI) ==========
-// ========================================================================
-
-function generateWeeklySchedule() {
-    const today = new Date();
-    const currentYear = today.getFullYear();
-    
-    const schedules = [];
-    let idCounter = 1;
-
-    // Hanya 6 plant yang aktif
-    const activePlants = [
-        { id: 1, name: 'Electrical dan Instrument', code: 'E&I' },
-        { id: 3, name: 'Fermentation', code: 'FERM' },
-        { id: 6, name: 'PMR 2', code: 'PMR2' },
-        { id: 9, name: 'Logistic', code: 'LOG' },
-        { id: 14, name: 'SHE, WT, IPAL', code: 'SHE-WT-IPAL' },
-        { id: 16, name: 'UTILITY', code: 'UTIL' }
-    ];
-
-    const officers = ['Arif', 'Tulus', 'Mustofa', 'Melka'];
-
-    activePlants.forEach((plant, plantIndex) => {
-        // Setiap plant punya 2 jadwal
-        for (let i = 0; i < 2; i++) {
-            // Jadwal di hari Senin, dengan interval 2-3 minggu
-            const weekOffset = (i * 3) + (plantIndex % 2) + 1;
-            const date = new Date(today);
-            date.setDate(date.getDate() + (weekOffset * 7) + (1 - date.getDay() + 7) % 7 + 7);
-            
-            const diffDays = (date - today) / (1000 * 60 * 60 * 24);
-            if (diffDays > 35 || diffDays < -7) continue;
-            
-            const officerIndex = (plant.id + i) % officers.length;
-            
-            const isRealisasi = Math.random() < 0.3 && diffDays < 0;
-            const realisasiDate = isRealisasi ? new Date(date) : null;
-            if (realisasiDate) {
-                realisasiDate.setDate(realisasiDate.getDate() + Math.floor(Math.random() * 3) + 1);
-            }
-            
-            const month = date.getMonth();
-            let periode = 1;
-            if (month >= 3 && month <= 5) periode = 2;
-            else if (month >= 6 && month <= 8) periode = 3;
-            else if (month >= 9 && month <= 11) periode = 4;
-            
-            schedules.push({
-                id: `SCH-${String(idCounter++).padStart(3, '0')}`,
-                plantId: plant.id,
-                plantName: plant.name,
-                periode: periode,
-                tahun: currentYear,
-                minggu: i + 1,
-                tanggalJadwal: date.toISOString().split('T')[0],
-                tanggalRealisasi: realisasiDate ? realisasiDate.toISOString().split('T')[0] : null,
-                officer: officers[officerIndex],
-                status: isRealisasi ? 'selesai' : 'aktif'
-            });
-        }
-    });
-
-    return schedules;
-}
-
-// ========================================================================
-// ========== DATA ==========
-// ========================================================================
-
-let jadwalData = generateWeeklySchedule();
-
-let inspeksiData = [{
-    id: 'INS-001',
-    lokasi: 'Electrical dan Instrument',
-    plantId: 1,
-    keteranganLokasi: 'Ruang Panel E&I Lantai 2',
-    lat: -6.200000,
-    lng: 106.816666,
-    tanggal: getDateOffset(-5),
-    petugas: 'Arif',
-    status: 'selesai',
-    dueDate: getDateOffset(-2),
-    fotoDekat: ['kimia_dekat1.jpg', 'kimia_dekat2.jpg'],
-    fotoJauh: ['kimia_jauh1.jpg'],
-    approvals: {
-        1: { approved: true, by: 'Arif', jabatan: 'Safety Officer', tanggal: getDateOffset(-4) + ' 09:00' },
-        2: { approved: true, by: 'Bambang', jabatan: 'Koord. K3L Bagian', tanggal: getDateOffset(-3) + ' 10:30' },
-        3: { approved: true, by: 'Siti', jabatan: 'Manajer Bagian', tanggal: getDateOffset(-2) + ' 13:15' },
-        4: { approved: true, by: 'Hadi', jabatan: 'Ketua P2K3', tanggal: getDateOffset(-1) + ' 16:00' }
-    },
-    temuan: [
-        { deskripsi: 'Kabel ground tidak terpasang dengan benar', kategori: 'Kelistrikan' },
-        { deskripsi: 'Panel kontrol tidak terkunci', kategori: 'Kecelakaan' }
-    ],
-    perbaikan: [
-        { tgl: getDateOffset(-4), action: 'Perbaiki grounding kabel', status: 'closed', pic: 'Arif',
-            foto: ['ground1.jpg'] },
-        { tgl: getDateOffset(-3), action: 'Pasang kunci panel', status: 'closed', pic: 'Tulus',
-            foto: ['kunci1.jpg'] }
-    ]
-}, {
-    id: 'INS-002',
-    lokasi: 'Fermentation',
-    plantId: 3,
-    keteranganLokasi: 'Area Fermentasi A2',
-    lat: -6.210000,
-    lng: 106.820000,
-    tanggal: getDateOffset(-3),
-    petugas: 'Mustofa',
-    status: 'proses',
-    dueDate: getDateOffset(3),
-    fotoDekat: ['fermentasi_dekat1.jpg'],
-    fotoJauh: ['fermentasi_jauh1.jpg'],
-    approvals: {
-        1: { approved: true, by: 'Mustofa', jabatan: 'Safety Officer', tanggal: getDateOffset(-2) + ' 08:00' },
-        2: { approved: false, by: null, jabatan: 'Koord. K3L Bagian', tanggal: null },
-        3: { approved: false, by: null, jabatan: 'Manajer Bagian', tanggal: null },
-        4: { approved: false, by: null, jabatan: 'Ketua P2K3', tanggal: null }
-    },
-    temuan: [
-        { deskripsi: 'Suhu fermentasi tidak stabil', kategori: 'Kesehatan' },
-        { deskripsi: 'Kebocoran pada pipa transfer', kategori: 'Kebocoran' }
-    ],
-    perbaikan: [
-        { tgl: getDateOffset(-2), action: 'Kalibrasi sensor suhu', status: 'closed', pic: 'Tulus',
-            foto: ['sensor1.jpg'] },
-        { tgl: getDateOffset(-1), action: 'Perbaiki kebocoran pipa', status: 'on-progress', pic: 'Melka',
-            foto: ['pipa1.jpg'] }
-    ]
-}, {
-    id: 'INS-003',
-    lokasi: 'PMR 2',
-    plantId: 6,
-    keteranganLokasi: 'Gedung PMR 2 - Lantai 3',
-    lat: -6.190000,
-    lng: 106.810000,
-    tanggal: getDateOffset(-7),
-    petugas: 'Melka',
-    status: 'tinjau',
-    dueDate: getDateOffset(-1),
-    fotoDekat: ['pmr2_dekat1.jpg'],
-    fotoJauh: ['pmr2_jauh1.jpg'],
-    approvals: {
-        1: { approved: true, by: 'Melka', jabatan: 'Safety Officer', tanggal: getDateOffset(-6) + ' 11:00' },
-        2: { approved: true, by: 'Dewi', jabatan: 'Koord. K3L Bagian', tanggal: getDateOffset(-5) + ' 09:30' },
-        3: { approved: false, by: null, jabatan: 'Manajer Bagian', tanggal: null },
-        4: { approved: false, by: null, jabatan: 'Ketua P2K3', tanggal: null }
-    },
-    temuan: [
-        { deskripsi: 'APAR tidak terisi penuh', kategori: 'Kebakaran' },
-        { deskripsi: 'Rambu evakuasi tidak terlihat', kategori: 'Kecelakaan' }
-    ],
-    perbaikan: [
-        { tgl: getDateOffset(-6), action: 'Isi ulang APAR', status: 'closed', pic: 'Arif',
-            foto: ['apar1.jpg'] },
-        { tgl: getDateOffset(-4), action: 'Pasang rambu evakuasi baru', status: 'open', pic: 'Tulus',
-            foto: [] }
-    ]
-}, {
-    id: 'INS-004',
-    lokasi: 'Logistic',
-    plantId: 9,
-    keteranganLokasi: 'Gudang Logistik - Rak C4',
-    lat: -6.180000,
-    lng: 106.815000,
-    tanggal: getDateOffset(-10),
-    petugas: 'Tulus',
-    status: 'selesai',
-    dueDate: getDateOffset(-5),
-    fotoDekat: ['logistik_dekat1.jpg'],
-    fotoJauh: ['logistik_jauh1.jpg'],
-    approvals: {
-        1: { approved: true, by: 'Tulus', jabatan: 'Safety Officer', tanggal: getDateOffset(-9) + ' 10:00' },
-        2: { approved: true, by: 'Rina', jabatan: 'Koord. K3L Bagian', tanggal: getDateOffset(-8) + ' 11:30' },
-        3: { approved: true, by: 'Andi', jabatan: 'Manajer Bagian', tanggal: getDateOffset(-7) + ' 09:00' },
-        4: { approved: true, by: 'Hadi', jabatan: 'Ketua P2K3', tanggal: getDateOffset(-6) + ' 15:00' }
-    },
-    temuan: [
-        { deskripsi: 'Rak penyimpanan tidak stabil', kategori: 'Kecelakaan' },
-        { deskripsi: 'Penerangan gudang kurang', kategori: 'Kesehatan' }
-    ],
-    perbaikan: [
-        { tgl: getDateOffset(-9), action: 'Perbaiki rak penyimpanan', status: 'closed', pic: 'Melka',
-            foto: ['rak1.jpg'] },
-        { tgl: getDateOffset(-7), action: 'Tambah lampu penerangan', status: 'closed', pic: 'Arif',
-            foto: ['lampu1.jpg'] }
-    ]
-}, {
-    id: 'INS-005',
-    lokasi: 'UTILITY',
-    plantId: 16,
-    keteranganLokasi: 'Ruang Utility - Pompa Air',
-    lat: -6.195000,
-    lng: 106.825000,
-    tanggal: getDateOffset(-1),
-    petugas: 'Mustofa',
-    status: 'proses',
-    dueDate: getDateOffset(7),
-    fotoDekat: ['utility_dekat1.jpg'],
-    fotoJauh: ['utility_jauh1.jpg'],
-    approvals: {
-        1: { approved: true, by: 'Mustofa', jabatan: 'Safety Officer', tanggal: getDateOffset(0) + ' 07:30' },
-        2: { approved: false, by: null, jabatan: 'Koord. K3L Bagian', tanggal: null },
-        3: { approved: false, by: null, jabatan: 'Manajer Bagian', tanggal: null },
-        4: { approved: false, by: null, jabatan: 'Ketua P2K3', tanggal: null }
-    },
-    temuan: [
-        { deskripsi: 'Bocor pada sambungan pipa', kategori: 'Kebocoran' },
-        { deskripsi: 'Tekanan air tidak stabil', kategori: 'Lainnya' }
-    ],
-    perbaikan: [
-        { tgl: getDateOffset(0), action: 'Identifikasi sumber bocor', status: 'on-progress', pic: 'Tulus',
-            foto: ['bocor1.jpg'] }
-    ]
-}, {
-    id: 'INS-006',
-    lokasi: 'SHE, WT, IPAL',
-    plantId: 14,
-    keteranganLokasi: 'Area IPAL - Bak Sedimentasi',
-    lat: -6.205000,
-    lng: 106.818000,
-    tanggal: getDateOffset(-12),
-    petugas: 'Melka',
-    status: 'selesai',
-    dueDate: getDateOffset(-8),
-    fotoDekat: ['ipal_dekat1.jpg'],
-    fotoJauh: ['ipal_jauh1.jpg'],
-    approvals: {
-        1: { approved: true, by: 'Melka', jabatan: 'Safety Officer', tanggal: getDateOffset(-11) + ' 08:00' },
-        2: { approved: true, by: 'Dewi', jabatan: 'Koord. K3L Bagian', tanggal: getDateOffset(-10) + ' 09:30' },
-        3: { approved: true, by: 'Andi', jabatan: 'Manajer Bagian', tanggal: getDateOffset(-9) + ' 13:00' },
-        4: { approved: false, by: null, jabatan: 'Ketua P2K3', tanggal: null }
-    },
-    temuan: [
-        { deskripsi: 'Pompa IPAL tidak berfungsi optimal', kategori: 'Lainnya' },
-        { deskripsi: 'Kebersihan area sekitar kurang', kategori: 'Kesehatan' }
-    ],
-    perbaikan: [
-        { tgl: getDateOffset(-11), action: 'Perbaiki pompa IPAL', status: 'closed', pic: 'Arif',
-            foto: ['pompa1.jpg'] },
-        { tgl: getDateOffset(-10), action: 'Bersihkan area IPAL', status: 'closed', pic: 'Mustofa',
-            foto: ['bersih1.jpg'] }
-    ]
-}];
-
 // ========================================================================
 // ========== SELECT WITH SEARCH ==========
 // ========================================================================
@@ -328,10 +54,7 @@ function initPlantSelect() {
     const clearBtn = document.getElementById('clearPlantSelection');
 
     function renderDropdown(filter = '') {
-        const filtered = PLANT_LIST.filter(p => 
-            p.name.toLowerCase().includes(filter.toLowerCase()) ||
-            p.code.toLowerCase().includes(filter.toLowerCase())
-        );
+        const filtered = plantRepository.search(filter);
 
         if (filtered.length === 0) {
             dropdown.innerHTML = `<div class="dropdown-item" style="color:#8a6a6a;">Tidak ada plant ditemukan</div>`;
@@ -430,10 +153,7 @@ function initPlantSelect() {
     const clearBtnJ = document.getElementById('clearPlantSelectionJadwal');
 
     function renderDropdownJ(filter = '') {
-        const filtered = PLANT_LIST.filter(p => 
-            p.name.toLowerCase().includes(filter.toLowerCase()) ||
-            p.code.toLowerCase().includes(filter.toLowerCase())
-        );
+        const filtered = plantRepository.search(filter);
 
         if (filtered.length === 0) {
             dropdownJ.innerHTML = `<div class="dropdown-item" style="color:#8a6a6a;">Tidak ada plant ditemukan</div>`;
@@ -532,9 +252,6 @@ function initPlantSelect() {
 // ========== LOGIN SYSTEM ==========
 // ========================================================================
 
-const VALID_USERNAME = 'sasapolkesma';
-const VALID_PASSWORD = 'sasapolkesma';
-
 function handleLogin(event) {
     event.preventDefault();
 
@@ -542,14 +259,14 @@ function handleLogin(event) {
     const password = document.getElementById('loginPassword').value.trim();
     const errorMessage = document.getElementById('loginError');
 
-    if (username === VALID_USERNAME && password === VALID_PASSWORD) {
+    if (isValidDemoLogin(username, password)) {
         errorMessage.classList.remove('show');
         document.getElementById('loginPage').classList.add('hidden');
         document.getElementById('mainApp').classList.add('visible');
 
         const initial = username.charAt(0).toUpperCase();
         document.getElementById('userAvatar').textContent = initial + initial;
-        document.getElementById('userName').textContent = 'Safety Officer';
+        document.getElementById('userName').textContent = DEMO_DISPLAY_NAME;
 
         showToast('✅ Selamat datang, Safety Officer!');
 
@@ -779,7 +496,7 @@ function renderApprovalStages(item) {
 // ========================================================================
 
 window.approveStage = function(inspeksiId, stageId) {
-    const item = inspeksiData.find(d => d.id === inspeksiId);
+    const item = inspectionRepository.findById(inspeksiId);
     if (!item) { showToast('⚠️ Data tidak ditemukan'); return; }
 
     const stage = APPROVAL_STAGES.find(s => s.id === stageId);
@@ -820,7 +537,7 @@ window.approveStage = function(inspeksiId, stageId) {
 };
 
 window.rejectStage = function(inspeksiId, stageId) {
-    const item = inspeksiData.find(d => d.id === inspeksiId);
+    const item = inspectionRepository.findById(inspeksiId);
     if (!item) { showToast('⚠️ Data tidak ditemukan'); return; }
 
     const stage = APPROVAL_STAGES.find(s => s.id === stageId);
@@ -847,7 +564,7 @@ window.rejectStage = function(inspeksiId, stageId) {
 // ========================================================================
 
 function openApprovalModal(inspeksiId) {
-    const item = inspeksiData.find(d => d.id === inspeksiId);
+    const item = inspectionRepository.findById(inspeksiId);
     if (!item) { showToast('⚠️ Data tidak ditemukan'); return; }
 
     const modal = document.getElementById('approvalModal');
@@ -905,7 +622,7 @@ document.getElementById('approvalModal').addEventListener('click', function(e) {
 // ========================================================================
 
 window.cetakPDF = function(id) {
-    const item = inspeksiData.find(d => d.id === id);
+    const item = inspectionRepository.findById(id);
     if (!item) { showToast('⚠️ Data tidak ditemukan'); return; }
 
     const allApproved = APPROVAL_STAGES.every(s => item.approvals && item.approvals[s.id] && item.approvals[s.id].approved === true);
@@ -1124,7 +841,7 @@ function renderCalendar() {
     const todayYear = today.getFullYear();
 
     const events = {};
-    jadwalData.forEach(j => {
+    scheduleRepository.getAll().forEach(j => {
         if (j.tanggalJadwal) {
             const d = new Date(j.tanggalJadwal);
             const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -1240,7 +957,7 @@ function changeCalendarMonth(delta) {
 
 function showDayEvents(dateKey) {
     const events = [];
-    jadwalData.forEach(j => {
+    scheduleRepository.getAll().forEach(j => {
         if (j.tanggalJadwal) {
             const d = new Date(j.tanggalJadwal);
             const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -1467,7 +1184,7 @@ function renderInspeksiTable(data, tbodyId, isFull, highlightQuery = '') {
 function renderJadwalTable(data = null, highlightQuery = '') {
     const tbody = document.getElementById('jadwalTableBody');
     if (!tbody) return;
-    const displayData = data !== null ? data : jadwalData;
+    const displayData = data !== null ? data : scheduleRepository.getAll();
     let notifCount = 0;
 
     if (displayData.length === 0) {
@@ -1481,7 +1198,7 @@ function renderJadwalTable(data = null, highlightQuery = '') {
 
     tbody.innerHTML = limitedData.map(item => {
         const periode = PERIODE_LIST.find(p => p.id === item.periode);
-        const plant = PLANT_LIST.find(p => p.id === item.plantId);
+        const plant = plantRepository.findById(item.plantId);
         
         const plantDisplay = highlight(item.plantName, highlightQuery);
         const officerDisplay = highlight(item.officer, highlightQuery);
@@ -1528,7 +1245,7 @@ function renderJadwalTable(data = null, highlightQuery = '') {
 function renderPerbaikanTable(data = null, highlightQuery = '') {
     const tbody = document.getElementById('perbaikanTableBody');
     if (!tbody) return;
-    const sourceData = data !== null ? data : inspeksiData;
+    const sourceData = data !== null ? data : inspectionRepository.getAll();
     const displayData = sourceData.filter(item => item.perbaikan && item.perbaikan.length > 0);
 
     if (displayData.length === 0) {
@@ -1629,11 +1346,11 @@ function renderTemuanPlantChart() {
     const ctx = document.getElementById('temuanPlantChart').getContext('2d');
 
     const plantCounts = {};
-    PLANT_LIST.forEach(p => {
+    plantRepository.getAll().forEach(p => {
         plantCounts[p.name] = 0;
     });
 
-    inspeksiData.forEach(item => {
+    inspectionRepository.getAll().forEach(item => {
         if (item.temuan && item.temuan.length > 0) {
             const plantName = item.lokasi;
             if (plantCounts[plantName] !== undefined) {
@@ -1705,7 +1422,7 @@ function renderTemuanPlantChart() {
 // ========================================================================
 
 window.exportTemuanPerItem = function(id) {
-    const item = inspeksiData.find(d => d.id === id);
+    const item = inspectionRepository.findById(id);
     if (!item) { showToast('⚠️ Data tidak ditemukan'); return; }
     if (!item.temuan || item.temuan.length === 0) { showToast('⚠️ Tidak ada temuan'); return; }
 
@@ -1744,7 +1461,7 @@ function getApprovalStatusText(item) {
 
 function exportAllTemuan() {
     let allTemuan = [];
-    inspeksiData.forEach(item => {
+    inspectionRepository.getAll().forEach(item => {
         if (item.temuan && item.temuan.length > 0) {
             item.temuan.forEach((t) => {
                 allTemuan.push({
@@ -1805,7 +1522,7 @@ function exportToExcel(data, filename = 'Data_Inspeksi_K3.xlsx') {
 // ========================================================================
 
 window.openDetailModal = function(id) {
-    const item = inspeksiData.find(d => d.id === id);
+    const item = inspectionRepository.findById(id);
     if (!item) { showToast('⚠️ Data tidak ditemukan'); return; }
     const modal = document.getElementById('detailModal');
     const content = document.getElementById('detailContent');
@@ -1920,7 +1637,7 @@ window.openJadwalModal = function(data = null) {
 
     if (data) {
         document.getElementById('editJadwalId').value = data.id;
-        const plant = PLANT_LIST.find(p => p.id === data.plantId);
+        const plant = plantRepository.findById(data.plantId);
         if (plant) {
             document.getElementById('plantSearchInputJadwal').value = plant.name;
             document.getElementById('selectedPlantJadwal').value = plant.id;
@@ -1953,13 +1670,13 @@ window.openJadwalModal = function(data = null) {
 };
 
 window.editJadwal = function(id) {
-    const item = jadwalData.find(d => d.id === id);
+    const item = scheduleRepository.findById(id);
     if (item) openJadwalModal(item);
 };
 
 window.hapusJadwal = function(id) {
     if (confirm(`Hapus jadwal ${id}?`)) {
-        jadwalData = jadwalData.filter(d => d.id !== id);
+        scheduleRepository.remove(id);
         refreshAll();
         showToast(`🗑️ Jadwal ${id} dihapus`);
     }
@@ -1988,11 +1705,11 @@ document.getElementById('submitJadwal').addEventListener('click', function(e) {
     if (!tahun || tahun < 2020) { showToast('⚠️ Tahun wajib diisi!'); return; }
     if (!tanggalJadwal) { showToast('⚠️ Tanggal Jadwal wajib diisi!'); return; }
 
-    const plant = PLANT_LIST.find(p => p.id == plantId);
+    const plant = plantRepository.findById(plantId);
     const plantName = plant ? plant.name : '';
 
     if (id) {
-        const item = jadwalData.find(d => d.id === id);
+        const item = scheduleRepository.findById(id);
         if (item) {
             item.plantId = parseInt(plantId);
             item.plantName = plantName;
@@ -2005,8 +1722,8 @@ document.getElementById('submitJadwal').addEventListener('click', function(e) {
             showToast(`✅ Jadwal ${id} berhasil diupdate`);
         }
     } else {
-        const newId = `SCH-${String(jadwalData.length + 1).padStart(3, '0')}`;
-        jadwalData.push({
+        const newId = scheduleRepository.nextId();
+        scheduleRepository.add({
             id: newId,
             plantId: parseInt(plantId),
             plantName: plantName,
@@ -2036,7 +1753,7 @@ document.getElementById('submitJadwal').addEventListener('click', function(e) {
 // ========================================================================
 
 window.openPerbaikanModal = function(id) {
-    const item = inspeksiData.find(d => d.id === id);
+    const item = inspectionRepository.findById(id);
     if (!item) { showToast('⚠️ Data tidak ditemukan'); return; }
     const modal = document.getElementById('perbaikanModal');
     const content = document.getElementById('modalContent');
@@ -2171,7 +1888,7 @@ window.openPerbaikanModal = function(id) {
 };
 
 window.tambahPerbaikanCustom = function(id) {
-    const item = inspeksiData.find(d => d.id === id);
+    const item = inspectionRepository.findById(id);
     if (!item) { showToast('⚠️ Data tidak ditemukan'); return; }
     
     const action = document.getElementById('newAction').value.trim();
@@ -2282,7 +1999,7 @@ document.getElementById('submitInspeksi').addEventListener('click', function(e) 
     const temuan = temuanData ? JSON.parse(temuanData) : [];
     if (temuan.length === 0) { showToast('⚠️ Tambahkan minimal 1 temuan!'); return; }
 
-    const plant = PLANT_LIST.find(p => p.id == selectedPlantId);
+    const plant = plantRepository.findById(selectedPlantId);
     const lokasi = plant ? plant.name : '';
     const keteranganLokasi = document.getElementById('formKeteranganLokasi').value.trim();
     const tanggal = document.getElementById('formTanggal').value;
@@ -2294,7 +2011,7 @@ document.getElementById('submitInspeksi').addEventListener('click', function(e) 
 
     if (!tanggal) { showToast('⚠️ Tanggal inspeksi wajib diisi!'); return; }
 
-    const newId = `INS-${String(inspeksiData.length + 1).padStart(3, '0')}`;
+    const newId = inspectionRepository.nextId();
     
     const initialApprovals = {};
     APPROVAL_STAGES.forEach((s, index) => {
@@ -2339,7 +2056,7 @@ document.getElementById('submitInspeksi').addEventListener('click', function(e) 
         }))
     };
 
-    inspeksiData.unshift(newInspeksi);
+    inspectionRepository.add(newInspeksi);
     temuanList = [];
     renderTemuanList();
     document.getElementById('temuanInput').value = '';
@@ -2363,11 +2080,11 @@ document.getElementById('submitInspeksi').addEventListener('click', function(e) 
 // ========================================================================
 
 function updateStats() {
-    const total = inspeksiData.length;
-    const totalTemuan = inspeksiData.reduce((sum, d) => sum + (d.temuan ? d.temuan.length : 0), 0);
-    const selesaiPerbaikan = inspeksiData.filter(d => d.perbaikan && d.perbaikan.every(p => p.status === 'closed'))
+    const total = inspectionRepository.count();
+    const totalTemuan = inspectionRepository.getAll().reduce((sum, d) => sum + (d.temuan ? d.temuan.length : 0), 0);
+    const selesaiPerbaikan = inspectionRepository.getAll().filter(d => d.perbaikan && d.perbaikan.every(p => p.status === 'closed'))
         .length;
-    const jadwalAktif = jadwalData.filter(d => d.status === 'aktif' && !d.tanggalRealisasi).length;
+    const jadwalAktif = scheduleRepository.getAll().filter(d => d.status === 'aktif' && !d.tanggalRealisasi).length;
     document.getElementById('statTotalInspeksi').textContent = total;
     document.getElementById('statTotalTemuan').textContent = totalTemuan;
     document.getElementById('statJadwalAktif').textContent = jadwalAktif;
@@ -2384,11 +2101,11 @@ function refreshAll() {
 
     if (perbaikanChart) {
         const counts = {
-            selesai: inspeksiData.filter(d => d.perbaikan && d.perbaikan.every(p => p.status === 'closed'))
+            selesai: inspectionRepository.getAll().filter(d => d.perbaikan && d.perbaikan.every(p => p.status === 'closed'))
                 .length,
-            perbaikan: inspeksiData.filter(d => d.perbaikan && d.perbaikan.some(p => p.status === 'on-progress'))
+            perbaikan: inspectionRepository.getAll().filter(d => d.perbaikan && d.perbaikan.some(p => p.status === 'on-progress'))
                 .length,
-            tinjau: inspeksiData.filter(d => d.perbaikan && d.perbaikan.some(p => p.status === 'open'))
+            tinjau: inspectionRepository.getAll().filter(d => d.perbaikan && d.perbaikan.some(p => p.status === 'open'))
                 .length,
         };
         perbaikanChart.data.datasets[0].data = [counts.selesai, counts.perbaikan, counts.tinjau];
@@ -2407,9 +2124,9 @@ function initCharts() {
 
     const ctx2 = document.getElementById('perbaikanChart').getContext('2d');
     const counts = {
-        selesai: inspeksiData.filter(d => d.perbaikan && d.perbaikan.every(p => p.status === 'closed')).length,
-        perbaikan: inspeksiData.filter(d => d.perbaikan && d.perbaikan.some(p => p.status === 'on-progress')).length,
-        tinjau: inspeksiData.filter(d => d.perbaikan && d.perbaikan.some(p => p.status === 'open')).length,
+        selesai: inspectionRepository.getAll().filter(d => d.perbaikan && d.perbaikan.every(p => p.status === 'closed')).length,
+        perbaikan: inspectionRepository.getAll().filter(d => d.perbaikan && d.perbaikan.some(p => p.status === 'on-progress')).length,
+        tinjau: inspectionRepository.getAll().filter(d => d.perbaikan && d.perbaikan.some(p => p.status === 'open')).length,
     };
     perbaikanChart = new Chart(ctx2, {
         type: 'doughnut',
@@ -2450,7 +2167,7 @@ document.querySelectorAll('.nav-tab').forEach(tab => {
 // ========== EVENT LISTENERS EXPORT ==========
 // ========================================================================
 
-document.getElementById('exportSpreadsheet').addEventListener('click', () => exportToExcel(inspeksiData,
+document.getElementById('exportSpreadsheet').addEventListener('click', () => exportToExcel(inspectionRepository.getAll(),
     'Inspeksi_K3.xlsx'));
 document.getElementById('exportAllTemuan').addEventListener('click', exportAllTemuan);
 
@@ -2466,7 +2183,7 @@ async function syncToGoogleSheets(btn) {
         }
         showToast('🔄 Menyiapkan data...');
 
-        const dataToSync = inspeksiData.map(item => ({
+        const dataToSync = inspectionRepository.getAll().map(item => ({
             'ID': item.id,
             'Lokasi / Plant': item.lokasi,
             'Keterangan Lokasi': item.keteranganLokasi || '-',
@@ -2538,18 +2255,18 @@ function initApp() {
     document.getElementById('formDueDate').value = defaultDueDate.toISOString().split('T')[0];
 
     setupSearch('searchInspeksiInput', 'clearSearchInspeksi', 'searchInspeksiCount',
-        () => inspeksiData, renderInspeksiWithSearch, ['id', 'lokasi', 'petugas', 'status', 'dueDate']);
+        () => inspectionRepository.getAll(), renderInspeksiWithSearch, ['id', 'lokasi', 'petugas', 'status', 'dueDate']);
 
     setupSearch('searchAllInspeksiInput', 'clearSearchAllInspeksi', 'searchAllInspeksiCount',
-        () => inspeksiData, renderAllInspeksiWithSearch, ['id', 'lokasi', 'keteranganLokasi', 'petugas',
+        () => inspectionRepository.getAll(), renderAllInspeksiWithSearch, ['id', 'lokasi', 'keteranganLokasi', 'petugas',
             'status'
         ]);
 
     setupSearch('searchJadwalInput', 'clearSearchJadwal', 'searchJadwalCount',
-        () => jadwalData, renderJadwalWithSearch, ['plantName', 'officer', 'status']);
+        () => scheduleRepository.getAll(), renderJadwalWithSearch, ['plantName', 'officer', 'status']);
 
     setupSearch('searchPerbaikanInput', 'clearSearchPerbaikan', 'searchPerbaikanCount',
-        () => inspeksiData, renderPerbaikanWithSearch, ['id', 'lokasi', 'petugas', 'dueDate']);
+        () => inspectionRepository.getAll(), renderPerbaikanWithSearch, ['id', 'lokasi', 'petugas', 'dueDate']);
 
     renderTemuanList();
     initCharts();
@@ -2561,10 +2278,10 @@ function initApp() {
     }, 10000);
 
     console.log('🚀 SHE Sasa K3 System - DEMO MODE ACTIVE');
-    console.log(`📊 ${inspeksiData.length} inspeksi, ${jadwalData.length} jadwal mingguan`);
-    console.log(`🏭 ${PLANT_LIST.length} Plant terdaftar`);
+    console.log(`📊 ${inspectionRepository.count()} inspeksi, ${scheduleRepository.count()} jadwal mingguan`);
+    console.log(`🏭 ${plantRepository.count()} Plant terdaftar`);
     console.log(`📋 4 Tahap Pengesahan: ${APPROVAL_STAGES.map(s => s.title).join(' → ')}`);
-    console.log(`📅 Jadwal mingguan setiap plant - ${jadwalData.length} total jadwal`);
+    console.log(`📅 Jadwal mingguan setiap plant - ${scheduleRepository.count()} total jadwal`);
 }
 
 document.getElementById('loginPassword').addEventListener('keydown', function(e) {

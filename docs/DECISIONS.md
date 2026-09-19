@@ -219,3 +219,57 @@ Meng-escape lebih dulu akan membuat query dapat mencocokkan bagian dari entity (
 Rencana Phase 3 menyebut `src/shared/dom.js`. Tidak dibuat — belum ada konsumennya. Helper
 DOM baru masuk akal pada Phase 7 dan 9 saat komponen dan controller dibentuk. Membuatnya
 sekarang berarti abstraksi tanpa manfaat.
+
+---
+
+## K-8 — Repository mengembalikan array hidup, bukan salinan
+
+**Tanggal:** 2026-09-19 · **Status:** diputuskan saat Phase 4 · **Fase:** 4
+
+`getAll()` pada `inspection-repository.js` dan `schedule-repository.js` mengembalikan array
+yang sesungguhnya, bukan salinannya. Abstraksinya bocor, dan itu diterima untuk sekarang.
+
+### Alasan
+
+Kode pemanggil masih memutasi objek inspeksi secara langsung di banyak tempat:
+
+```js
+item.approvals[stageId] = { approved: true, ... };   // approveStage
+item.perbaikan.push({ ... });                         // tambahPerbaikanCustom
+item.status = 'selesai';                              // beberapa tempat
+```
+
+Mengembalikan salinan dangkal tetap membuat mutasi objek berhasil (referensinya sama), tetapi
+menambah alokasi pada setiap render tanpa memberi jaminan apa pun. Mengembalikan salinan dalam
+akan **mematahkan** mutasi tersebut secara diam-diam — perubahan hilang tanpa error. Itu
+regresi yang mahal, dan tidak ada gunanya diambil pada fase yang tujuannya memindahkan
+kepemilikan state.
+
+### Yang sudah diperoleh meski begitu
+
+- `let inspeksiData` dan `let jadwalData` tidak ada lagi; koleksinya punya pemilik tunggal.
+- Penggantian binding pada hapus jadwal (`jadwalData = jadwalData.filter(...)`) kini terjadi
+  di dalam satu modul, bukan pada variabel global yang dipegang banyak tempat.
+- Penerbitan id terpusat di `nextId()`.
+- Ada seam yang jelas untuk diganti implementasi API.
+
+### Kapan diperketat
+
+Sebelum repository in-memory diganti versi API. Prasyaratnya: ketiga mutasi di atas lebih dulu
+dipindahkan menjadi method eksplisit (`approveStage`, `addCorrectiveAction`, `updateStatus`)
+pada Phase 6. Setelah itu `getAll()` dapat mengembalikan salinan tanpa memutus apa pun.
+
+### Hal lain yang diputuskan di fase ini
+
+- **`plantRepository.findById()` membandingkan sebagai string.** Kode lama tidak konsisten —
+  dua tempat memakai `===` (id berupa angka dari data) dan dua tempat memakai `==` (id berupa
+  string dari nilai `<input type="hidden">`). `String(a) === String(b)` mencakup keduanya tanpa
+  mengubah hasil untuk kasus mana pun.
+- **Data seed inspeksi dibungkus fungsi** (`createInspectionSeed()`), bukan konstanta modul,
+  supaya `getDateOffset()` dihitung saat repository diinisialisasi, bukan saat modul di-parse.
+- **Skema id yang cacat tidak diperbaiki.** `SCH-nnn` diturunkan dari jumlah data, sehingga
+  menghapus lalu menambah jadwal dapat menghasilkan id kembar. Perilaku ini sudah ada sebelum
+  refactoring; memperbaikinya adalah perubahan yang terlihat dan pantas dikerjakan terpisah.
+- **Konstanta status tidak dibuat.** Rencana sempat menyebutnya, tetapi mengganti literal
+  `'closed'`/`'selesai'`/`'tinjau'` di seluruh kode adalah pekerjaan domain — masuk Phase 5,
+  bukan diselundupkan ke fase pemindahan data.

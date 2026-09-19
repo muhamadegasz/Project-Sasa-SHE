@@ -5,7 +5,7 @@ Severity memakai skala CRITICAL / HIGH / MEDIUM / LOW.
 
 | ID | Severity | Temuan | Status |
 |---|---|---|---|
-| S-01 | CRITICAL | Kredensial hard-coded di client, ditampilkan pula di UI login | **TERBUKA** — Phase 6 memisahkannya ke `config/demo-auth.js` |
+| S-01 | CRITICAL | Kredensial hard-coded di client, ditampilkan pula di UI login | **TERBUKA** — dipisahkan ke `config/demo-auth.js` pada Phase 4 dengan peringatan eksplisit, tetapi **tetap tidak aman**. Hanya backend yang dapat menutupnya. |
 | S-02 | HIGH | DOM XSS: data pengguna disisipkan mentah ke `innerHTML` | **DITANGANI** — Phase 3 |
 | S-03 | HIGH | HTML attribute injection lewat argumen `onclick` dan `title` | **DITANGANI** — Phase 3 |
 | S-04 | HIGH | Spreadsheet formula injection pada ekspor XLSX | **TERBUKA** — Phase 6 (disetujui, lihat DECISIONS K-4) |
@@ -86,3 +86,21 @@ Selama belum ada backend, tidak ada satu pun aturan di sini yang tidak dapat dil
 pengguna lewat DevTools. Escaping yang ditambahkan pada Phase 3 melindungi dari data
 berbahaya yang **ditampilkan kembali**, bukan dari pengguna yang memanipulasi aplikasinya
 sendiri.
+
+---
+
+## Catatan Phase 4 — S-01 dipisahkan, bukan diperbaiki
+
+Kredensial demo dipindahkan dari `legacy-app.js` ke `src/config/demo-auth.js`, diberi nama
+`DEMO_CREDENTIALS`, dan berkasnya dibuka dengan peringatan panjang.
+
+**Ini tidak membuatnya lebih aman satu langkah pun.** Berkas itu tetap dikirim ke browser dan
+tetap dapat dibaca siapa pun. Yang berubah hanya dua hal, dan keduanya soal kejelasan:
+
+1. Concern authentication tidak lagi bercampur dengan logika aplikasi.
+2. Siapa pun yang membuka berkas itu langsung tahu bahwa ini bukan authentication.
+
+Login aplikasi ini masih hanya menukar CSS class. Seluruh data dan fungsi tetap dapat diakses
+tanpa login dengan menghapus class `.hidden` lewat DevTools. Jangan memuat data K3 sungguhan
+ke aplikasi ini sampai ada backend yang memverifikasi kredensial dan memeriksa otorisasi di
+setiap endpoint.
