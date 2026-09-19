@@ -273,3 +273,64 @@ pada Phase 6. Setelah itu `getAll()` dapat mengembalikan salinan tanpa memutus a
 - **Konstanta status tidak dibuat.** Rencana sempat menyebutnya, tetapi mengganti literal
   `'closed'`/`'selesai'`/`'tinjau'` di seluruh kode adalah pekerjaan domain — masuk Phase 5,
   bukan diselundupkan ke fase pemindahan data.
+
+---
+
+## K-9 — Batas domain: aturan masuk, label tidak
+
+**Tanggal:** 2026-09-19 · **Status:** diputuskan saat Phase 5 · **Fase:** 5
+
+### Yang dipindahkan ke `src/domain/`
+
+Fungsi murni tanpa DOM, tanpa toast, tanpa mutasi: perhitungan progres, penurunan status
+perbaikan, urutan tahap pengesahan, pembuatan record approval, serta overdue dan keaktifan
+jadwal. Semuanya kini dapat diuji tanpa browser — 59 unit test.
+
+Duplikasi yang hilang:
+
+| Sebelumnya | Sekarang |
+|---|---|
+| `allApproved` ditulis ulang di **5 tempat** | `isFullyApproved()` |
+| `approvedCount` di 2 tempat | `countApproved()` |
+| Hitungan status untuk chart di 2 tempat, dengan format berbeda | `countRepairStatuses()` |
+| Urutan tahap ditulis **dua cara berbeda** — `order - 1` di `approveStage`, `index - 1` di `renderApprovalStages` | `isPreviousStageApproved()` |
+
+Poin terakhir yang paling berarti. Kedua bentuk itu kebetulan setara pada data sekarang, tetapi
+menyimpan risiko: menyisipkan satu tahap dengan `order` yang tidak berurutan akan membuat
+keduanya menghasilkan jawaban berbeda — dan tampilan tidak akan cocok lagi dengan apa yang
+benar-benar diizinkan.
+
+### Yang sengaja TETAP di luar domain
+
+**Label dan warna adalah presentasi, bukan aturan bisnis.** Kelima `statusMap` belum digabung,
+dan itu bukan kelalaian:
+
+| Lokasi | `'closed'` dipetakan ke |
+|---|---|
+| `cetakPDF` | `✅ Selesai` |
+| `openPerbaikanModal` | `✅ Closed` |
+
+Nilai yang sama, label berbeda. Menggabungkannya akan **mengubah teks yang terlihat pengguna**
+di salah satu tempat. Hanya dua map yang benar-benar identik (`renderPerbaikanTable` dan
+`statusPerbaikanMap` di `openPerbaikanModal`); keduanya baru digabung pada Phase 8 saat
+presenter dibentuk, bersama pemetaan warna di template PDF.
+
+`getApprovalStatusText()` juga tetap di `legacy-app.js`. Angkanya kini datang dari domain
+(`countApproved`, `totalStages`), tetapi perangkaian teksnya adalah presentasi.
+
+### Literal status tidak diganti massal
+
+`domain/statuses.js` mendefinisikan nilainya, dan modul domain memakainya. Literal yang tersisa
+di `legacy-app.js` hampir semuanya adalah **kunci objek label** dan interpolasi CSS class —
+mengubahnya jadi computed key hanya menambah kebisingan tanpa manfaat. Itu ikut hilang sendiri
+ketika renderer pindah ke presenter.
+
+Satu hal yang perlu diingat: nilai pada `statuses.js` **juga merupakan nama CSS class**
+(`.status-badge.selesai`, `.progress-fill.selesai_perbaikan`). Mengubah nilainya akan
+mematikan style secara diam-diam. Peringatan itu ditulis di berkasnya.
+
+### `isOverdue` ada dua
+
+`shared/date.js` mengerti format lokal `D/M/YYYY` yang dipakai data inspeksi.
+`domain/schedule-rules.js` mengerti ISO `YYYY-MM-DD` yang dipakai jadwal. Keduanya sengaja
+dibiarkan terpisah — menyatukan format tanggal adalah pekerjaan tersendiri yang mengubah data.

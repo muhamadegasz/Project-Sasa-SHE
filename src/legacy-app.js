@@ -20,6 +20,29 @@ import * as inspectionRepository from './repositories/inspection-repository.js';
 import * as scheduleRepository from './repositories/schedule-repository.js';
 import * as plantRepository from './repositories/plant-repository.js';
 
+import {
+    getProgress,
+    getRepairStatus,
+    statusFromActions,
+    allActionsClosed,
+    hasActionInProgress,
+    hasActionOpen,
+    countAllFindings,
+} from './domain/inspection-rules.js';
+import {
+    findStage,
+    isStageApproved,
+    isPreviousStageApproved,
+    canApproveStage,
+    isFullyApproved,
+    countApproved,
+    totalStages,
+    buildApprovalRecord,
+    buildRejectionRecord,
+    buildInitialApprovals,
+} from './domain/approval-rules.js';
+import * as scheduleRules from './domain/schedule-rules.js';
+
 // ========================================================================
 // ========== CATATAN MIGRASI ==========
 // ========================================================================
@@ -36,7 +59,13 @@ import * as plantRepository from './repositories/plant-repository.js';
 //            inspeksiData (literal)                 -> data/inspections.seed.js
 //            inspeksiData, jadwalData (state)       -> repositories/
 //
-// Berikutnya: aturan bisnis ke domain/ (Phase 5), operasi ke services/ (Phase 6).
+//   Phase 5  getProgress, getStatusPerbaikan          -> domain/inspection-rules.js
+//            allApproved (5 salinan), approvedCount   -> domain/approval-rules.js
+//            urutan tahap, pembuatan record approval  -> domain/approval-rules.js
+//            overdue & keaktifan jadwal               -> domain/schedule-rules.js
+//            nilai status (juga dipakai CSS class)    -> domain/statuses.js
+//
+// Berikutnya: operasi bisnis ke services/ (Phase 6), lalu presentation/ (Phase 7-9).
 // ========================================================================
 // ========================================================================
 // ========== SELECT WITH SEARCH ==========
@@ -400,20 +429,6 @@ function switchTab(tabName) {
     }, 100);
 }
 
-function getProgress(item) {
-    if (!item.perbaikan || item.perbaikan.length === 0) return 0;
-    const done = item.perbaikan.filter(p => p.status === 'closed').length;
-    return Math.round((done / item.perbaikan.length) * 100);
-}
-
-function getStatusPerbaikan(item) {
-    if (!item.perbaikan || item.perbaikan.length === 0) return 'open';
-    const allClosed = item.perbaikan.every(p => p.status === 'closed');
-    if (allClosed) return 'selesai_perbaikan';
-    const hasProgress = item.perbaikan.some(p => p.status === 'on-progress');
-    if (hasProgress) return 'perbaikan';
-    return 'tinjau';
-}
 
 function renderGallery(images, label = '') {
     if (!images || images.length === 0 || images[0] === '-') {
@@ -442,11 +457,10 @@ function renderApprovalStages(item) {
     
     return `
         <div class="approval-stages">
-            ${APPROVAL_STAGES.map((stage, index) => {
+            ${APPROVAL_STAGES.map((stage) => {
                 const approval = approvals[stage.id] || { approved: false, by: null, jabatan: stage.title, tanggal: null };
                 const isCompleted = approval.approved === true;
-                const isCurrent = !isCompleted && (index === 0 || (approvals[APPROVAL_STAGES[index-1].id] && approvals[APPROVAL_STAGES[index-1].id].approved === true));
-                const isPending = !isCompleted && !isCurrent;
+                const isCurrent = canApproveStage(item, stage);
 
                 let statusClass = 'waiting';
                 let statusText = 'Menunggu';
@@ -499,32 +513,23 @@ window.approveStage = function(inspeksiId, stageId) {
     const item = inspectionRepository.findById(inspeksiId);
     if (!item) { showToast('⚠️ Data tidak ditemukan'); return; }
 
-    const stage = APPROVAL_STAGES.find(s => s.id === stageId);
+    const stage = findStage(stageId);
     if (!stage) { showToast('⚠️ Tahap tidak ditemukan'); return; }
 
-    const prevStage = APPROVAL_STAGES.find(s => s.order === stage.order - 1);
-    if (prevStage) {
-        const prevApproval = item.approvals && item.approvals[prevStage.id];
-        if (!prevApproval || !prevApproval.approved) {
-            showToast('⚠️ Tahap sebelumnya belum disetujui!');
-            return;
-        }
+    if (!isPreviousStageApproved(item, stage)) {
+        showToast('⚠️ Tahap sebelumnya belum disetujui!');
+        return;
     }
 
-    if (item.approvals && item.approvals[stageId] && item.approvals[stageId].approved) {
+    if (isStageApproved(item, stageId)) {
         showToast('⚠️ Tahap ini sudah disetujui!');
         return;
     }
 
     if (!item.approvals) item.approvals = {};
-    item.approvals[stageId] = {
-        approved: true,
-        by: stage.name === 'Safety Officer' ? item.petugas : 'Approver',
-        jabatan: stage.title,
-        tanggal: new Date().toLocaleString('id-ID')
-    };
+    item.approvals[stageId] = buildApprovalRecord(stage, item);
 
-    const allApproved = APPROVAL_STAGES.every(s => item.approvals[s.id] && item.approvals[s.id].approved === true);
+    const allApproved = isFullyApproved(item);
     if (allApproved) {
         item.status = 'selesai';
         showToast('🎉 Semua tahap pengesahan telah disetujui! Inspeksi selesai.');
@@ -540,18 +545,12 @@ window.rejectStage = function(inspeksiId, stageId) {
     const item = inspectionRepository.findById(inspeksiId);
     if (!item) { showToast('⚠️ Data tidak ditemukan'); return; }
 
-    const stage = APPROVAL_STAGES.find(s => s.id === stageId);
+    const stage = findStage(stageId);
     if (!stage) { showToast('⚠️ Tahap tidak ditemukan'); return; }
 
     if (confirm(`Tolak inspeksi ${inspeksiId} oleh ${stage.title}?`)) {
         if (!item.approvals) item.approvals = {};
-        item.approvals[stageId] = {
-            approved: false,
-            by: 'Rejected',
-            jabatan: stage.title,
-            tanggal: new Date().toLocaleString('id-ID'),
-            rejected: true
-        };
+        item.approvals[stageId] = buildRejectionRecord(stage);
         item.status = 'tinjau';
         showToast(`❌ ${stage.title} menolak inspeksi ${inspeksiId}`);
         refreshAll();
@@ -625,7 +624,7 @@ window.cetakPDF = function(id) {
     const item = inspectionRepository.findById(id);
     if (!item) { showToast('⚠️ Data tidak ditemukan'); return; }
 
-    const allApproved = APPROVAL_STAGES.every(s => item.approvals && item.approvals[s.id] && item.approvals[s.id].approved === true);
+    const allApproved = isFullyApproved(item);
     if (!allApproved) {
         showToast('⚠️ Inspeksi belum disetujui semua tahap! Silahkan selesaikan pengesahan terlebih dahulu.');
         return;
@@ -1095,7 +1094,7 @@ function renderInspeksiTable(data, tbodyId, isFull, highlightQuery = '') {
 
     tbody.innerHTML = data.map(item => {
         const progress = getProgress(item);
-        const statusPerbaikan = getStatusPerbaikan(item);
+        const statusPerbaikan = getRepairStatus(item);
         const statusLabel = statusPerbaikan === 'selesai_perbaikan' ? '✅ Selesai' :
             statusPerbaikan === 'perbaikan' ? '🔄 Perbaikan' : '⏳ Tinjau';
         const overdue = isOverdue(item.dueDate);
@@ -1124,7 +1123,7 @@ function renderInspeksiTable(data, tbodyId, isFull, highlightQuery = '') {
             `<button class="btn-export-temuan" onclick="exportTemuanPerItem(${jsArg(item.id)})" title="Export temuan ke Excel"><i class="fas fa-file-excel"></i></button>` :
             '';
 
-        const allApproved = APPROVAL_STAGES.every(s => item.approvals && item.approvals[s.id] && item.approvals[s.id].approved === true);
+        const allApproved = isFullyApproved(item);
         const pdfBtn = allApproved ?
             `<button class="btn-pdf" onclick="cetakPDF(${jsArg(item.id)})" title="Cetak PDF Laporan"><i class="fas fa-file-pdf"></i></button>` :
             `<button class="btn-pdf" disabled title="Harus disetujui semua tahap terlebih dahulu"><i class="fas fa-file-pdf"></i></button>`;
@@ -1135,9 +1134,9 @@ function renderInspeksiTable(data, tbodyId, isFull, highlightQuery = '') {
             approvalStatus = '✅ Lengkap';
             approvalColor = 'selesai';
         } else {
-            const approvedCount = Object.values(item.approvals || {}).filter(a => a && a.approved === true).length;
+            const approvedCount = countApproved(item);
             if (approvedCount > 0) {
-                approvalStatus = `${approvedCount}/${APPROVAL_STAGES.length}`;
+                approvalStatus = `${approvedCount}/${totalStages()}`;
                 approvalColor = 'proses';
             }
         }
@@ -1207,7 +1206,7 @@ function renderJadwalTable(data = null, highlightQuery = '') {
         const tanggalRealisasiDisplay = item.tanggalRealisasi ? formatDate(item.tanggalRealisasi) : '-';
         const mingguDisplay = item.minggu ? `Minggu ${item.minggu}` : '-';
 
-        const isOverdueSchedule = item.tanggalJadwal && new Date(item.tanggalJadwal) < new Date() && !item.tanggalRealisasi;
+        const isOverdueSchedule = scheduleRules.isOverdue(item);
 
         let statusClass = 'proses';
         let statusText = 'Aktif';
@@ -1256,7 +1255,7 @@ function renderPerbaikanTable(data = null, highlightQuery = '') {
 
     tbody.innerHTML = displayData.map(item => {
         const progress = getProgress(item);
-        const statusPerbaikan = getStatusPerbaikan(item);
+        const statusPerbaikan = getRepairStatus(item);
         const lastAction = item.perbaikan[item.perbaikan.length - 1];
         const temuanText = item.temuan && item.temuan.length > 0 ? item.temuan[0].deskripsi : '-';
         const overdue = isOverdue(item.dueDate);
@@ -1452,11 +1451,11 @@ window.exportTemuanPerItem = function(id) {
     showToast(`📊 ${item.temuan.length} temuan dari ${item.id} diekspor`);
 };
 
+// Label pengesahan untuk ditampilkan. Angkanya datang dari domain; hanya
+// perangkaian teksnya yang ada di sini. Phase 8 memindahkannya ke presenter.
 function getApprovalStatusText(item) {
-    const allApproved = APPROVAL_STAGES.every(s => item.approvals && item.approvals[s.id] && item.approvals[s.id].approved === true);
-    if (allApproved) return '✅ Lengkap (4/4)';
-    const approvedCount = Object.values(item.approvals || {}).filter(a => a && a.approved === true).length;
-    return `${approvedCount}/${APPROVAL_STAGES.length}`;
+    if (isFullyApproved(item)) return `✅ Lengkap (${totalStages()}/${totalStages()})`;
+    return `${countApproved(item)}/${totalStages()}`;
 }
 
 function exportAllTemuan() {
@@ -1507,7 +1506,7 @@ function exportToExcel(data, filename = 'Data_Inspeksi_K3.xlsx') {
         'Due Date Plant': item.dueDate || '-',
         'Status': item.status,
         'Progres Perbaikan': `${getProgress(item)}%`,
-        'Status Perbaikan': getStatusPerbaikan(item),
+        'Status Perbaikan': getRepairStatus(item),
         'Status Pengesahan': getApprovalStatusText(item),
     }));
     const wb = XLSX.utils.book_new();
@@ -1759,7 +1758,7 @@ window.openPerbaikanModal = function(id) {
     const content = document.getElementById('modalContent');
 
     const progress = getProgress(item);
-    const statusPerbaikan = getStatusPerbaikan(item);
+    const statusPerbaikan = getRepairStatus(item);
 
     const statusMap = {
         'closed': '✅ Closed',
@@ -1798,7 +1797,7 @@ window.openPerbaikanModal = function(id) {
         'tinjau': 'Open'
     };
 
-    const allApproved = APPROVAL_STAGES.every(s => item.approvals && item.approvals[s.id] && item.approvals[s.id].approved === true);
+    const allApproved = isFullyApproved(item);
 
     content.innerHTML = `
             <div class="perbaikan-info-box">
@@ -1910,12 +1909,7 @@ window.tambahPerbaikanCustom = function(id) {
         foto: fotoFiles 
     });
     
-    const allClosed = item.perbaikan.every(p => p.status === 'closed');
-    if (allClosed) {
-        item.status = 'selesai';
-    } else {
-        item.status = 'proses';
-    }
+    item.status = statusFromActions(item);
     
     refreshAll();
     showToast(`✅ Tindakan "${action}" ditambahkan dengan ${fotoFiles.length} foto`);
@@ -2013,24 +2007,7 @@ document.getElementById('submitInspeksi').addEventListener('click', function(e) 
 
     const newId = inspectionRepository.nextId();
     
-    const initialApprovals = {};
-    APPROVAL_STAGES.forEach((s, index) => {
-        if (index === 0) {
-            initialApprovals[s.id] = {
-                approved: true,
-                by: petugas,
-                jabatan: s.title,
-                tanggal: new Date().toLocaleString('id-ID')
-            };
-        } else {
-            initialApprovals[s.id] = {
-                approved: false,
-                by: null,
-                jabatan: s.title,
-                tanggal: null
-            };
-        }
-    });
+    const initialApprovals = buildInitialApprovals(petugas);
 
     const newInspeksi = {
         id: newId,
@@ -2079,12 +2056,22 @@ document.getElementById('submitInspeksi').addEventListener('click', function(e) 
 // ========== STATS & REFRESH ==========
 // ========================================================================
 
+// Dipakai dua tempat: saat chart dibuat dan saat di-refresh. Dulu ekspresinya
+// ditulis dua kali dan sempat berbeda formatnya.
+function countRepairStatuses() {
+    const inspections = inspectionRepository.getAll();
+    return {
+        selesai: inspections.filter(allActionsClosed).length,
+        perbaikan: inspections.filter(hasActionInProgress).length,
+        tinjau: inspections.filter(hasActionOpen).length,
+    };
+}
+
 function updateStats() {
     const total = inspectionRepository.count();
-    const totalTemuan = inspectionRepository.getAll().reduce((sum, d) => sum + (d.temuan ? d.temuan.length : 0), 0);
-    const selesaiPerbaikan = inspectionRepository.getAll().filter(d => d.perbaikan && d.perbaikan.every(p => p.status === 'closed'))
-        .length;
-    const jadwalAktif = scheduleRepository.getAll().filter(d => d.status === 'aktif' && !d.tanggalRealisasi).length;
+    const totalTemuan = countAllFindings(inspectionRepository.getAll());
+    const selesaiPerbaikan = inspectionRepository.getAll().filter(allActionsClosed).length;
+    const jadwalAktif = scheduleRules.countActive(scheduleRepository.getAll());
     document.getElementById('statTotalInspeksi').textContent = total;
     document.getElementById('statTotalTemuan').textContent = totalTemuan;
     document.getElementById('statJadwalAktif').textContent = jadwalAktif;
@@ -2100,14 +2087,7 @@ function refreshAll() {
     renderTemuanPlantChart();
 
     if (perbaikanChart) {
-        const counts = {
-            selesai: inspectionRepository.getAll().filter(d => d.perbaikan && d.perbaikan.every(p => p.status === 'closed'))
-                .length,
-            perbaikan: inspectionRepository.getAll().filter(d => d.perbaikan && d.perbaikan.some(p => p.status === 'on-progress'))
-                .length,
-            tinjau: inspectionRepository.getAll().filter(d => d.perbaikan && d.perbaikan.some(p => p.status === 'open'))
-                .length,
-        };
+        const counts = countRepairStatuses();
         perbaikanChart.data.datasets[0].data = [counts.selesai, counts.perbaikan, counts.tinjau];
         perbaikanChart.update();
     }
@@ -2123,11 +2103,7 @@ function initCharts() {
     renderTemuanPlantChart();
 
     const ctx2 = document.getElementById('perbaikanChart').getContext('2d');
-    const counts = {
-        selesai: inspectionRepository.getAll().filter(d => d.perbaikan && d.perbaikan.every(p => p.status === 'closed')).length,
-        perbaikan: inspectionRepository.getAll().filter(d => d.perbaikan && d.perbaikan.some(p => p.status === 'on-progress')).length,
-        tinjau: inspectionRepository.getAll().filter(d => d.perbaikan && d.perbaikan.some(p => p.status === 'open')).length,
-    };
+    const counts = countRepairStatuses();
     perbaikanChart = new Chart(ctx2, {
         type: 'doughnut',
         data: {
@@ -2195,7 +2171,7 @@ async function syncToGoogleSheets(btn) {
             'Due Date Plant': item.dueDate || '-',
             'Status': item.status,
             'Progres Perbaikan': `${getProgress(item)}%`,
-            'Status Perbaikan': getStatusPerbaikan(item),
+            'Status Perbaikan': getRepairStatus(item),
             'Status Pengesahan': getApprovalStatusText(item),
         }));
 
