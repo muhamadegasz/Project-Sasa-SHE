@@ -42,10 +42,10 @@ Kredensial demo: `sasapolkesma` / `sasapolkesma`.
 | A-1 | Syntax check ESM: salin tiap berkas `src/**` ke `*.mjs` lalu `node --check` (node memperlakukan `.js` sebagai CommonJS, sehingga `export` akan salah dilaporkan sebagai error) | Tidak ada syntax error |
 | A-2 | Cari `onclick=` di `index.html` dan `src/` | **0** hasil sejak Phase 9 selesai |
 | A-3 | Cari `document.` / `window.` / `innerHTML` di `src/domain/` | **0** hasil — domain harus bebas DOM |
-| A-4 | Cari `showToast` / `innerHTML` di `src/services/` | **0** hasil — service tidak menyentuh UI |
+| A-4 | Cari `showToast` / `innerHTML` / `document.` di `src/services/` | **0** hasil — service tidak menyentuh UI |
 | A-5 | Cari `new Chart` di `src/` | Hanya di `presentation/views/charts.view.js` |
-| A-6 | Cari `XLSX.` di `src/` | Hanya di `services/excel-exporter.js` |
-| A-7 | Cari `html2pdf` di `src/` | Hanya di `services/pdf-exporter.js` |
+| A-6 | Cari `XLSX.` di `src/` | Hanya di `infrastructure/excel-exporter.js` |
+| A-7 | Cari `html2pdf` di `src/` | Hanya di `infrastructure/pdf-exporter.js` |
 | A-8 | DevTools → tab Network | Semua file `src/` dan `assets/css/` status 200, tidak ada 404 |
 
 ---

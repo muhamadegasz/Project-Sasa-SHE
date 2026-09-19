@@ -334,3 +334,54 @@ mematikan style secara diam-diam. Peringatan itu ditulis di berkasnya.
 `shared/date.js` mengerti format lokal `D/M/YYYY` yang dipakai data inspeksi.
 `domain/schedule-rules.js` mengerti ISO `YYYY-MM-DD` yang dipakai jadwal. Keduanya sengaja
 dibiarkan terpisah — menyatukan format tanggal adalah pekerjaan tersendiri yang mengubah data.
+
+---
+
+## K-10 — Service mengembalikan kode, bukan kalimat
+
+**Tanggal:** 2026-09-19 · **Status:** diputuskan saat Phase 6 · **Fase:** 6
+
+Service tidak menampilkan pesan dan tidak menyentuh DOM. Ia mengembalikan bentuk seragam
+`{ ok, reason?, data? }` dari `src/services/result.js`, dengan `reason` berupa **kode**
+seperti `PHOTO_REQUIRED`. Pemetaan kode ke kalimat ada di `legacy-app.js` pada objek
+`PESAN_GAGAL`.
+
+**Alasan:** service yang mengembalikan `'⚠️ Wajib upload foto sebagai bukti progres!'` akan
+menyeret bahasa, emoji, dan gaya penulisan ke lapisan yang seharusnya tidak peduli soal itu.
+Dengan kode, teks pesan dapat diubah — atau diterjemahkan — tanpa menyentuh satu pun aturan.
+
+Seluruh kalimat dipertahankan **sama persis** dengan sebelum refactoring.
+
+### `infrastructure/`, bukan `services/`
+
+Rencana Phase 1 menaruh exporter di `services/`. Setelah dikerjakan, itu tempat yang salah:
+exporter berurusan dengan library pihak ketiga dan mekanisme unduh berkas — termasuk
+`document.createElement('a')` pada jalur Sync. Menaruhnya di `services/` akan melanggar aturan
+yang baru saja ditegakkan di sana.
+
+Karena itu dibuat `src/infrastructure/`, sesuai diagram arsitektur pada laporan audit:
+
+- `services/` — murni, tanpa DOM, tanpa library
+- `infrastructure/` — adaptor ke dunia luar, boleh menyentuh DOM dan library
+
+### `shared/labels.js`
+
+`getApprovalStatusText` dipakai tampilan layar **dan** isi sel Excel. Menaruhnya di
+`presentation/` akan membuat `infrastructure/` mengimpor ke arah yang salah; menaruhnya di
+`domain/` salah kategori, karena ini label, bukan aturan.
+
+Solusinya `shared/labels.js`, yang hanya bergantung pada `domain/` — arah ke dalam, sesuai
+aturan dependency. Nama berkasnya sengaja "labels", bukan "utils", supaya jelas isinya teks
+untuk pengguna.
+
+### Yang dipertahankan meski terlihat aneh
+
+- **`confirm()` tetap di pemanggil.** `rejectStage` dan `hapusJadwal` bertanya lebih dulu, baru
+  memanggil service. Konfirmasi adalah interaksi, bukan aturan bisnis.
+- **Simpan jadwal dengan id tak dikenal mengembalikan `ok` dengan `schedule: null`.** Kode lama
+  juga diam pada kasus itu — tidak ada pesan, modal tetap tertutup, tampilan tetap di-refresh.
+  Mengubahnya menjadi error akan memunculkan pesan yang sebelumnya tidak pernah ada.
+- **Urutan validasi tidak digeser.** Plant, lalu temuan, lalu tanggal. Menggesernya mengubah
+  pesan mana yang muncul lebih dulu ketika beberapa field sekaligus kosong.
+- **Efek visual border merah pada input plant tetap di pemanggil**, lewat helper
+  `tandaiPlantBelumDipilih()`. Itu murni tampilan.

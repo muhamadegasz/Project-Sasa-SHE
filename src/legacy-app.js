@@ -23,7 +23,6 @@ import * as plantRepository from './repositories/plant-repository.js';
 import {
     getProgress,
     getRepairStatus,
-    statusFromActions,
     allActionsClosed,
     hasActionInProgress,
     hasActionOpen,
@@ -31,17 +30,21 @@ import {
 } from './domain/inspection-rules.js';
 import {
     findStage,
-    isStageApproved,
-    isPreviousStageApproved,
     canApproveStage,
     isFullyApproved,
     countApproved,
     totalStages,
-    buildApprovalRecord,
-    buildRejectionRecord,
-    buildInitialApprovals,
 } from './domain/approval-rules.js';
 import * as scheduleRules from './domain/schedule-rules.js';
+
+import { formatApprovalStatus } from './shared/labels.js';
+import * as approvalService from './services/approval-service.js';
+import * as correctiveActionService from './services/corrective-action-service.js';
+import * as inspectionService from './services/inspection-service.js';
+import * as scheduleService from './services/schedule-service.js';
+import { filterByFields } from './services/search-service.js';
+import * as excelExporter from './infrastructure/excel-exporter.js';
+import * as pdfExporter from './infrastructure/pdf-exporter.js';
 
 // ========================================================================
 // ========== CATATAN MIGRASI ==========
@@ -65,8 +68,51 @@ import * as scheduleRules from './domain/schedule-rules.js';
 //            overdue & keaktifan jadwal               -> domain/schedule-rules.js
 //            nilai status (juga dipakai CSS class)    -> domain/statuses.js
 //
-// Berikutnya: operasi bisnis ke services/ (Phase 6), lalu presentation/ (Phase 7-9).
+//   Phase 6  approve/reject pengesahan                -> services/approval-service.js
+//            tambah progres perbaikan                 -> services/corrective-action-service.js
+//            pembuatan inspeksi                       -> services/inspection-service.js
+//            simpan/hapus jadwal                      -> services/schedule-service.js
+//            penyaringan pencarian                    -> services/search-service.js
+//            SheetJS (4 jalur ekspor) + mitigasi S-04 -> infrastructure/excel-exporter.js
+//            html2pdf                                 -> infrastructure/pdf-exporter.js
+//            label status pengesahan                  -> shared/labels.js
+//
+// Berikutnya: komponen UI (Phase 7), presenter + view (Phase 8), controller (Phase 9).
 // ========================================================================
+// ========================================================================
+// ========== PESAN UNTUK PENGGUNA ==========
+// ========================================================================
+//
+// Service mengembalikan KODE alasan, bukan kalimat. Pemetaan ke bahasa,
+// emoji, dan gaya penulisan ada di sini — lapisan yang memang mengurus
+// tampilan. Teksnya sama persis dengan sebelum refactoring.
+
+const PESAN_GAGAL = {
+    INSPECTION_NOT_FOUND: '⚠️ Data tidak ditemukan',
+    STAGE_NOT_FOUND: '⚠️ Tahap tidak ditemukan',
+    PREVIOUS_STAGE_PENDING: '⚠️ Tahap sebelumnya belum disetujui!',
+    ALREADY_APPROVED: '⚠️ Tahap ini sudah disetujui!',
+    ACTION_REQUIRED: '⚠️ Masukkan deskripsi tindakan',
+    PHOTO_REQUIRED: '⚠️ Wajib upload foto sebagai bukti progres!',
+    PLANT_REQUIRED: '⚠️ Silakan pilih Plant terlebih dahulu!',
+    OFFICER_REQUIRED: '⚠️ Safety Officer wajib diisi!',
+    YEAR_REQUIRED: '⚠️ Tahun wajib diisi!',
+    DATE_REQUIRED: '⚠️ Tanggal Jadwal wajib diisi!',
+};
+
+// Efek visual saat plant belum dipilih: fokus + border merah selama 3 detik.
+// Ini murni urusan tampilan, karena itu tetap di sini, bukan di service.
+function tandaiPlantBelumDipilih() {
+    const input = document.getElementById('plantSearchInput');
+    input.focus();
+    input.classList.add('error');
+    setTimeout(() => { input.classList.remove('error'); }, 3000);
+}
+
+function pesanGagal(reason) {
+    return PESAN_GAGAL[reason] || '⚠️ Terjadi kesalahan';
+}
+
 // ========================================================================
 // ========== SELECT WITH SEARCH ==========
 // ========================================================================
@@ -510,52 +556,29 @@ function renderApprovalStages(item) {
 // ========================================================================
 
 window.approveStage = function(inspeksiId, stageId) {
-    const item = inspectionRepository.findById(inspeksiId);
-    if (!item) { showToast('⚠️ Data tidak ditemukan'); return; }
+    const result = approvalService.approve(inspeksiId, stageId);
+    if (!result.ok) { showToast(pesanGagal(result.reason)); return; }
 
-    const stage = findStage(stageId);
-    if (!stage) { showToast('⚠️ Tahap tidak ditemukan'); return; }
-
-    if (!isPreviousStageApproved(item, stage)) {
-        showToast('⚠️ Tahap sebelumnya belum disetujui!');
-        return;
-    }
-
-    if (isStageApproved(item, stageId)) {
-        showToast('⚠️ Tahap ini sudah disetujui!');
-        return;
-    }
-
-    if (!item.approvals) item.approvals = {};
-    item.approvals[stageId] = buildApprovalRecord(stage, item);
-
-    const allApproved = isFullyApproved(item);
-    if (allApproved) {
-        item.status = 'selesai';
-        showToast('🎉 Semua tahap pengesahan telah disetujui! Inspeksi selesai.');
-    } else {
-        showToast(`✅ ${stage.title} telah menyetujui inspeksi ${inspeksiId}`);
-    }
+    const { stage, fullyApproved } = result.data;
+    showToast(fullyApproved
+        ? '🎉 Semua tahap pengesahan telah disetujui! Inspeksi selesai.'
+        : `✅ ${stage.title} telah menyetujui inspeksi ${inspeksiId}`);
 
     refreshAll();
     openApprovalModal(inspeksiId);
 };
 
 window.rejectStage = function(inspeksiId, stageId) {
-    const item = inspectionRepository.findById(inspeksiId);
-    if (!item) { showToast('⚠️ Data tidak ditemukan'); return; }
-
     const stage = findStage(stageId);
-    if (!stage) { showToast('⚠️ Tahap tidak ditemukan'); return; }
+    if (!stage) { showToast(pesanGagal('STAGE_NOT_FOUND')); return; }
+    if (!confirm(`Tolak inspeksi ${inspeksiId} oleh ${stage.title}?`)) return;
 
-    if (confirm(`Tolak inspeksi ${inspeksiId} oleh ${stage.title}?`)) {
-        if (!item.approvals) item.approvals = {};
-        item.approvals[stageId] = buildRejectionRecord(stage);
-        item.status = 'tinjau';
-        showToast(`❌ ${stage.title} menolak inspeksi ${inspeksiId}`);
-        refreshAll();
-        openApprovalModal(inspeksiId);
-    }
+    const result = approvalService.reject(inspeksiId, stageId);
+    if (!result.ok) { showToast(pesanGagal(result.reason)); return; }
+
+    showToast(`❌ ${result.data.stage.title} menolak inspeksi ${inspeksiId}`);
+    refreshAll();
+    openApprovalModal(inspeksiId);
 };
 
 // ========================================================================
@@ -787,29 +810,9 @@ window.cetakPDF = function(id) {
             </div>
         `;
 
-    const element = document.getElementById('pdfContent');
-    const opt = {
-        margin: [0.5, 0.5, 0.5, 0.5],
-        filename: `Laporan_Inspeksi_${item.id}_${new Date().toISOString().slice(0,10)}.pdf`,
-        image: { type: 'jpeg', quality: 0.98 },
-        html2canvas: {
-            scale: 2,
-            useCORS: true,
-            letterRendering: true,
-            scrollY: 0,
-            windowHeight: element.scrollHeight
-        },
-        jsPDF: {
-            unit: 'in',
-            format: 'a4',
-            orientation: 'portrait'
-        },
-        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] }
-    };
-
     showToast('📄 Sedang membuat PDF...');
 
-    html2pdf().set(opt).from(element).save().then(() => {
+    pdfExporter.savePdf(pdfContainer, pdfExporter.reportFilename(item.id)).then(() => {
         showToast(`✅ PDF Laporan ${item.id} berhasil dicetak!`);
     }).catch((err) => {
         showToast(reportError('cetak PDF ' + item.id, err, '⚠️ Gagal membuat PDF. Coba ulangi beberapa saat lagi.'));
@@ -1057,12 +1060,7 @@ function setupSearch(inputId, clearId, countId, dataGetter, renderFunction, sear
             return;
         }
         clearBtn.classList.add('visible');
-        const filtered = data.filter(item => {
-            return searchFields.some(field => {
-                const value = String(item[field] || '').toLowerCase();
-                return value.includes(query);
-            });
-        });
+        const filtered = filterByFields(data, query, searchFields);
         countEl.textContent = `${filtered.length} dari ${data.length}`;
         renderFunction(filtered, query);
     }
@@ -1425,94 +1423,22 @@ window.exportTemuanPerItem = function(id) {
     if (!item) { showToast('⚠️ Data tidak ditemukan'); return; }
     if (!item.temuan || item.temuan.length === 0) { showToast('⚠️ Tidak ada temuan'); return; }
 
-    const exportData = item.temuan.map((t, idx) => ({
-        'No': idx + 1,
-        'ID Inspeksi': item.id,
-        'Lokasi / Plant': item.lokasi,
-        'Keterangan Lokasi': item.keteranganLokasi || '-',
-        'Tanggal Inspeksi': item.tanggal,
-        'Safety Officer': item.petugas,
-        'Deskripsi Temuan': t.deskripsi,
-        'Kategori': t.kategori,
-        'Status Inspeksi': item.status,
-        'Due Date Plant': item.dueDate || '-',
-        'Status Pengesahan': getApprovalStatusText(item)
-    }));
-
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    ws['!cols'] = [
-        { wch: 5 }, { wch: 12 }, { wch: 25 }, { wch: 20 }, { wch: 15 },
-        { wch: 15 }, { wch: 35 }, { wch: 15 }, { wch: 15 }, { wch: 15 },
-        { wch: 25 }
-    ];
-    XLSX.utils.book_append_sheet(wb, ws, 'Temuan');
-    XLSX.writeFile(wb, `Temuan_${item.id}_${new Date().toISOString().slice(0,10)}.xlsx`);
-    showToast(`📊 ${item.temuan.length} temuan dari ${item.id} diekspor`);
+    const { count } = excelExporter.exportFindingsOf(item);
+    showToast(`📊 ${count} temuan dari ${item.id} diekspor`);
 };
 
-// Label pengesahan untuk ditampilkan. Angkanya datang dari domain; hanya
-// perangkaian teksnya yang ada di sini. Phase 8 memindahkannya ke presenter.
-function getApprovalStatusText(item) {
-    if (isFullyApproved(item)) return `✅ Lengkap (${totalStages()}/${totalStages()})`;
-    return `${countApproved(item)}/${totalStages()}`;
-}
 
 function exportAllTemuan() {
-    let allTemuan = [];
-    inspectionRepository.getAll().forEach(item => {
-        if (item.temuan && item.temuan.length > 0) {
-            item.temuan.forEach((t) => {
-                allTemuan.push({
-                    'No': allTemuan.length + 1,
-                    'ID Inspeksi': item.id,
-                    'Lokasi / Plant': item.lokasi,
-                    'Keterangan Lokasi': item.keteranganLokasi || '-',
-                    'Tanggal Inspeksi': item.tanggal,
-                    'Safety Officer': item.petugas,
-                    'Deskripsi Temuan': t.deskripsi,
-                    'Kategori': t.kategori,
-                    'Status Inspeksi': item.status,
-                    'Due Date Plant': item.dueDate || '-',
-                    'Status Pengesahan': getApprovalStatusText(item)
-                });
-            });
-        }
-    });
+    const inspections = inspectionRepository.getAll();
+    const total = inspections.reduce((sum, item) => sum + (item.temuan ? item.temuan.length : 0), 0);
+    if (total === 0) { showToast('⚠️ Tidak ada temuan'); return; }
 
-    if (allTemuan.length === 0) { showToast('⚠️ Tidak ada temuan'); return; }
-
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(allTemuan);
-    ws['!cols'] = [
-        { wch: 5 }, { wch: 12 }, { wch: 25 }, { wch: 20 }, { wch: 15 },
-        { wch: 15 }, { wch: 35 }, { wch: 15 }, { wch: 15 }, { wch: 15 },
-        { wch: 25 }
-    ];
-    XLSX.utils.book_append_sheet(wb, ws, 'Semua Temuan');
-    XLSX.writeFile(wb, `Semua_Temuan_${new Date().toISOString().slice(0,10)}.xlsx`);
-    showToast(`📊 ${allTemuan.length} temuan diekspor`);
+    const { count } = excelExporter.exportAllFindings(inspections);
+    showToast(`📊 ${count} temuan diekspor`);
 }
 
 function exportToExcel(data, filename = 'Data_Inspeksi_K3.xlsx') {
-    const exportData = data.map(item => ({
-        'ID': item.id,
-        'Lokasi / Plant': item.lokasi,
-        'Keterangan Lokasi': item.keteranganLokasi || '-',
-        'Tanggal': item.tanggal,
-        'Safety Officer': item.petugas,
-        'Jumlah Temuan': item.temuan ? item.temuan.length : 0,
-        'Daftar Temuan': item.temuan ? item.temuan.map(t => `${t.deskripsi} (${t.kategori})`).join('; ') : '-',
-        'Due Date Plant': item.dueDate || '-',
-        'Status': item.status,
-        'Progres Perbaikan': `${getProgress(item)}%`,
-        'Status Perbaikan': getRepairStatus(item),
-        'Status Pengesahan': getApprovalStatusText(item),
-    }));
-    const wb = XLSX.utils.book_new();
-    const ws = XLSX.utils.json_to_sheet(exportData);
-    XLSX.utils.book_append_sheet(wb, ws, 'Inspeksi');
-    XLSX.writeFile(wb, filename);
+    excelExporter.exportInspections(data, filename);
     showToast(`📊 Spreadsheet berhasil diekspor: ${filename}`);
 }
 
@@ -1674,11 +1600,11 @@ window.editJadwal = function(id) {
 };
 
 window.hapusJadwal = function(id) {
-    if (confirm(`Hapus jadwal ${id}?`)) {
-        scheduleRepository.remove(id);
-        refreshAll();
-        showToast(`🗑️ Jadwal ${id} dihapus`);
-    }
+    if (!confirm(`Hapus jadwal ${id}?`)) return;
+
+    scheduleService.remove(id);
+    refreshAll();
+    showToast(`🗑️ Jadwal ${id} dihapus`);
 };
 
 document.getElementById('closeJadwalModal').addEventListener('click', function() {
@@ -1690,51 +1616,25 @@ document.getElementById('jadwalModal').addEventListener('click', function(e) {
 
 document.getElementById('submitJadwal').addEventListener('click', function(e) {
     e.preventDefault();
-    const id = document.getElementById('editJadwalId').value;
-    const plantId = document.getElementById('selectedPlantJadwal').value;
-    const periode = parseInt(document.getElementById('jadwalPeriode').value);
-    const tahun = parseInt(document.getElementById('jadwalTahun').value);
-    const tanggalJadwal = document.getElementById('jadwalTanggal').value;
-    const officer = document.getElementById('jadwalPetugas').value.trim();
-    const tanggalRealisasi = document.getElementById('jadwalRealisasi').value;
-    const minggu = parseInt(document.getElementById('jadwalMinggu').value);
+    const result = scheduleService.save({
+        id: document.getElementById('editJadwalId').value,
+        plantId: document.getElementById('selectedPlantJadwal').value,
+        periode: parseInt(document.getElementById('jadwalPeriode').value),
+        tahun: parseInt(document.getElementById('jadwalTahun').value),
+        tanggalJadwal: document.getElementById('jadwalTanggal').value,
+        officer: document.getElementById('jadwalPetugas').value,
+        tanggalRealisasi: document.getElementById('jadwalRealisasi').value,
+        minggu: parseInt(document.getElementById('jadwalMinggu').value),
+    });
+    if (!result.ok) { showToast(pesanGagal(result.reason)); return; }
 
-    if (!plantId) { showToast('⚠️ Silakan pilih Plant terlebih dahulu!'); return; }
-    if (!officer) { showToast('⚠️ Safety Officer wajib diisi!'); return; }
-    if (!tahun || tahun < 2020) { showToast('⚠️ Tahun wajib diisi!'); return; }
-    if (!tanggalJadwal) { showToast('⚠️ Tanggal Jadwal wajib diisi!'); return; }
-
-    const plant = plantRepository.findById(plantId);
-    const plantName = plant ? plant.name : '';
-
-    if (id) {
-        const item = scheduleRepository.findById(id);
-        if (item) {
-            item.plantId = parseInt(plantId);
-            item.plantName = plantName;
-            item.periode = periode;
-            item.tahun = tahun;
-            item.tanggalJadwal = tanggalJadwal;
-            item.tanggalRealisasi = tanggalRealisasi || null;
-            item.officer = officer;
-            item.minggu = minggu;
-            showToast(`✅ Jadwal ${id} berhasil diupdate`);
-        }
-    } else {
-        const newId = scheduleRepository.nextId();
-        scheduleRepository.add({
-            id: newId,
-            plantId: parseInt(plantId),
-            plantName: plantName,
-            periode: periode,
-            tahun: tahun,
-            tanggalJadwal: tanggalJadwal,
-            tanggalRealisasi: tanggalRealisasi || null,
-            officer: officer,
-            minggu: minggu,
-            status: 'aktif'
-        });
-        showToast(`✅ Jadwal ${newId} berhasil ditambahkan`);
+    // schedule bernilai null hanya bila id yang diedit tidak ditemukan —
+    // kode lama juga diam pada kasus itu. Lihat schedule-service.js.
+    const { schedule, created } = result.data;
+    if (schedule) {
+        showToast(created
+            ? `✅ Jadwal ${schedule.id} berhasil ditambahkan`
+            : `✅ Jadwal ${schedule.id} berhasil diupdate`);
     }
 
     document.getElementById('plantSearchInputJadwal').value = '';
@@ -1821,7 +1721,7 @@ window.openPerbaikanModal = function(id) {
                     <span class="label">Pengesahan</span>
                     <span class="value">
                         <span class="status-badge ${allApproved ? 'selesai' : 'proses'}">
-                            ${allApproved ? '✅ Lengkap (4/4)' : getApprovalStatusText(item)}
+                            ${allApproved ? '✅ Lengkap (4/4)' : formatApprovalStatus(item)}
                         </span>
                         ${!allApproved ? `<button class="btn-sm info" onclick="openApprovalModal(${jsArg(item.id)})" style="margin-left:0.3rem;font-size:0.55rem;"><i class="fas fa-stamp"></i></button>` : ''}
                     </span>
@@ -1887,32 +1787,17 @@ window.openPerbaikanModal = function(id) {
 };
 
 window.tambahPerbaikanCustom = function(id) {
-    const item = inspectionRepository.findById(id);
-    if (!item) { showToast('⚠️ Data tidak ditemukan'); return; }
-    
-    const action = document.getElementById('newAction').value.trim();
-    const status = document.getElementById('newStatus').value;
-    const pic = document.getElementById('newPIC').value.trim() || getRandomOfficer();
-    const fotoInput = document.getElementById('newFoto');
-    const fotoFiles = Array.from(fotoInput.files).map(f => f.name);
-
-    if (!action) { showToast('⚠️ Masukkan deskripsi tindakan'); return; }
-    if (fotoFiles.length === 0) { showToast('⚠️ Wajib upload foto sebagai bukti progres!'); return; }
-
-    const today = new Date().toLocaleDateString('id-ID');
-    item.perbaikan = item.perbaikan || [];
-    item.perbaikan.push({ 
-        tgl: today, 
-        action: action, 
-        status: status, 
-        pic: pic, 
-        foto: fotoFiles 
+    const fotoFiles = Array.from(document.getElementById('newFoto').files).map(f => f.name);
+    const result = correctiveActionService.addAction(id, {
+        action: document.getElementById('newAction').value,
+        status: document.getElementById('newStatus').value,
+        pic: document.getElementById('newPIC').value.trim() || getRandomOfficer(),
+        photos: fotoFiles,
     });
-    
-    item.status = statusFromActions(item);
-    
+    if (!result.ok) { showToast(pesanGagal(result.reason)); return; }
+
     refreshAll();
-    showToast(`✅ Tindakan "${action}" ditambahkan dengan ${fotoFiles.length} foto`);
+    showToast(`✅ Tindakan "${result.data.action.action}" ditambahkan dengan ${fotoFiles.length} foto`);
     document.getElementById('newAction').value = '';
     document.getElementById('newFoto').value = '';
     document.getElementById('newFotoCount').textContent = 'Belum ada file';
@@ -1978,62 +1863,35 @@ document.getElementById('temuanInput').addEventListener('keypress', function(e) 
 document.getElementById('submitInspeksi').addEventListener('click', function(e) {
     e.preventDefault();
     
-    const selectedPlantId = document.getElementById('selectedPlant').value;
-    if (!selectedPlantId) {
-        showToast('⚠️ Silakan pilih Lokasi / Plant terlebih dahulu!');
-        document.getElementById('plantSearchInput').focus();
-        document.getElementById('plantSearchInput').classList.add('error');
-        setTimeout(() => {
-            document.getElementById('plantSearchInput').classList.remove('error');
-        }, 3000);
+    const temuanData = document.getElementById('temuanData').value;
+
+    const result = inspectionService.create({
+        plantId: document.getElementById('selectedPlant').value,
+        keteranganLokasi: document.getElementById('formKeteranganLokasi').value.trim(),
+        tanggal: document.getElementById('formTanggal').value,
+        petugas: document.getElementById('formPetugas').value.trim() || getRandomOfficer(),
+        status: document.getElementById('formStatus').value,
+        dueDate: document.getElementById('formDueDate').value,
+        fotoDekat: Array.from(document.getElementById('fotoDekat').files).map(f => f.name),
+        fotoJauh: Array.from(document.getElementById('fotoJauh').files).map(f => f.name),
+        temuan: temuanData ? JSON.parse(temuanData) : [],
+    });
+
+    if (!result.ok) {
+        if (result.reason === inspectionService.INSPECTION_ERROR.PLANT_REQUIRED) {
+            showToast('⚠️ Silakan pilih Lokasi / Plant terlebih dahulu!');
+            tandaiPlantBelumDipilih();
+        } else if (result.reason === inspectionService.INSPECTION_ERROR.FINDINGS_REQUIRED) {
+            showToast('⚠️ Tambahkan minimal 1 temuan!');
+        } else {
+            showToast('⚠️ Tanggal inspeksi wajib diisi!');
+        }
         return;
     }
 
-    const temuanData = document.getElementById('temuanData').value;
-    const temuan = temuanData ? JSON.parse(temuanData) : [];
-    if (temuan.length === 0) { showToast('⚠️ Tambahkan minimal 1 temuan!'); return; }
+    const newId = result.data.inspection.id;
 
-    const plant = plantRepository.findById(selectedPlantId);
-    const lokasi = plant ? plant.name : '';
-    const keteranganLokasi = document.getElementById('formKeteranganLokasi').value.trim();
-    const tanggal = document.getElementById('formTanggal').value;
-    const petugas = document.getElementById('formPetugas').value.trim() || getRandomOfficer();
-    const status = document.getElementById('formStatus').value;
-    const dueDate = document.getElementById('formDueDate').value;
-    const fotoDekat = Array.from(document.getElementById('fotoDekat').files).map(f => f.name);
-    const fotoJauh = Array.from(document.getElementById('fotoJauh').files).map(f => f.name);
 
-    if (!tanggal) { showToast('⚠️ Tanggal inspeksi wajib diisi!'); return; }
-
-    const newId = inspectionRepository.nextId();
-    
-    const initialApprovals = buildInitialApprovals(petugas);
-
-    const newInspeksi = {
-        id: newId,
-        lokasi: lokasi,
-        plantId: parseInt(selectedPlantId),
-        keteranganLokasi: keteranganLokasi || '-',
-        lat: -6.200000,
-        lng: 106.816666,
-        tanggal: new Date(tanggal).toLocaleDateString('id-ID'),
-        petugas: petugas,
-        status: status,
-        dueDate: dueDate ? new Date(dueDate).toLocaleDateString('id-ID') : '-',
-        fotoDekat: fotoDekat.length ? fotoDekat : ['-'],
-        fotoJauh: fotoJauh.length ? fotoJauh : ['-'],
-        approvals: initialApprovals,
-        temuan: temuan,
-        perbaikan: temuan.map((t, idx) => ({
-            tgl: new Date().toLocaleDateString('id-ID'),
-            action: `Temuan ${idx+1}: ${t.deskripsi}`,
-            status: 'open',
-            pic: petugas,
-            foto: []
-        }))
-    };
-
-    inspectionRepository.add(newInspeksi);
     temuanList = [];
     renderTemuanList();
     document.getElementById('temuanInput').value = '';
@@ -2158,35 +2016,7 @@ async function syncToGoogleSheets(btn) {
             btn.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Menyiapkan...';
         }
         showToast('🔄 Menyiapkan data...');
-
-        const dataToSync = inspectionRepository.getAll().map(item => ({
-            'ID': item.id,
-            'Lokasi / Plant': item.lokasi,
-            'Keterangan Lokasi': item.keteranganLokasi || '-',
-            'Tanggal': item.tanggal,
-            'Safety Officer': item.petugas,
-            'Jumlah Temuan': item.temuan ? item.temuan.length : 0,
-            'Daftar Temuan': item.temuan ? item.temuan.map(t => `${t.deskripsi} (${t.kategori})`).join('; ') :
-                '-',
-            'Due Date Plant': item.dueDate || '-',
-            'Status': item.status,
-            'Progres Perbaikan': `${getProgress(item)}%`,
-            'Status Perbaikan': getRepairStatus(item),
-            'Status Pengesahan': getApprovalStatusText(item),
-        }));
-
-        const wb = XLSX.utils.book_new();
-        const ws = XLSX.utils.json_to_sheet(dataToSync);
-        XLSX.utils.book_append_sheet(wb, ws, 'Inspeksi K3');
-        const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
-        const blob = new Blob([wbout], { type: 'application/octet-stream' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.download = `Inspeksi_K3_${new Date().toISOString().slice(0,10)}.xlsx`;
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        URL.revokeObjectURL(link.href);
+        excelExporter.downloadInspectionsWorkbook(inspectionRepository.getAll());
         showToast('✅ File Excel siap! Upload ke Google Sheets.');
     } catch (error) {
         showToast(reportError('siapkan file Excel', error, '⚠️ Gagal menyiapkan file Excel. Coba ulangi beberapa saat lagi.'));

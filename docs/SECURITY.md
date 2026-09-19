@@ -8,7 +8,7 @@ Severity memakai skala CRITICAL / HIGH / MEDIUM / LOW.
 | S-01 | CRITICAL | Kredensial hard-coded di client, ditampilkan pula di UI login | **TERBUKA** — dipisahkan ke `config/demo-auth.js` pada Phase 4 dengan peringatan eksplisit, tetapi **tetap tidak aman**. Hanya backend yang dapat menutupnya. |
 | S-02 | HIGH | DOM XSS: data pengguna disisipkan mentah ke `innerHTML` | **DITANGANI** — Phase 3 |
 | S-03 | HIGH | HTML attribute injection lewat argumen `onclick` dan `title` | **DITANGANI** — Phase 3 |
-| S-04 | HIGH | Spreadsheet formula injection pada ekspor XLSX | **TERBUKA** — Phase 6 (disetujui, lihat DECISIONS K-4) |
+| S-04 | HIGH | Spreadsheet formula injection pada ekspor XLSX | **DITANGANI** — Phase 6 |
 | S-05 | MEDIUM | Empat resource CDN tanpa Subresource Integrity | **TERBUKA** |
 | S-06 | MEDIUM | Pipeline PDF menyuntik HTML pengguna tak ter-escape | **DITANGANI** — Phase 3 |
 | S-07 | MEDIUM | Tidak ada otorisasi pada approval — siapa pun dapat menyetujui 4 tahap | **TERBUKA** — butuh keputusan bisnis |
@@ -23,15 +23,9 @@ Severity memakai skala CRITICAL / HIGH / MEDIUM / LOW.
 
 ### S-02 — DOM XSS
 
-Seluruh nilai data yang masuk ke `innerHTML` kini melewati `escapeHtml()` atau `highlight()`
-dari `src/shared/html.js`. Yang dicakup: deskripsi temuan, keterangan lokasi, nama Safety
-Officer, PIC, deskripsi tindakan perbaikan, nama plant, nama file foto, data pengesahan,
-serta seluruh isi modal dan baris tabel.
+Seluruh nilai data yang masuk ke `innerHTML` kini melewati `escapeHtml()` atau `highlight()` dari `src/shared/html.js`. Yang dicakup: deskripsi temuan, keterangan lokasi, nama Safety Officer, PIC, deskripsi tindakan perbaikan, nama plant, nama file foto, data pengesahan, serta seluruh isi modal dan baris tabel.
 
-`highlight()` menggantikan `highlightText()` dan `highlightTextPlant()`. Versi lama punya dua
-masalah: hasil highlight tidak di-escape, **dan** cabang "tanpa query" mengembalikan teks
-mentah. Versi baru memecah teks lebih dulu, baru meng-escape tiap potongan — urutan ini
-penting, karena meng-escape lebih dulu membuat query bisa mencocokkan bagian dari entity.
+`highlight()` menggantikan `highlightText()` dan `highlightTextPlant()`. Versi lama punya dua masalah: hasil highlight tidak di-escape, **dan** cabang "tanpa query" mengembalikan teks mentah. Versi baru memecah teks lebih dulu, baru meng-escape tiap potongan — urutan ini penting, karena meng-escape lebih dulu membuat query bisa mencocokkan bagian dari entity.
 
 Yang sengaja **tidak** di-escape: potongan HTML yang memang dibangun program (progress bar,
 badge overdue, tombol), label status yang berupa konstanta, angka, dan **sel Excel** —
@@ -104,3 +98,41 @@ Login aplikasi ini masih hanya menukar CSS class. Seluruh data dan fungsi tetap 
 tanpa login dengan menghapus class `.hidden` lewat DevTools. Jangan memuat data K3 sungguhan
 ke aplikasi ini sampai ada backend yang memverifikasi kredensial dan memeriksa otorisasi di
 setiap endpoint.
+
+---
+
+## Yang ditangani pada Phase 6
+
+### S-04 — Spreadsheet formula injection
+
+`src/infrastructure/excel-exporter.js` menetralkan setiap nilai sel bertipe string yang
+diawali `=`, `+`, `-`, atau `@` dengan menyisipkan tanda kutip tunggal di depannya. Excel
+memperlakukannya sebagai penanda teks dan tidak menampilkannya, sehingga `=1+1` tersimpan
+sebagai `'=1+1` dan tampil sebagai teks.
+
+Berlaku otomatis untuk **keempat** jalur ekspor, karena semuanya kini melewati satu fungsi
+pembangun workbook: ekspor temuan per inspeksi, ekspor semua temuan, ekspor ringkasan
+inspeksi, dan tombol Sync.
+
+Angka tidak disentuh — hanya string yang dapat memicu formula. Tanda `=` di tengah nilai juga
+tidak disentuh, karena Excel hanya mengevaluasi yang berada di awal sel.
+
+**Yang berubah dan terlihat:** nilai `-` yang dipakai sebagai penanda kosong kini tersimpan
+sebagai `'-`. Excel tetap menampilkannya sebagai `-`. Disetujui pemilik project (DECISIONS K-4).
+
+Diuji: 19 assertion, termasuk `=HYPERLINK`, dan verifikasi bahwa deskripsi temuan, kategori,
+nama Safety Officer, serta keterangan lokasi benar-benar ternetralkan pada baris yang
+dikirim ke SheetJS — bukan hanya fungsi sanitasinya yang diuji terpisah.
+
+### Isolasi library
+
+Setelah Phase 6, setiap library pihak ketiga hanya disentuh satu berkas:
+
+| Library | Satu-satunya pemakai |
+|---|---|
+| SheetJS (`XLSX`) | `src/infrastructure/excel-exporter.js` |
+| html2pdf | `src/infrastructure/pdf-exporter.js` |
+| Chart.js | `src/legacy-app.js` — pindah ke `charts.view.js` pada Phase 8 |
+
+Kalau kelak SheetJS diganti karena CVE-2024-22363 (S-08), hanya satu berkas yang perlu
+disentuh.
