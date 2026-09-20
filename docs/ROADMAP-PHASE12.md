@@ -18,6 +18,18 @@
 > relatif tetap di dalam `src/services/*.js` tidak bisa diarahkan berbeda tanpa mekanisme itu.
 > Skema database, permukaan API, dan matriks role di bawah **tidak berubah** dari yang
 > disetujui — hanya *bagaimana* itu semua terhubung yang dikoreksi.
+>
+> **Status: Phase 13 (auth sungguhan: bcrypt + session + CSRF) SELESAI diimplementasikan**
+> pada 2026-09-20, menutup S-01 dan S-07. `server/middleware/dev-auth.js` (header `X-Dev-User`)
+> dihapus total. Tiga penyesuaian teknis terhadap rencana — lihat `docs/DECISIONS.md` K-20:
+> (1) session store MySQL ditulis sendiri (`server/db/session-store.js`), BUKAN paket
+> `express-mysql-session` — paket itu membawa `mysql2` versinya sendiri yang kena dua advisory
+> *high severity*; (2) CSRF ditulis manual (synchronizer token, `server/middleware/csrf.js`),
+> bukan paket `csurf` (sudah tidak dipelihara); (3) `src/config/demo-auth.js` **belum** dihapus —
+> menyimpang dari teks rencana ini — karena masih dipakai demo browser yang berdiri sendiri
+> sampai Phase 14 menyambungkannya ke API sungguhan; menghapusnya sekarang akan mematahkan demo
+> sebelum waktunya. `approval-rules.buildApprovalRecord()`/`approval-service.approve()`/`reject()`
+> sudah menerima `approver` sejak Phase 12 (K-18), jadi tidak ada perubahan lagi di titik itu.
 
 ## Context
 

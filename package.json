@@ -25,10 +25,11 @@
     }
   },
   "dependencies": {
-    "express": "^4.19.2",
-    "mysql2": "^3.11.0",
+    "bcryptjs": "^2.4.3",
     "dotenv": "^16.4.5",
-    "bcryptjs": "^2.4.3"
+    "express": "^4.19.2",
+    "express-session": "^1.19.0",
+    "mysql2": "^3.11.0"
   },
   "devDependencies": {
     "supertest": "^7.0.0"

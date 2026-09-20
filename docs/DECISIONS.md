@@ -881,3 +881,115 @@ format yang benar secara internal.
 - Syntax check: seluruh `src/*.js` dan `server/*.js`.
 - HTTP serving: `index.html`, seluruh `src/*.js`, `assets/*.css` tetap 200 lewat server statis
   dev — termasuk `<script type="importmap">` yang divalidasi JSON-nya valid.
+
+## K-19: Bug ditemukan lewat manual testing Postman — `PLANT_NOT_FOUND` (post Phase 12)
+
+Setelah Phase 12 selesai, user menguji API secara manual lewat Postman dan menemukan
+`POST /api/inspections` dengan `plantId` yang tidak ada di database (mis. `99999`) menghasilkan
+`500 Internal Server Error` polos, bukan error input yang jelas.
+
+**Root cause:** `inspection-service.js` `create()` hanya memvalidasi `plantId` untuk "kosong/tidak
+dikirim" (`!input.plantId`). `plantRepository.findById(input.plantId)` yang mengembalikan
+`undefined` untuk id yang tidak ada TIDAK PERNAH dicek — kode lanjut sampai
+`inspectionRepository.add()`, yang meng-`INSERT` dengan `plant_id` tidak valid, melanggar
+`FOREIGN KEY (plant_id) REFERENCES plants(id)`. Exception MySQL itu tidak ditangkap di layer
+manapun, jatuh ke error handler generik di `server/app.js` → 500.
+
+**Fix:** tambah `INSPECTION_ERROR.PLANT_NOT_FOUND` dan satu pengecekan
+`if (!plant) return fail(INSPECTION_ERROR.PLANT_NOT_FOUND);` tepat setelah plant di-lookup,
+SEBELUM data apa pun sampai ke repository — di `src/services/inspection-service.js`, bukan di
+route handler atau lewat blanket try/catch pada error database (validasi tetap spesifik untuk
+input yang salah, bukan menutupi seluruh kelas error database). Karena file ini dipakai bersama
+backend (MySQL) dan browser (in-memory), satu perbaikan ini otomatis menutup celah yang sama di
+keduanya. Test baru ditambahkan di `server/test/api.test.js` untuk kasus ini.
+
+**Catatan proses:** saat menyelidiki bug ini, ditemukan juga bahwa AUTO_INCREMENT MySQL tidak
+pernah dipakai ulang walau sebuah INSERT di-rollback — sehingga inspeksi yang dibuat manual lewat
+Postman lalu terhapus oleh reseed (`npm run db:seed`/`npm run test:api`, yang selalu TRUNCATE +
+isi ulang) membuat `inspectionId` yang tersimpan di collection variable Postman jadi basi
+(mengarah ke id yang tidak pernah ada di state database saat ini). Ini **bukan bug backend** —
+`400 INSPECTION_NOT_FOUND` untuk id yang benar-benar tidak ada adalah perilaku yang benar. Folder
+"04 - Approve & Reject" di collection Postman (`docs/postman/she-sasa-phase12.postman_collection.json`)
+diberi catatan eksplisit soal ini: jalankan ulang request pembuatan inspeksi di folder 03 setiap
+kali database baru saja di-reseed.
+
+## K-20: Phase 13 — Auth sungguhan (bcrypt + express-session + CSRF), menutup S-01 dan S-07
+
+Menggantikan `server/middleware/dev-auth.js` (header `X-Dev-User`, dihapus total) dengan login
+sungguhan: password diverifikasi lewat bcrypt terhadap `users.password_hash`, identitas disimpan
+di session (cookie HttpOnly), bukan lagi bisa dipalsukan lewat header apa pun. Sesuai
+`docs/ROADMAP-PHASE12.md` Phase 13, dengan tiga penyesuaian teknis:
+
+### Penyesuaian #1: session store MySQL ditulis sendiri, BUKAN paket `express-mysql-session`
+
+Rencana awal menyebut "session store MySQL" tanpa menentukan implementasinya. Paket
+`express-mysql-session` (pilihan paling umum) ternyata membawa salinan `mysql2` sendiri yang
+independen dari `mysql2` proyek ini, dan versi yang ter-bundle itu kena dua advisory severity
+**high**: `GHSA-3f6p-5ww8-9rcr` (downgrade auth plugin ke `mysql_clear_password`, bisa membocorkan
+kredensial plaintext) dan `GHSA-rgwj-5xj2-c3m3` (decompression-bomb DoS lewat protokol MySQL
+terkompresi) — dikonfirmasi lewat `npm audit` setelah instalasi (`npm ls mysql2` menunjukkan dua
+versi berbeda hidup berdampingan di `node_modules`). Karena skema tabel sesi cuma tiga kolom
+(`session_id`, `expires`, `data`), ditulis manual di `server/db/session-store.js` — kelas yang
+extends `Store` dari `express-session` sendiri, memakai `pool` yang sama dipakai seluruh backend
+(satu versi `mysql2` di seluruh proyek, nol dependency tambahan). Setelah uninstall
+`express-mysql-session`, `npm audit` kembali bersih (0 vulnerabilities). Baris kedaluwarsa dihapus
+malas (lazy, saat `get()` menemukannya) — sengaja tanpa job sapuan `setInterval`, supaya proses
+Node (termasuk proses test) bisa keluar bersih tanpa timer menggantung.
+
+### Penyesuaian #2: CSRF — synchronizer token pattern manual, bukan paket `csurf`
+
+`csurf` (pilihan paling dikenal) sudah tidak dipelihara dan secara eksplisit dianggap tidak aman
+oleh maintainer Express sendiri untuk pemakaian baru. Sebagai gantinya: `server/middleware/csrf.js`
+menerbitkan token acak (`crypto.randomBytes`) sekali saat login, disimpan di
+`req.session.csrfToken` DAN dikembalikan di body respons login (`csrfToken`). Klien wajib
+mengirim balik lewat header `X-CSRF-Token` pada setiap `POST`/`PUT`/`DELETE`/`PATCH` — dicek sama
+persis dengan yang tersimpan di sesi. `GET`/`HEAD`/`OPTIONS` dikecualikan (tidak mengubah state).
+Endpoint `/api/auth/login` sendiri dikecualikan (belum ada sesi untuk menyimpan token sebelum
+login berhasil) — diamankan lewat kombinasi password + `SameSite=Lax` pada cookie sesi.
+
+### Penyesuaian #3: `src/config/demo-auth.js` TIDAK dihapus di fase ini (menyimpang dari teks rencana awal)
+
+`docs/ROADMAP-PHASE12.md` Phase 13 menyebutkan berkas ini dihapus di fase ini. Setelah dicek, file
+ini murni dipakai browser (`src/legacy-app.js`, toggle class CSS demo login) dan sama sekali
+tidak terhubung ke backend — frontend belum memanggil API apa pun sampai Phase 14 ("Sambungkan
+frontend ke API"). Menghapusnya sekarang akan mematahkan demo browser yang berdiri sendiri
+sebelum Phase 14 sempat menggantikannya dengan login sungguhan lewat API — melanggar invarian
+yang dijaga ketat sejak Phase 12 ("demo browser tidak boleh rusak di luar fasenya sendiri").
+Keputusan: `src/config/demo-auth.js` **dibiarkan apa adanya**, dihapus nanti di Phase 14
+bersamaan dengan `src/repositories/*.js` beralih dari in-memory ke `fetch()`. Yang dihapus di
+fase ini hanya `server/middleware/dev-auth.js` (backend-only, tidak dipakai frontend sama sekali).
+
+### Perubahan lain
+
+- `approval-rules.buildApprovalRecord()` dan `approval-service.approve()`/`reject()` SUDAH
+  menerima parameter `approver` sejak Phase 12 (lihat K-18) — tidak ada perubahan lagi di sini,
+  sesuai rencana ("satu-satunya titik domain/services yang sengaja diubah", sudah selesai lebih
+  awal dari jadwal).
+- `server/middleware/dev-auth.js` dihapus. `server/middleware/session-auth.js` (baru) punya
+  `requireRole()` dengan signature identik — seluruh route (`inspections`/`schedules`/`users`)
+  hanya berganti satu baris import, logic role-nya tidak berubah.
+- `server/routes/auth.routes.js` ditulis ulang: `POST /login` (bcrypt + `session.regenerate()`
+  untuk mencegah session fixation), `POST /logout`, `GET /me` (dua yang terakhir butuh sesi
+  aktif).
+- `.env`/`.env.example`: `SESSION_SECRET` baru (wajib diisi, `express-session` menolak jalan
+  tanpanya).
+- `server/db/migrations/002_sessions.sql`: tabel `sessions`.
+
+### Verifikasi
+
+- Backend: `server/test/api.test.js` ditulis ulang total — pola `X-Dev-User` diganti `loginAs()`
+  (supertest `request.agent()`, satu agent = satu sesi cookie, meniru satu tab browser per role).
+  12 test lulus: 401 tanpa login, 401 username tidak dikenal, 401 password salah (jalur
+  `bcrypt.compare` false), login sukses + `GET /me` konsisten, `403 CSRF_INVALID` tanpa header
+  token, logout menghapus sesi (request berikutnya dengan cookie lama → 401), plus seluruh
+  skenario role/approval/jadwal dari Phase 12 (termasuk kasus baru: approve dobel pada tahap yang
+  sama → `400 ALREADY_APPROVED`, domain logic yang ternyata sudah menjaga ini sejak awal).
+- Manual: alur login → CSRF ditolak tanpa token → CSRF diterima dengan token → logout → request
+  dengan cookie lama ditolak, diverifikasi lewat curl end-to-end sebelum test otomatis ditulis.
+- Frontend: seluruh 352 assertion tetap lulus tanpa perubahan apa pun pada `src/*.js` di fase ini
+  (Phase 13 100% terbatas ke `server/`).
+- `npm audit`: 0 vulnerabilities (setelah mengganti `express-mysql-session` dengan store sendiri).
+- `docs/postman/she-sasa-phase12.postman_collection.json` ditulis ulang total: setiap folder
+  diberi request "Login sebagai <role>" di awal (satu cookie jar Postman = satu sesi aktif,
+  login sebagai role baru menggantikan sesi sebelumnya), header `X-CSRF-Token` otomatis dari
+  variable `{{csrfToken}}` yang di-set tiap login.

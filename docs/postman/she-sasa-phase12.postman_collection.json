@@ -1,0 +1,765 @@
+{
+    "info": {
+        "name": "SHE Sasa - Backend API (Phase 13: Auth Sungguhan)",
+        "description": "Sejak Phase 13, X-Dev-User TIDAK ADA LAGI (server/middleware/dev-auth.js dihapus). Identitas didapat lewat login sungguhan (bcrypt + cookie session HttpOnly) -- jalankan request 'Login sebagai <role>' di awal setiap folder (atau setiap kali butuh ganti role), lalu Postman otomatis membawa cookie sesi di request-request berikutnya (satu cookie jar per domain -- login sebagai role baru akan MENGGANTI sesi yang aktif, seperti login ulang di tab browser yang sama). Setiap request POST/PUT/DELETE WAJIB header X-CSRF-Token, diisi otomatis dari variable {{csrfToken}} yang di-set oleh test script tiap request login. Jalankan server dulu: npm run server (port 3001), lalu import environment 'SHE Sasa - Local (Phase 12)'.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "variable": [
+        { "key": "csrfToken", "value": "" },
+        { "key": "inspectionId", "value": "" },
+        { "key": "scheduleId", "value": "" }
+    ],
+    "item": [
+        {
+            "name": "00 - Login & Access Control",
+            "item": [
+                {
+                    "name": "GET tanpa login -> 401",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": { "raw": "{{baseUrl}}/inspections", "host": ["{{baseUrl}}"], "path": ["inspections"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('status 401', () => pm.response.to.have.status(401));"
+                    ] } }]
+                },
+                {
+                    "name": "POST /auth/login username tidak dikenal -> 401",
+                    "request": {
+                        "method": "POST",
+                        "header": [{ "key": "Content-Type", "value": "application/json" }],
+                        "body": { "mode": "raw", "raw": "{ \"username\": \"tidak-ada\", \"password\": \"apapun\" }" },
+                        "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('status 401 INVALID_CREDENTIALS', () => {",
+                        "  pm.response.to.have.status(401);",
+                        "  pm.expect(pm.response.json().error).to.eql('INVALID_CREDENTIALS');",
+                        "});"
+                    ] } }]
+                },
+                {
+                    "name": "POST /auth/login password salah (arif) -> 401",
+                    "request": {
+                        "method": "POST",
+                        "header": [{ "key": "Content-Type", "value": "application/json" }],
+                        "body": { "mode": "raw", "raw": "{ \"username\": \"arif\", \"password\": \"salah\" }" },
+                        "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('status 401 INVALID_CREDENTIALS', () => {",
+                        "  pm.response.to.have.status(401);",
+                        "  pm.expect(pm.response.json().error).to.eql('INVALID_CREDENTIALS');",
+                        "});"
+                    ] } }]
+                },
+                {
+                    "name": "Login sebagai Arif (Safety Officer) -> simpan csrfToken",
+                    "request": {
+                        "method": "POST",
+                        "header": [{ "key": "Content-Type", "value": "application/json" }],
+                        "body": { "mode": "raw", "raw": "{ \"username\": \"arif\", \"password\": \"arif\" }" },
+                        "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('login berhasil, role benar', () => {",
+                        "  pm.response.to.have.status(200);",
+                        "  const body = pm.response.json();",
+                        "  pm.expect(body.user.role).to.eql('safety_officer');",
+                        "  pm.collectionVariables.set('csrfToken', body.csrfToken);",
+                        "});"
+                    ] } }]
+                },
+                {
+                    "name": "GET /auth/me (pakai cookie sesi dari login)",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": { "raw": "{{baseUrl}}/auth/me", "host": ["{{baseUrl}}"], "path": ["auth", "me"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('status 200, displayName Arif', () => {",
+                        "  pm.response.to.have.status(200);",
+                        "  pm.expect(pm.response.json().user.displayName).to.eql('Arif');",
+                        "});"
+                    ] } }]
+                },
+                {
+                    "name": "POST mengubah state TANPA header X-CSRF-Token -> 403 CSRF_INVALID",
+                    "request": {
+                        "method": "POST",
+                        "header": [{ "key": "Content-Type", "value": "application/json" }],
+                        "body": { "mode": "raw", "raw": "{ \"plantId\": 1, \"officer\": \"Arif\", \"tahun\": 2026, \"tanggalJadwal\": \"2026-11-01\", \"periode\": 4, \"minggu\": 1 }" },
+                        "url": { "raw": "{{baseUrl}}/schedules", "host": ["{{baseUrl}}"], "path": ["schedules"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('status 403 CSRF_INVALID', () => {",
+                        "  pm.response.to.have.status(403);",
+                        "  pm.expect(pm.response.json().error).to.eql('CSRF_INVALID');",
+                        "});"
+                    ] } }]
+                },
+                {
+                    "name": "POST /auth/logout",
+                    "request": {
+                        "method": "POST",
+                        "header": [{ "key": "X-CSRF-Token", "value": "{{csrfToken}}" }],
+                        "url": { "raw": "{{baseUrl}}/auth/logout", "host": ["{{baseUrl}}"], "path": ["auth", "logout"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('status 200', () => pm.response.to.have.status(200));"
+                    ] } }]
+                },
+                {
+                    "name": "GET setelah logout (cookie lama) -> 401",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": { "raw": "{{baseUrl}}/inspections", "host": ["{{baseUrl}}"], "path": ["inspections"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('status 401 (sesi benar-benar hilang)', () => pm.response.to.have.status(401));"
+                    ] } }]
+                }
+            ]
+        },
+        {
+            "name": "01 - Plants",
+            "item": [
+                {
+                    "name": "Login sebagai Arif -> simpan csrfToken",
+                    "request": {
+                        "method": "POST",
+                        "header": [{ "key": "Content-Type", "value": "application/json" }],
+                        "body": { "mode": "raw", "raw": "{ \"username\": \"arif\", \"password\": \"arif\" }" },
+                        "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('login berhasil', () => {",
+                        "  pm.response.to.have.status(200);",
+                        "  pm.collectionVariables.set('csrfToken', pm.response.json().csrfToken);",
+                        "});"
+                    ] } }]
+                },
+                {
+                    "name": "GET /plants -> 15 plant",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": { "raw": "{{baseUrl}}/plants", "host": ["{{baseUrl}}"], "path": ["plants"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('15 plant aktif', () => {",
+                        "  pm.response.to.have.status(200);",
+                        "  pm.expect(pm.response.json().length).to.eql(15);",
+                        "});"
+                    ] } }]
+                }
+            ]
+        },
+        {
+            "name": "02 - Users (Admin Only)",
+            "item": [
+                {
+                    "name": "Login sebagai Arif -> simpan csrfToken",
+                    "request": {
+                        "method": "POST",
+                        "header": [{ "key": "Content-Type", "value": "application/json" }],
+                        "body": { "mode": "raw", "raw": "{ \"username\": \"arif\", \"password\": \"arif\" }" },
+                        "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('login berhasil', () => {",
+                        "  pm.response.to.have.status(200);",
+                        "  pm.collectionVariables.set('csrfToken', pm.response.json().csrfToken);",
+                        "});"
+                    ] } }]
+                },
+                {
+                    "name": "GET /users sebagai Safety Officer -> 403",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": { "raw": "{{baseUrl}}/users", "host": ["{{baseUrl}}"], "path": ["users"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('status 403', () => pm.response.to.have.status(403));"
+                    ] } }]
+                },
+                {
+                    "name": "Login sebagai Admin -> simpan csrfToken",
+                    "request": {
+                        "method": "POST",
+                        "header": [{ "key": "Content-Type", "value": "application/json" }],
+                        "body": { "mode": "raw", "raw": "{ \"username\": \"admin\", \"password\": \"admin\" }" },
+                        "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('login berhasil, role admin', () => {",
+                        "  pm.response.to.have.status(200);",
+                        "  pm.expect(pm.response.json().user.role).to.eql('admin');",
+                        "  pm.collectionVariables.set('csrfToken', pm.response.json().csrfToken);",
+                        "});"
+                    ] } }]
+                },
+                {
+                    "name": "GET /users sebagai Admin -> 200, 8 user",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": { "raw": "{{baseUrl}}/users", "host": ["{{baseUrl}}"], "path": ["users"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('8 user', () => {",
+                        "  pm.response.to.have.status(200);",
+                        "  pm.expect(pm.response.json().length).to.eql(8);",
+                        "});"
+                    ] } }]
+                }
+            ]
+        },
+        {
+            "name": "03 - Inspections",
+            "item": [
+                {
+                    "name": "Login sebagai Arif -> simpan csrfToken",
+                    "request": {
+                        "method": "POST",
+                        "header": [{ "key": "Content-Type", "value": "application/json" }],
+                        "body": { "mode": "raw", "raw": "{ \"username\": \"arif\", \"password\": \"arif\" }" },
+                        "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('login berhasil', () => {",
+                        "  pm.response.to.have.status(200);",
+                        "  pm.collectionVariables.set('csrfToken', pm.response.json().csrfToken);",
+                        "});"
+                    ] } }]
+                },
+                {
+                    "name": "GET /inspections -> 6 inspeksi seed",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": { "raw": "{{baseUrl}}/inspections", "host": ["{{baseUrl}}"], "path": ["inspections"] }
+                    }
+                },
+                {
+                    "name": "GET /inspections/1 (valid)",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": { "raw": "{{baseUrl}}/inspections/1", "host": ["{{baseUrl}}"], "path": ["inspections", "1"] }
+                    }
+                },
+                {
+                    "name": "GET /inspections/9999 (tidak ada) -> 404",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": { "raw": "{{baseUrl}}/inspections/9999", "host": ["{{baseUrl}}"], "path": ["inspections", "9999"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('status 404', () => pm.response.to.have.status(404));"
+                    ] } }]
+                },
+                {
+                    "name": "POST /inspections (Arif) -> 201, simpan inspectionId",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Content-Type", "value": "application/json" },
+                            { "key": "X-CSRF-Token", "value": "{{csrfToken}}" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"plantId\": 9,\n  \"keteranganLokasi\": \"Gudang B - uji manual Postman\",\n  \"tanggal\": \"2026-09-20\",\n  \"status\": \"proses\",\n  \"dueDate\": \"2026-10-05\",\n  \"temuan\": [\n    { \"deskripsi\": \"Kabel terkelupas dekat panel\", \"kategori\": \"Kelistrikan\" },\n    { \"deskripsi\": \"Tumpahan oli di lantai\", \"kategori\": \"Kebocoran\" }\n  ]\n}"
+                        },
+                        "url": { "raw": "{{baseUrl}}/inspections", "host": ["{{baseUrl}}"], "path": ["inspections"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('status 201, petugas dipaksa dari login', () => {",
+                        "  pm.response.to.have.status(201);",
+                        "  const body = pm.response.json();",
+                        "  pm.expect(body.inspection.petugas).to.eql('Arif');",
+                        "  pm.collectionVariables.set('inspectionId', body.inspection.id);",
+                        "});"
+                    ] } }]
+                },
+                {
+                    "name": "POST /inspections plantId tidak ada (Arif) -> 400 PLANT_NOT_FOUND",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Content-Type", "value": "application/json" },
+                            { "key": "X-CSRF-Token", "value": "{{csrfToken}}" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"plantId\": 99999,\n  \"tanggal\": \"2026-09-20\",\n  \"status\": \"proses\",\n  \"temuan\": [{ \"deskripsi\": \"x\", \"kategori\": \"Lainnya\" }]\n}"
+                        },
+                        "url": { "raw": "{{baseUrl}}/inspections", "host": ["{{baseUrl}}"], "path": ["inspections"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('status 400 PLANT_NOT_FOUND', () => {",
+                        "  pm.response.to.have.status(400);",
+                        "  pm.expect(pm.response.json().error).to.eql('PLANT_NOT_FOUND');",
+                        "});"
+                    ] } }]
+                },
+                {
+                    "name": "Login sebagai Dewi (role salah untuk create)",
+                    "request": {
+                        "method": "POST",
+                        "header": [{ "key": "Content-Type", "value": "application/json" }],
+                        "body": { "mode": "raw", "raw": "{ \"username\": \"dewi\", \"password\": \"dewi\" }" },
+                        "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('login berhasil', () => {",
+                        "  pm.response.to.have.status(200);",
+                        "  pm.collectionVariables.set('csrfToken', pm.response.json().csrfToken);",
+                        "});"
+                    ] } }]
+                },
+                {
+                    "name": "POST /inspections role salah (Dewi) -> 403",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Content-Type", "value": "application/json" },
+                            { "key": "X-CSRF-Token", "value": "{{csrfToken}}" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"plantId\": 9,\n  \"tanggal\": \"2026-09-20\",\n  \"status\": \"proses\",\n  \"temuan\": [{ \"deskripsi\": \"x\", \"kategori\": \"Lainnya\" }]\n}"
+                        },
+                        "url": { "raw": "{{baseUrl}}/inspections", "host": ["{{baseUrl}}"], "path": ["inspections"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('status 403 (hanya safety_officer boleh buat)', () => pm.response.to.have.status(403));"
+                    ] } }]
+                }
+            ]
+        },
+        {
+            "name": "04 - Approve & Reject",
+            "description": "PRASYARAT: jalankan '03 - Inspections > POST /inspections (Arif)' lebih dulu (di run yang sama / database yang belum di-reseed) supaya {{inspectionId}} valid -- lihat catatan di folder 03. Setiap request di sini login sebagai role berbeda karena satu cookie jar hanya menyimpan SATU sesi aktif; jalankan berurutan dari atas ke bawah.",
+            "item": [
+                {
+                    "name": "Login sebagai Admin",
+                    "request": {
+                        "method": "POST",
+                        "header": [{ "key": "Content-Type", "value": "application/json" }],
+                        "body": { "mode": "raw", "raw": "{ \"username\": \"admin\", \"password\": \"admin\" }" },
+                        "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('login berhasil', () => {",
+                        "  pm.response.to.have.status(200);",
+                        "  pm.collectionVariables.set('csrfToken', pm.response.json().csrfToken);",
+                        "});"
+                    ] } }]
+                },
+                {
+                    "name": "POST approve stage 2 role salah (Admin) -> 403",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Content-Type", "value": "application/json" },
+                            { "key": "X-CSRF-Token", "value": "{{csrfToken}}" }
+                        ],
+                        "body": { "mode": "raw", "raw": "{ \"stageId\": 2 }" },
+                        "url": { "raw": "{{baseUrl}}/inspections/{{inspectionId}}/approve", "host": ["{{baseUrl}}"], "path": ["inspections", "{{inspectionId}}", "approve"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('status 403', () => pm.response.to.have.status(403));"
+                    ] } }]
+                },
+                {
+                    "name": "Login sebagai Hadi (Ketua P2K3)",
+                    "request": {
+                        "method": "POST",
+                        "header": [{ "key": "Content-Type", "value": "application/json" }],
+                        "body": { "mode": "raw", "raw": "{ \"username\": \"hadi\", \"password\": \"hadi\" }" },
+                        "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('login berhasil', () => {",
+                        "  pm.response.to.have.status(200);",
+                        "  pm.collectionVariables.set('csrfToken', pm.response.json().csrfToken);",
+                        "});"
+                    ] } }]
+                },
+                {
+                    "name": "POST approve stage 4 lompat tahap (Hadi) -> 400 PREVIOUS_STAGE_PENDING",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Content-Type", "value": "application/json" },
+                            { "key": "X-CSRF-Token", "value": "{{csrfToken}}" }
+                        ],
+                        "body": { "mode": "raw", "raw": "{ \"stageId\": 4 }" },
+                        "url": { "raw": "{{baseUrl}}/inspections/{{inspectionId}}/approve", "host": ["{{baseUrl}}"], "path": ["inspections", "{{inspectionId}}", "approve"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('status 400 PREVIOUS_STAGE_PENDING', () => {",
+                        "  pm.response.to.have.status(400);",
+                        "  pm.expect(pm.response.json().error).to.eql('PREVIOUS_STAGE_PENDING');",
+                        "});"
+                    ] } }]
+                },
+                {
+                    "name": "Login sebagai Dewi (Koordinator K3L)",
+                    "request": {
+                        "method": "POST",
+                        "header": [{ "key": "Content-Type", "value": "application/json" }],
+                        "body": { "mode": "raw", "raw": "{ \"username\": \"dewi\", \"password\": \"dewi\" }" },
+                        "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('login berhasil', () => {",
+                        "  pm.response.to.have.status(200);",
+                        "  pm.collectionVariables.set('csrfToken', pm.response.json().csrfToken);",
+                        "});"
+                    ] } }]
+                },
+                {
+                    "name": "POST approve stage 2 (Dewi) -> 200",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Content-Type", "value": "application/json" },
+                            { "key": "X-CSRF-Token", "value": "{{csrfToken}}" }
+                        ],
+                        "body": { "mode": "raw", "raw": "{ \"stageId\": 2 }" },
+                        "url": { "raw": "{{baseUrl}}/inspections/{{inspectionId}}/approve", "host": ["{{baseUrl}}"], "path": ["inspections", "{{inspectionId}}", "approve"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('status 200', () => pm.response.to.have.status(200));"
+                    ] } }]
+                },
+                {
+                    "name": "POST approve stage 2 LAGI (Dewi) -> 400 ALREADY_APPROVED",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Content-Type", "value": "application/json" },
+                            { "key": "X-CSRF-Token", "value": "{{csrfToken}}" }
+                        ],
+                        "body": { "mode": "raw", "raw": "{ \"stageId\": 2 }" },
+                        "url": { "raw": "{{baseUrl}}/inspections/{{inspectionId}}/approve", "host": ["{{baseUrl}}"], "path": ["inspections", "{{inspectionId}}", "approve"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('status 400 ALREADY_APPROVED (domain logic sudah menolak approve dobel)', () => {",
+                        "  pm.response.to.have.status(400);",
+                        "  pm.expect(pm.response.json().error).to.eql('ALREADY_APPROVED');",
+                        "});"
+                    ] } }]
+                },
+                {
+                    "name": "Login sebagai Andi (Manajer Bagian)",
+                    "request": {
+                        "method": "POST",
+                        "header": [{ "key": "Content-Type", "value": "application/json" }],
+                        "body": { "mode": "raw", "raw": "{ \"username\": \"andi\", \"password\": \"andi\" }" },
+                        "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('login berhasil', () => {",
+                        "  pm.response.to.have.status(200);",
+                        "  pm.collectionVariables.set('csrfToken', pm.response.json().csrfToken);",
+                        "});"
+                    ] } }]
+                },
+                {
+                    "name": "[BELUM TERUJI OTOMATIS] POST reject stage 3 (Andi)",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Content-Type", "value": "application/json" },
+                            { "key": "X-CSRF-Token", "value": "{{csrfToken}}" }
+                        ],
+                        "body": { "mode": "raw", "raw": "{ \"stageId\": 3 }" },
+                        "url": { "raw": "{{baseUrl}}/inspections/{{inspectionId}}/reject", "host": ["{{baseUrl}}"], "path": ["inspections", "{{inspectionId}}", "reject"] }
+                    }
+                },
+                {
+                    "name": "GET inspeksi setelah reject - cek status & approvals[3]",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": { "raw": "{{baseUrl}}/inspections/{{inspectionId}}", "host": ["{{baseUrl}}"], "path": ["inspections", "{{inspectionId}}"] }
+                    }
+                },
+                {
+                    "name": "[BELUM TERUJI OTOMATIS] POST approve stage 3 (Andi) SETELAH reject - bisakah tahap yang ditolak disetujui ulang?",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Content-Type", "value": "application/json" },
+                            { "key": "X-CSRF-Token", "value": "{{csrfToken}}" }
+                        ],
+                        "body": { "mode": "raw", "raw": "{ \"stageId\": 3 }" },
+                        "url": { "raw": "{{baseUrl}}/inspections/{{inspectionId}}/approve", "host": ["{{baseUrl}}"], "path": ["inspections", "{{inspectionId}}", "approve"] }
+                    }
+                }
+            ]
+        },
+        {
+            "name": "05 - Corrective Actions",
+            "description": "PRASYARAT sama seperti folder 04: {{inspectionId}} harus valid.",
+            "item": [
+                {
+                    "name": "Login sebagai Arif",
+                    "request": {
+                        "method": "POST",
+                        "header": [{ "key": "Content-Type", "value": "application/json" }],
+                        "body": { "mode": "raw", "raw": "{ \"username\": \"arif\", \"password\": \"arif\" }" },
+                        "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('login berhasil', () => {",
+                        "  pm.response.to.have.status(200);",
+                        "  pm.collectionVariables.set('csrfToken', pm.response.json().csrfToken);",
+                        "});"
+                    ] } }]
+                },
+                {
+                    "name": "POST corrective-actions tanpa foto -> 400 PHOTO_REQUIRED",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Content-Type", "value": "application/json" },
+                            { "key": "X-CSRF-Token", "value": "{{csrfToken}}" }
+                        ],
+                        "body": { "mode": "raw", "raw": "{ \"action\": \"Tanpa foto\", \"status\": \"open\", \"pic\": \"Arif\", \"photos\": [] }" },
+                        "url": { "raw": "{{baseUrl}}/inspections/{{inspectionId}}/corrective-actions", "host": ["{{baseUrl}}"], "path": ["inspections", "{{inspectionId}}", "corrective-actions"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('status 400 PHOTO_REQUIRED', () => {",
+                        "  pm.response.to.have.status(400);",
+                        "  pm.expect(pm.response.json().error).to.eql('PHOTO_REQUIRED');",
+                        "});"
+                    ] } }]
+                },
+                {
+                    "name": "POST corrective-actions dengan foto (Arif) -> 201",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Content-Type", "value": "application/json" },
+                            { "key": "X-CSRF-Token", "value": "{{csrfToken}}" }
+                        ],
+                        "body": { "mode": "raw", "raw": "{ \"action\": \"Ganti label peringatan\", \"status\": \"closed\", \"pic\": \"Arif\", \"photos\": [\"label.jpg\"] }" },
+                        "url": { "raw": "{{baseUrl}}/inspections/{{inspectionId}}/corrective-actions", "host": ["{{baseUrl}}"], "path": ["inspections", "{{inspectionId}}", "corrective-actions"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('status 201', () => pm.response.to.have.status(201));"
+                    ] } }]
+                },
+                {
+                    "name": "Login sebagai Admin",
+                    "request": {
+                        "method": "POST",
+                        "header": [{ "key": "Content-Type", "value": "application/json" }],
+                        "body": { "mode": "raw", "raw": "{ \"username\": \"admin\", \"password\": \"admin\" }" },
+                        "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('login berhasil', () => {",
+                        "  pm.response.to.have.status(200);",
+                        "  pm.collectionVariables.set('csrfToken', pm.response.json().csrfToken);",
+                        "});"
+                    ] } }]
+                },
+                {
+                    "name": "POST corrective-actions role salah (Admin) -> 403",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Content-Type", "value": "application/json" },
+                            { "key": "X-CSRF-Token", "value": "{{csrfToken}}" }
+                        ],
+                        "body": { "mode": "raw", "raw": "{ \"action\": \"X\", \"status\": \"open\", \"pic\": \"Y\", \"photos\": [\"a.jpg\"] }" },
+                        "url": { "raw": "{{baseUrl}}/inspections/{{inspectionId}}/corrective-actions", "host": ["{{baseUrl}}"], "path": ["inspections", "{{inspectionId}}", "corrective-actions"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('status 403', () => pm.response.to.have.status(403));"
+                    ] } }]
+                }
+            ]
+        },
+        {
+            "name": "06 - Schedules",
+            "item": [
+                {
+                    "name": "Login sebagai Arif",
+                    "request": {
+                        "method": "POST",
+                        "header": [{ "key": "Content-Type", "value": "application/json" }],
+                        "body": { "mode": "raw", "raw": "{ \"username\": \"arif\", \"password\": \"arif\" }" },
+                        "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('login berhasil', () => {",
+                        "  pm.response.to.have.status(200);",
+                        "  pm.collectionVariables.set('csrfToken', pm.response.json().csrfToken);",
+                        "});"
+                    ] } }]
+                },
+                {
+                    "name": "GET /schedules",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": { "raw": "{{baseUrl}}/schedules", "host": ["{{baseUrl}}"], "path": ["schedules"] }
+                    }
+                },
+                {
+                    "name": "POST /schedules (Arif) -> 201, simpan scheduleId",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Content-Type", "value": "application/json" },
+                            { "key": "X-CSRF-Token", "value": "{{csrfToken}}" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"plantId\": 1,\n  \"officer\": \"Arif\",\n  \"tahun\": 2026,\n  \"tanggalJadwal\": \"2026-11-01\",\n  \"periode\": 4,\n  \"minggu\": 1\n}"
+                        },
+                        "url": { "raw": "{{baseUrl}}/schedules", "host": ["{{baseUrl}}"], "path": ["schedules"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('status 201', () => {",
+                        "  pm.response.to.have.status(201);",
+                        "  pm.collectionVariables.set('scheduleId', pm.response.json().schedule.id);",
+                        "});"
+                    ] } }]
+                },
+                {
+                    "name": "Login sebagai Dewi",
+                    "request": {
+                        "method": "POST",
+                        "header": [{ "key": "Content-Type", "value": "application/json" }],
+                        "body": { "mode": "raw", "raw": "{ \"username\": \"dewi\", \"password\": \"dewi\" }" },
+                        "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('login berhasil', () => {",
+                        "  pm.response.to.have.status(200);",
+                        "  pm.collectionVariables.set('csrfToken', pm.response.json().csrfToken);",
+                        "});"
+                    ] } }]
+                },
+                {
+                    "name": "POST /schedules role tidak berhak (Dewi) -> 403",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            { "key": "Content-Type", "value": "application/json" },
+                            { "key": "X-CSRF-Token", "value": "{{csrfToken}}" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"plantId\": 1,\n  \"officer\": \"Dewi\",\n  \"tahun\": 2026,\n  \"tanggalJadwal\": \"2026-11-01\",\n  \"periode\": 4,\n  \"minggu\": 1\n}"
+                        },
+                        "url": { "raw": "{{baseUrl}}/schedules", "host": ["{{baseUrl}}"], "path": ["schedules"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('status 403', () => pm.response.to.have.status(403));"
+                    ] } }]
+                },
+                {
+                    "name": "Login sebagai Arif (lagi)",
+                    "request": {
+                        "method": "POST",
+                        "header": [{ "key": "Content-Type", "value": "application/json" }],
+                        "body": { "mode": "raw", "raw": "{ \"username\": \"arif\", \"password\": \"arif\" }" },
+                        "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('login berhasil', () => {",
+                        "  pm.response.to.have.status(200);",
+                        "  pm.collectionVariables.set('csrfToken', pm.response.json().csrfToken);",
+                        "});"
+                    ] } }]
+                },
+                {
+                    "name": "PUT /schedules/{{scheduleId}} (Arif) -> 200",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            { "key": "Content-Type", "value": "application/json" },
+                            { "key": "X-CSRF-Token", "value": "{{csrfToken}}" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"plantId\": 1,\n  \"officer\": \"Arif Diubah\",\n  \"tahun\": 2026,\n  \"tanggalJadwal\": \"2026-11-02\",\n  \"periode\": 4,\n  \"minggu\": 1\n}"
+                        },
+                        "url": { "raw": "{{baseUrl}}/schedules/{{scheduleId}}", "host": ["{{baseUrl}}"], "path": ["schedules", "{{scheduleId}}"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('status 200', () => pm.response.to.have.status(200));"
+                    ] } }]
+                },
+                {
+                    "name": "PUT /schedules/9999 (id tidak ada) -> 404",
+                    "request": {
+                        "method": "PUT",
+                        "header": [
+                            { "key": "Content-Type", "value": "application/json" },
+                            { "key": "X-CSRF-Token", "value": "{{csrfToken}}" }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"plantId\": 1,\n  \"officer\": \"Arif\",\n  \"tahun\": 2026,\n  \"tanggalJadwal\": \"2026-11-02\",\n  \"periode\": 4,\n  \"minggu\": 1\n}"
+                        },
+                        "url": { "raw": "{{baseUrl}}/schedules/9999", "host": ["{{baseUrl}}"], "path": ["schedules", "9999"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('status 404', () => pm.response.to.have.status(404));"
+                    ] } }]
+                },
+                {
+                    "name": "DELETE /schedules/{{scheduleId}} sebagai Safety Officer -> 403",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [{ "key": "X-CSRF-Token", "value": "{{csrfToken}}" }],
+                        "url": { "raw": "{{baseUrl}}/schedules/{{scheduleId}}", "host": ["{{baseUrl}}"], "path": ["schedules", "{{scheduleId}}"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('status 403', () => pm.response.to.have.status(403));"
+                    ] } }]
+                },
+                {
+                    "name": "Login sebagai Admin",
+                    "request": {
+                        "method": "POST",
+                        "header": [{ "key": "Content-Type", "value": "application/json" }],
+                        "body": { "mode": "raw", "raw": "{ \"username\": \"admin\", \"password\": \"admin\" }" },
+                        "url": { "raw": "{{baseUrl}}/auth/login", "host": ["{{baseUrl}}"], "path": ["auth", "login"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('login berhasil', () => {",
+                        "  pm.response.to.have.status(200);",
+                        "  pm.collectionVariables.set('csrfToken', pm.response.json().csrfToken);",
+                        "});"
+                    ] } }]
+                },
+                {
+                    "name": "DELETE /schedules/{{scheduleId}} sebagai Admin -> 200",
+                    "request": {
+                        "method": "DELETE",
+                        "header": [{ "key": "X-CSRF-Token", "value": "{{csrfToken}}" }],
+                        "url": { "raw": "{{baseUrl}}/schedules/{{scheduleId}}", "host": ["{{baseUrl}}"], "path": ["schedules", "{{scheduleId}}"] }
+                    },
+                    "event": [{ "listen": "test", "script": { "type": "text/javascript", "exec": [
+                        "pm.test('status 200', () => pm.response.to.have.status(200));"
+                    ] } }]
+                }
+            ]
+        }
+    ]
+}

@@ -9,7 +9,7 @@ import * as inspectionRepository from '../repositories/inspection-repository.js'
 import * as inspectionService from '../../src/services/inspection-service.js';
 import * as approvalService from '../../src/services/approval-service.js';
 import * as correctiveActionService from '../../src/services/corrective-action-service.js';
-import { requireRole } from '../middleware/dev-auth.js';
+import { requireRole } from '../middleware/session-auth.js';
 import { sendResult } from '../middleware/to-http.js';
 import { asyncHandler } from '../middleware/async-handler.js';
 

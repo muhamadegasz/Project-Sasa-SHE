@@ -5,7 +5,7 @@
 
 import { Router } from 'express';
 import * as userRepository from '../repositories/user-repository.js';
-import { requireRole } from '../middleware/dev-auth.js';
+import { requireRole } from '../middleware/session-auth.js';
 import { asyncHandler } from '../middleware/async-handler.js';
 
 export const usersRouter = Router();

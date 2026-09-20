@@ -13,6 +13,7 @@ import { fail, ok } from './result.js';
 
 export const INSPECTION_ERROR = {
     PLANT_REQUIRED: 'PLANT_REQUIRED',
+    PLANT_NOT_FOUND: 'PLANT_NOT_FOUND',
     FINDINGS_REQUIRED: 'FINDINGS_REQUIRED',
     DATE_REQUIRED: 'DATE_REQUIRED',
 };
@@ -44,10 +45,12 @@ export async function create(input) {
     if (!input.tanggal) return fail(INSPECTION_ERROR.DATE_REQUIRED);
 
     const plant = await plantRepository.findById(input.plantId);
+    if (!plant) return fail(INSPECTION_ERROR.PLANT_NOT_FOUND);
+
     const today = new Date().toLocaleDateString('id-ID');
 
     const inspection = await inspectionRepository.add({
-        lokasi: plant ? plant.name : '',
+        lokasi: plant.name,
         plantId: parseInt(input.plantId, 10),
         keteranganLokasi: input.keteranganLokasi || '-',
         tanggal: formatDate(input.tanggal),

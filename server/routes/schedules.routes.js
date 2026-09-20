@@ -3,7 +3,7 @@
 import { Router } from 'express';
 import * as scheduleRepository from '../repositories/schedule-repository.js';
 import * as scheduleService from '../../src/services/schedule-service.js';
-import { requireRole } from '../middleware/dev-auth.js';
+import { requireRole } from '../middleware/session-auth.js';
 import { sendResult } from '../middleware/to-http.js';
 import { asyncHandler } from '../middleware/async-handler.js';
 
