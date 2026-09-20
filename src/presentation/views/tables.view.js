@@ -33,8 +33,9 @@ function renderInspeksiTable(data, tbodyId, isFull, highlightQuery = '') {
     const tbody = document.getElementById(tbodyId);
     if (!tbody) return;
     if (data.length === 0) {
+        const colspan = isFull ? 9 : 7;
         tbody.innerHTML =
-            '<tr><td colspan="10" style="text-align:center;padding:2rem;color:#8a6a6a;">Tidak ada data ditemukan</td></tr>';
+            `<tr><td colspan="${colspan}" style="text-align:center;padding:2rem;color:#8a6a6a;">Tidak ada data ditemukan</td></tr>`;
         return;
     }
 

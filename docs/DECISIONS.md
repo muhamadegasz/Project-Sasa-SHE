@@ -705,3 +705,55 @@ ter-fokus-ulang — ini adalah permintaan eksplisit pengguna, bukan defect yang 
 karena elemen sudah tidak ada di stub DOM manapun; skenario diuji ulang lewat efek yang masih
 ada (field password kosong + halaman login tetap tampil), bukan lewat teks error yang sudah
 tidak ada.
+
+---
+
+## K-16 — Phase 11: D-5 (label tombol Sync), D-6 (colspan), dan penghapusan dead code
+
+**Tanggal:** 2026-09-20 · **Status:** disetujui (bagian dari K-1, dieksekusi di Phase 11)
+
+### D-5: hanya bagian label yang diperbaiki
+
+Dua masalah berbeda di `syncToGoogleSheets()`, ditangani berbeda sesuai audit awal (lihat
+KNOWN-ISSUES.md D-5): label tombol yang berubah permanen dari "Sync" menjadi "Sync Google
+Sheets" setelah klik pertama **diperbaiki** — blok `finally` sekarang mengembalikan label
+persis ke "Sync", sama seperti markup awal di `index.html`. Penamaan fungsi/toast yang
+menyesatkan (fungsi ini sebenarnya mengunduh `.xlsx`, tidak menghubungi Google Sheets sama
+sekali) **sengaja tidak diubah** — itu keputusan produk (menyangkut nama fitur yang terlihat
+pengguna), bukan refactoring struktural, dan di luar mandat sesi ini.
+
+### D-6: colspan dihitung dari parameter yang sudah ada, bukan tabel lookup baru
+
+`renderInspeksiTable()` dipakai bersama oleh tabel Dashboard (7 kolom) dan tabel Inspeksi
+lengkap (9 kolom) lewat parameter `isFull`, tapi baris empty-state-nya memakai `colspan="10"`
+tetap — salah untuk kedua kasus. Perbaikannya memakai parameter `isFull` yang sudah ada
+(`isFull ? 9 : 7`) alih-alih menghitung ulang lewat cara lain, karena parameter itu sudah
+persis membedakan kedua varian tabel yang dimaksud. Tabel Jadwal dan tabel Perbaikan
+menggunakan fungsi render terpisah dan colspan-nya sudah benar sejak awal — tidak disentuh.
+
+### Dead code: dihapus setelah diverifikasi tanpa pemanggil, bukan diasumsikan
+
+Ketiga item pada catatan Phase 1 (`renderGallery()`, `<audio id="alertSound">`, field
+`lat`/`lng`) diverifikasi ulang lewat `grep` project-wide **sebelum** dihapus — bukan dihapus
+hanya berdasarkan catatan audit lama, karena baris kode bisa saja sudah berubah sejak Phase 1:
+- `renderGallery()` di `legacy-app.js`: nol pemanggil di seluruh proyek. Fungsi galeri yang
+  sungguhan dipakai (`detail-modal.view.js`, `perbaikan-modal.view.js`) membangun markupnya
+  sendiri secara independen sejak Phase 8 — bukan lewat fungsi ini. Import `jsArg` di
+  `legacy-app.js` ikut dihapus karena jadi tidak terpakai (satu-satunya pemakainya adalah
+  fungsi yang baru dihapus).
+- `<audio id="alertSound">` di `index.html`: nol referensi JS di seluruh proyek.
+- Field `lat`/`lng`: dihapus dari `src/data/inspections.seed.js` (6 inspeksi demo) dan
+  `src/services/inspection-service.js` (pembuatan inspeksi baru). Komentar di
+  `inspection-service.js` sendiri sudah menyatakan "dihapus pada Phase 11" sejak fase
+  sebelumnya — konsisten dengan rencana ini, bukan keputusan baru.
+
+### Verifikasi
+
+`test-cosmetic.mjs` (baru, 10 assertion): klik tombol Sync dan cek label akhir persis "Sync";
+render keempat tabel (Dashboard, Inspeksi lengkap, Jadwal, Perbaikan) dalam keadaan kosong dan
+cek `colspan` cocok dengan jumlah kolom sungguhan masing-masing; buat inspeksi baru lewat
+`inspectionService.create()` dan pastikan objeknya tidak punya field `lat`/`lng`.
+
+Seluruh 342 assertion Phase 0-10 tetap lulus tanpa perubahan. Total: **352 assertion, 0
+gagal**. Syntax check 40/40 modul, HTTP serving 57/57 berkas (bertambah dari 40 karena
+verifikasi kali ini juga mencakup seluruh berkas `assets/css/*.css`, bukan hanya modul JS).

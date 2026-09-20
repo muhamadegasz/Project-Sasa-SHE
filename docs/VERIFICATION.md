@@ -117,7 +117,7 @@ Kredensial demo: `sasapolkesma` / `sasapolkesma`.
 | E-3 | Search Dashboard (id, lokasi, petugas, status, dueDate) | Filter benar untuk kelima field, highlight muncul |
 | E-4 | Search panel Inspeksi (termasuk keteranganLokasi) | Filter benar, counter akurat |
 | E-5 | Ketik kata yang tidak ada | Baris "Tidak ada data ditemukan", counter "0 dari N" |
-| E-6 | 🔴 Perhatikan lebar baris empty-state | `colspan` sesuai jumlah kolom tabel (D-6) |
+| E-6 | Perhatikan lebar baris empty-state | `colspan` sesuai jumlah kolom tabel (D-6, SELESAI Phase 11 — diuji otomatis di `test-cosmetic.mjs`) |
 | E-7 | Klik tombol mata (detail) | Modal detail lengkap: ID, status, lokasi, keterangan, tanggal, officer, due date, temuan, foto, pengesahan |
 | E-8 | Inspeksi dengan due date lampau | Badge merah "OVERDUE" tampil |
 | E-9 | Cek progress bar | Persentase = (tindakan closed / total tindakan) × 100, warna sesuai status |
@@ -186,7 +186,7 @@ Kredensial demo: `sasapolkesma` / `sasapolkesma`.
 | I-3 | Tombol Excel pada satu baris inspeksi | File `Temuan_INS-nnn_YYYY-MM-DD.xlsx` berisi hanya temuan inspeksi itu |
 | I-4 | Buka file hasil export | Lebar kolom sesuai; "Status Pengesahan" menampilkan `n/4` atau `✅ Lengkap (4/4)` |
 | I-5 | Klik "Sync" | File `.xlsx` terunduh, toast "File Excel siap!" |
-| I-6 | 🔴 Setelah klik Sync, perhatikan label tombol | Label tetap "Sync" — tidak berubah jadi "Sync Google Sheets" (D-5) |
+| I-6 | Setelah klik Sync, perhatikan label tombol | Label tetap "Sync" — tidak berubah jadi "Sync Google Sheets" (D-5, SELESAI sebagian Phase 11 — diuji otomatis di `test-cosmetic.mjs`) |
 | I-7 | Tombol PDF pada inspeksi yang **belum** 4/4 | Tombol disabled; jika dipaksa, toast "belum disetujui semua tahap" |
 | I-8 | Tombol PDF pada inspeksi yang sudah 4/4 | Toast "Sedang membuat PDF", file `Laporan_Inspeksi_INS-nnn_YYYY-MM-DD.pdf` terunduh |
 | I-9 | Buka PDF | Header, info inspeksi, tabel temuan, tabel perbaikan, 4 blok tanda tangan, stempel "DISETUJUI" tampil |

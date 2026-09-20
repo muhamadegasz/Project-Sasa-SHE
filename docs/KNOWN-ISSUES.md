@@ -5,7 +5,7 @@ Tujuan dokumen ini: memisahkan "perilaku yang memang begitu" dari "perilaku yang
 supaya aturan *preserve behavior* selama refactoring punya acuan yang jujur.
 
 Tanggal audit: 2026-09-19
-Baseline commit: `4734b5c` · Nomor baris disegarkan setelah Phase 10.
+Baseline commit: `4734b5c` · Nomor baris disegarkan setelah Phase 11.
 
 Status:
 - **FIX** — akan diperbaiki selama refactoring (fase disebutkan)
@@ -20,7 +20,7 @@ Status:
 |---|---|
 | Severity | HIGH |
 | Status | **SELESAI** — diperbaiki pada Phase 3 (jsArg). Phase 7 memindahkan `openLightbox`/`closeLightbox`/`navigateLightbox` ke `presentation/components/lightbox.js`. Phase 9 menuntaskan rekomendasi "Perbaikan" di bawah: atribut `onclick` inline diganti `data-action="openLightbox" data-images="..." data-index="..."` + event delegation lewat `presentation/controllers/action-dispatcher.js`. |
-| Lokasi | Definisi: `src/presentation/components/lightbox.js:22`. Pendaftaran aksi: `src/legacy-app.js:720`. Titik panggil (`data-action="openLightbox"`): `src/legacy-app.js:269` (dead code `renderGallery`), `src/presentation/views/detail-modal.view.js:30`, `src/presentation/views/perbaikan-modal.view.js:39` |
+| Lokasi | Definisi: `src/presentation/components/lightbox.js:22`. Pendaftaran aksi: `src/legacy-app.js:702`. Titik panggil (`data-action="openLightbox"`): `src/presentation/views/detail-modal.view.js:30`, `src/presentation/views/perbaikan-modal.view.js:39` |
 
 Markup dibangun dengan `onclick="openLightbox(${JSON.stringify(images)}, ${idx})"`.
 `JSON.stringify` menghasilkan tanda kutip ganda, sedangkan atribut juga memakai kutip ganda,
@@ -52,7 +52,7 @@ dan escape seluruh nilai atribut. **Diterapkan pada Phase 9** — lihat docs/DEC
 |---|---|
 | Severity | MEDIUM |
 | Status | **SELESAI** — Phase 10 |
-| Lokasi | `src/legacy-app.js:172` (satu-satunya listener submit yang tersisa), `src/legacy-app.js:703` (`#loginUsername`, kini dengan `preventDefault()`) |
+| Lokasi | `src/legacy-app.js:172` (satu-satunya listener submit yang tersisa), `src/legacy-app.js:674` (`#loginUsername`, kini dengan `preventDefault()`) |
 
 Dulu tiga jalur memicu submit untuk satu penekanan Enter: submit implisit form (native
 browser), listener `keydown` pada `document` yang men-dispatch submit manual, dan listener
@@ -80,7 +80,7 @@ submit.
 |---|---|
 | Severity | HIGH |
 | Status | **SELESAI** — Phase 10 |
-| Lokasi | `src/presentation/views/charts.view.js:115` (`initCharts`, destroy sebelum re-create), `src/legacy-app.js:656` (`appInitialized`, penjaga setup sekali-jalan) |
+| Lokasi | `src/presentation/views/charts.view.js:107` (`initCharts`, destroy sebelum re-create), `src/legacy-app.js:627` (`appInitialized`, penjaga setup sekali-jalan) |
 
 `renderTemuanPlantChart()` sudah benar (`destroy()` sebelum `new Chart()`), tetapi
 `initCharts()` membuat `perbaikanChart` **tanpa** destroy. Chart.js 4.4.0 (versi yang di-pin)
@@ -115,7 +115,7 @@ bertambah** setelah login kedua/ketiga.
 |---|---|
 | Severity | LOW |
 | Status | **DITUNDA** — butuh aturan bisnis |
-| Lokasi | `src/presentation/views/tables.view.js:129` (`renderJadwalTable`), `src/presentation/views/tables.view.js:20` (`updateNotifBadge`) — dipindah dari `legacy-app.js` pada Phase 8 |
+| Lokasi | `src/presentation/views/tables.view.js:130` (`renderJadwalTable`), `src/presentation/views/tables.view.js:20` (`updateNotifBadge`) — dipindah dari `legacy-app.js` pada Phase 8 |
 
 `notifCount` diinisialisasi `0` di `renderJadwalTable()` dan **tidak pernah di-increment**,
 lalu diteruskan ke `updateNotifBadge()`.
@@ -136,17 +136,21 @@ Selama refactoring: struktur `updateNotifBadge(count)` dipertahankan apa adanya.
 | | |
 |---|---|
 | Severity | LOW |
-| Status | **FIX (sebagian)** — Phase 11 |
-| Lokasi | `src/legacy-app.js:617` (`syncToGoogleSheets`), `src/legacy-app.js:631` (relabel di blok `finally`) |
+| Status | **SELESAI (sebagian)** — Phase 11 |
+| Lokasi | `src/legacy-app.js:588` (`syncToGoogleSheets`), `src/legacy-app.js:602` (relabel di blok `finally`) |
 
 Dua hal berbeda:
 
-1. **Akan diperbaiki.** Label awal tombol adalah "Sync", tetapi blok `finally` mengembalikannya
-   menjadi "Sync Google Sheets". Setelah klik pertama, label ketiga tombol berubah permanen.
-2. **Tidak diubah.** Fungsi `syncToGoogleSheets()` tidak menghubungi Google Sheets sama sekali —
-   ia membuat file `.xlsx` dan mengunduhnya. Ini memang perilaku yang dirancang (tidak ada backend).
-   Penamaan yang menyesatkan dicatat di sini, tetapi mengubah nama/fungsinya adalah keputusan
-   produk, bukan refactoring.
+1. **Diperbaiki.** Label awal tombol adalah "Sync", tetapi blok `finally` mengembalikannya
+   menjadi "Sync Google Sheets" — label berubah permanen setelah klik pertama. `finally` sekarang
+   mengembalikan label persis ke "Sync", sama seperti markup awal di `index.html`.
+2. **Tidak diubah (disengaja).** Fungsi `syncToGoogleSheets()` tidak menghubungi Google Sheets
+   sama sekali — ia membuat file `.xlsx` dan mengunduhnya. Ini memang perilaku yang dirancang
+   (tidak ada backend). Penamaan yang menyesatkan dicatat di sini, tetapi mengubah nama/fungsinya
+   adalah keputusan produk, bukan refactoring.
+
+Diuji lewat `test-cosmetic.mjs`: klik tombol Sync, pastikan label akhir persis "Sync" (bukan
+"Sync Google Sheets") dan tombol tidak lagi `disabled`.
 
 ---
 
@@ -155,11 +159,20 @@ Dua hal berbeda:
 | | |
 |---|---|
 | Severity | LOW (kosmetik) |
-| Status | **FIX** — Phase 11 |
-| Lokasi | `src/presentation/views/tables.view.js:37` — dipindah dari `legacy-app.js` pada Phase 8 |
+| Status | **SELESAI** — Phase 11 |
+| Lokasi | `src/presentation/views/tables.view.js:36` — dipindah dari `legacy-app.js` pada Phase 8 |
 
-Baris "Tidak ada data ditemukan" memakai `colspan="10"`, sedangkan tabel Dashboard punya
-7 kolom dan tabel Inspeksi punya 9 kolom.
+Baris "Tidak ada data ditemukan" pada `renderInspeksiTable()` (dipakai bersama oleh tabel
+Dashboard dan tabel Inspeksi lengkap) memakai `colspan="10"` tetap, padahal tabel Dashboard
+punya 7 kolom dan tabel Inspeksi lengkap punya 9 kolom — keduanya salah, tidak ada yang
+benar-benar 10 kolom.
+
+**Perbaikan:** `colspan` dihitung dari parameter `isFull` yang sudah ada (`isFull ? 9 : 7`),
+bukan angka tetap. Tabel Jadwal (`colspan="8"`) dan tabel Perbaikan (`colspan="9"`) sudah
+benar sejak awal — tidak disentuh.
+
+Diuji lewat `test-cosmetic.mjs`: render keempat tabel dalam keadaan kosong, cek atribut
+`colspan` pada markup yang dihasilkan cocok dengan jumlah kolom sungguhan di setiap tabel.
 
 ---
 
@@ -211,5 +224,10 @@ deterministik, sehingga perbandingan baseline antar fase dapat diandalkan.
 - **Tanggal bersifat relatif.** `getDateOffset()` menghitung dari hari ini, sehingga nilai tanggal
   pada data demo berubah setiap hari. Saat membandingkan baseline antar hari, bandingkan
   *struktur dan status*, bukan string tanggal.
-- **Dead code** yang akan dihapus pada Phase 11: `renderGallery()` di `src/legacy-app.js:253` (didefinisikan, tidak dipakai),
-  `<audio id="alertSound">` di `index.html:405` (tidak pernah disentuh), field `lat`/`lng` (tidak pernah dirender).
+- **Dead code — dihapus pada Phase 11:** `renderGallery()` (dulu `src/legacy-app.js:242`, tidak
+  pernah dipanggil — `data-action="openLightbox"` di detail/perbaikan modal sudah membangun
+  markup galeri sendiri lewat `detail-modal.view.js`/`perbaikan-modal.view.js`), `<audio
+  id="alertSound">` (dulu `index.html:401`, tidak pernah disentuh JS), field `lat`/`lng` pada
+  objek inspeksi (dulu di `src/data/inspections.seed.js` dan `src/services/inspection-service.js`,
+  tidak pernah dirender di mana pun). Diverifikasi lewat `grep` project-wide sebelum dihapus dan
+  lewat `test-cosmetic.mjs` setelahnya (inspeksi baru tidak lagi membawa `lat`/`lng`).

@@ -9,7 +9,7 @@
    strict mode. Sudah dipindai: tidak ada assignment ke variabel tak
    terdeklarasi dan tidak ada deklarasi function di dalam blok. */
 
-import { escapeHtml, jsArg } from './shared/html.js';
+import { escapeHtml } from './shared/html.js';
 import { reportError } from './shared/errors.js';
 
 import { APPROVAL_STAGES } from './config/constants.js';
@@ -199,7 +199,6 @@ function logout() {
         document.getElementById('loginUsername').value = '';
         document.getElementById('loginPassword').value = '';
         document.getElementById('loginUsername').focus();
-        showToast('👋 Anda telah keluar');
     }
 }
 
@@ -239,24 +238,6 @@ function switchTab(tabName) {
     }, 100);
 }
 
-
-function renderGallery(images, label = '') {
-    if (!images || images.length === 0 || images[0] === '-') {
-        return `<div class="thumb-placeholder"><i class="fas fa-image"></i></div>`;
-    }
-    return `
-            <div class="gallery-thumb">
-                ${images.map((img, idx) => `
-                    <img class="thumb" 
-                         src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='45' height='45'%3E%3Crect width='45' height='45' fill='%23f0e8e8'/%3E%3Ctext x='50%25' y='55%25' text-anchor='middle' fill='%238a6a6a' font-size='8' font-family='sans-serif'%3E📷%3C/text%3E%3C/svg%3E" 
-                         alt="${escapeHtml(img)}"
-                         data-action="openLightbox" data-images="${jsArg(images)}" data-index="${idx}"
-                         title="Klik untuk preview: ${escapeHtml(img)}"
-                         style="cursor:pointer;">
-                `).join('')}
-            </div>
-        `;
-}
 
 // ========================================================================
 // ========== APPROVAL FUNCTIONS ==========
@@ -618,7 +599,7 @@ async function syncToGoogleSheets(btn) {
     } finally {
         if (btn) {
             btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> Sync Google Sheets';
+            btn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> Sync';
         }
     }
 }

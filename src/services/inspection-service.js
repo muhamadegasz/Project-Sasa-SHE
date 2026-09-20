@@ -46,10 +46,6 @@ export function create(input) {
         lokasi: plant ? plant.name : '',
         plantId: parseInt(input.plantId, 10),
         keteranganLokasi: input.keteranganLokasi || '-',
-        // lat/lng tidak pernah dirender di mana pun. Dipertahankan agar bentuk
-        // datanya sama dengan data demo; dihapus pada Phase 11.
-        lat: -6.200000,
-        lng: 106.816666,
         tanggal: formatDate(input.tanggal),
         petugas: input.petugas,
         status: input.status,
