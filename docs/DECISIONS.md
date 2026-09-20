@@ -383,5 +383,230 @@ untuk pengguna.
   Mengubahnya menjadi error akan memunculkan pesan yang sebelumnya tidak pernah ada.
 - **Urutan validasi tidak digeser.** Plant, lalu temuan, lalu tanggal. Menggesernya mengubah
   pesan mana yang muncul lebih dulu ketika beberapa field sekaligus kosong.
-- **Efek visual border merah pada input plant tetap di pemanggil**, lewat helper
-  `tandaiPlantBelumDipilih()`. Itu murni tampilan.
+- **Efek visual border merah pada input plant tetap di pemanggil**, lewat
+  `plantSelectForm.markInvalid()` (Phase 7 memindahkan helper ini ke dalam komponen
+  plant-select — lihat K-11). Itu murni tampilan.
+
+---
+
+## K-11 — Cakupan Phase 7 (`presentation/components/`)
+
+**Tanggal:** 2026-09-20 · **Status:** disetujui
+
+### Yang diekstrak, dan kenapa
+
+Lima komponen dipindah ke `src/presentation/components/`, masing-masing karena alasan
+konkret, bukan sekadar "biar rapi":
+
+| Komponen | Alasan |
+|---|---|
+| `plant-select.js` | ~100 baris logika diduplikasi **persis** dua kali (form inspeksi & form jadwal) di `initPlantSelect()`. Ditemukan JUGA duplikasi tersembunyi: tiga tempat lain (`openJadwalModal`, `submitJadwal`, `submitInspeksi`) menset/mereset pilihan plant secara manual dengan menyalin ulang efek `select()`/`clear()`. Semua disatukan lewat factory `createPlantSelect()`. |
+| `modal.js` | Pola tutup-modal (tombol close + klik di luar kotak) disalin identik 5 kali (approval, calendar, detail, jadwal, perbaikan). Disatukan lewat `bindModalClose()`. |
+| `lightbox.js` | Sudah berdiri sendiri sejak semula (tidak menyentuh state lain), sehingga aman dipindah sebagai unit utuh. |
+| `toast.js` | Sama — berdiri sendiri, dipakai luas. |
+| `search-box.js` | `setupSearch()` sudah berupa factory sejak semula dan dipakai 4 kali — tidak ada duplikasi untuk dihilangkan, dipindah semata agar sejajar dengan komponen presentasi lain. |
+
+### Yang SENGAJA tidak diekstrak
+
+Kalender (`renderCalendar`/`changeCalendarMonth`), seluruh table renderer, chart init, dan
+isi modal (approval/perbaikan/detail) **tetap** di `legacy-app.js`. Masing-masing dipakai
+**sekali** dan terikat erat pada data aplikasi (repository, domain rules) — memindahkannya
+ke `components/` tidak menghilangkan duplikasi apa pun, hanya memindah kode tanpa manfaat,
+sekaligus melanggar arahan "jangan over-engineer". Ini pekerjaan Phase 8 (view), yang memang
+boleh terikat pada data aplikasi — beda tanggung jawab dari Phase 7 (component, harus reusable).
+
+### Simplifikasi kecil yang ikut terjadi saat memindah (perilaku tidak berubah)
+
+- **Status "ada pilihan" kini dibaca dari `hiddenInput.value === ''`**, menggantikan variabel
+  modul `selectedPlant`/`selectedPlantJadwal` yang lama. Keduanya invariant-nya identik: hanya
+  berubah lewat `select()`/`clear()`. Tidak ada tempat lain yang pernah membaca variabel lama
+  itu sebagai objek (`selectedPlant.nama` dkk. tidak pernah dipakai) — hanya diperiksa
+  truthy/falsy dan `.value` hidden input-nya. Diverifikasi dengan grep sebelum diubah.
+- **Template SVG placeholder lightbox** (dipakai `openLightbox` maupun navigasi) yang tadinya
+  disalin dua kali disatukan jadi `placeholderSvg()`. Keluarannya byte-identik untuk input yang
+  sama; ini murni penghilang duplikasi literal, bukan perubahan perilaku.
+- **`clear()` pada plant-select tidak lagi memanggil `.focus()` sendiri** — dulu `clearPlant()`
+  memanggil `input.focus()` di dalam dirinya. Fokus dipindah ke listener tombol clear
+  (`clearBtn.addEventListener('click', () => { clear(); input.focus(); })`), supaya `clear()`
+  bisa dipakai ulang di `openJadwalModal`/`submitJadwal`/`submitInspeksi` tanpa mencuri fokus di
+  situasi yang dulu tidak pernah memanggil `.focus()`. Hasil akhir: perilaku tombol clear itu
+  sendiri sama persis; yang berubah hanya bahwa reset-tanpa-lewat-tombol tidak lagi (secara
+  tidak sengaja) ikut memindah fokus — dan memang dulu tidak pernah begitu.
+
+### Verifikasi
+
+234 assertion lama (domain, shared, services, XSS, CRUD, bridge) tetap lulus **tanpa
+mengubah satu pun file uji** — bukti bahwa pemindahan ini murni struktural. Ditambah 44
+assertion baru (`test-components.mjs`) yang menguji kelima komponen secara langsung: klik
+tombol clear plant-select, klik overlay vs klik di dalam kotak modal, navigasi lightbox lewat
+listener asli (bukan memanggil fungsi internal secara langsung), keydown Escape/Arrow, dan
+wiring search-box. Total: **278 assertion, 0 gagal**.
+
+---
+
+## K-12 — Cakupan Phase 8 (`presentation/views/`)
+
+**Tanggal:** 2026-09-20 · **Status:** disetujui
+
+### Batas view vs controller
+
+Aturan yang dipakai untuk memutuskan apa yang pindah ke `views/` dan apa yang tetap di
+`legacy-app.js`: **view merender data yang sudah ada** (baca repository, tampilkan HTML);
+**controller membaca form dan mengubah state** (baca input pengguna, panggil service,
+`refreshAll()`, tampilkan toast). Modal read-only (approval, detail) adalah view murni.
+Modal berisi form (jadwal, perbaikan) dipecah: bagian tampilan pindah, bagian yang membaca
+input/memanggil service tetap.
+
+| Pindah ke `presentation/views/` (view) | Tetap di `legacy-app.js` (controller, Phase 9) |
+|---|---|
+| `calendar.view.js` — kalender + modal detail hari | `approveStage`/`rejectStage` — panggil service, `refreshAll()`, buka ulang modal |
+| `approval.view.js` — tahap pengesahan + isi modal approval | `editJadwal`/`hapusJadwal`/listener `submitJadwal` — baca form, panggil service |
+| `detail-modal.view.js` — isi modal detail (read-only) | `tambahPerbaikanCustom` — baca form, panggil service, buka ulang modal |
+| `perbaikan-modal.view.js` — timeline + **markup** form tambah progres | listener `submitInspeksi`, `tambahTemuanBtn` — baca form, panggil service |
+| `tables.view.js` — 4 tabel + badge notifikasi | `cetakPDF` — validasi + panggil `pdfExporter` (tapi markup laporannya sendiri di `pdf-report.view.js`) |
+| `charts.view.js` — **satu-satunya** pemakai Chart.js sekarang | export/sync — panggil `excelExporter` |
+| `pdf-report.view.js` — markup laporan (fungsi murni, tanpa DOM) | `initApp`, `refreshAll`, navigasi tab |
+
+Chart.js sekarang terisolasi sama seperti SheetJS dan html2pdf sejak Phase 6 — lihat
+docs/SECURITY.md bagian "Isolasi library".
+
+### Enkapsulasi tambahan yang ikut terjadi (perilaku tidak berubah)
+
+- **`perbaikanChart` tidak lagi diekspor.** Sebelumnya `refreshAll()` di `legacy-app.js`
+  membaca variabel modul `perbaikanChart` secara langsung (`if (perbaikanChart) {...}`).
+  Sekarang `charts.view.js` mengekspor `updatePerbaikanChart()` yang menghitung ulang data
+  dan memanggil `.update()` sendiri — instance chart-nya sendiri tidak pernah keluar dari
+  berkas itu. `countRepairStatuses()` (dulu dipakai dua fungsi berbeda di dua tempat) ikut
+  pindah seluruhnya ke `charts.view.js` sebagai helper privat, karena satu-satunya
+  pemakainya sekarang (`initCharts`, `updatePerbaikanChart`) ada di berkas yang sama.
+- **`openDetailModal`/`openPerbaikanModal` berubah dari `window.X = function` menjadi
+  `export function` + masuk daftar ekspor bridge di `legacy-app.js`.** Sebelumnya keduanya
+  memasang diri langsung ke `window` di tempat deklarasi (pola yang sama seperti
+  `openJadwalModal`/`hapusJadwal`/dll yang tetap di `legacy-app.js`). Setelah pindah berkas,
+  pola itu tidak lagi cocok — cara yang benar untuk fungsi yang tinggal di
+  `presentation/views/` adalah ekspor biasa lalu diimpor balik oleh `legacy-app.js` untuk
+  didaftarkan ke bridge (pola yang sama seperti `openLightbox` sejak Phase 7). Hasil akhir
+  di `window` sama persis; caranya sampai ke sana yang berbeda.
+- **`renderDashboardJadwal()` dihapus.** Fungsi ini hanya berisi satu baris
+  (`renderCalendar();`) dan hanya dipanggil dari satu tempat (`refreshAll`). Setelah
+  `renderCalendar` diimpor langsung, wrapper itu tidak lagi menambah kejelasan apa pun —
+  `refreshAll()` sekarang memanggil `renderCalendar()` langsung.
+- **`collectMonthEvents()` diekstrak** dari dalam `renderCalendar()` di `calendar.view.js`
+  sebagai fungsi bernama terpisah. Logikanya sama persis, byte-for-byte — ini murni supaya
+  fungsi utamanya lebih pendek, bukan perubahan perilaku.
+
+### Yang SENGAJA tidak diseragamkan
+
+Fungsi "buka modal" (`openApprovalModal`, `openDetailModal`, `openPerbaikanModal`,
+`openJadwalModal`) TIDAK dipaksa memakai satu bentuk signature/return value yang sama.
+Masing-masing punya kebutuhan populate-content yang berbeda (approval & detail hanya baca,
+perbaikan & jadwal juga menyiapkan form). Memaksakan bentuk seragam di sini adalah
+abstraksi yang tidak diminta siapa pun — persis yang diperingatkan di instruksi awal
+("jangan over-engineer").
+
+### Verifikasi
+
+278 assertion Phase 0-7 tetap lulus **tanpa mengubah satu pun file uji** — bukti pemindahan
+ini murni struktural. Ditambah 35 assertion baru (`test-views.mjs`) yang menguji lewat login
+sungguhan + `initApp()`: kalender berganti bulan, modal approval menampilkan tombol yang
+tepat sesuai tahap yang aktif (diuji dengan INS-001 yang 4/4 disetujui vs INS-002 yang
+tahap 2-nya masih menunggu), isolasi Chart.js (grep `new Chart(` di `legacy-app.js` harus
+kosong), dan `buildInspectionReportHtml()` diuji langsung sebagai fungsi murni dengan
+payload yang sengaja memuat XSS, tiga status perbaikan sekaligus, dan kasus kosong.
+Total: **313 assertion, 0 gagal**.
+
+---
+
+## K-13 — Phase 9: event delegation menggantikan onclick inline
+
+**Tanggal:** 2026-09-20 · **Status:** disetujui
+
+### Mekanisme
+
+Satu modul generik baru, `src/presentation/controllers/action-dispatcher.js`:
+`registerAction(nama, handler)` mendaftarkan handler; `initActionDispatcher()` memasang
+**satu** listener klik terdelegasi ke `document`. Elemen yang bisa diklik memakai
+`data-action="namaAksi"` plus `data-*` lain sesuai kebutuhan handler-nya — menggantikan
+`onclick="namaAksi(${jsArg(...)})"` di 27 titik across 8 berkas, plus `onsubmit="handleLogin(event)"`
+pada `#loginForm` (diganti `addEventListener('submit', handleLogin)` langsung, bukan lewat
+dispatcher — submit bukan click, dan hanya ada satu form login).
+
+Modul dispatcher-nya sendiri tidak tahu apa pun soal aplikasi; seluruh pendaftaran 18 aksi
+ada di satu blok di ujung `legacy-app.js`, menggantikan blok `export {}` lama yang dipakai
+`installGlobalBridge`. `src/compat/global-bridge.js` dan pemanggilannya di `main.js` dihapus
+sepenuhnya — `main.js` sekarang hanya `import './legacy-app.js';`.
+
+### Jebakan tipe data yang ditemukan (dan sengaja diuji)
+
+`HTMLElement.dataset` **selalu** mengembalikan string, apa pun isi atribut HTML-nya. Tiga
+handler mengharapkan tipe lain, dan tanpa konversi eksplisit keduanya gagal *diam-diam*
+(tidak melempar error, cuma salah hasil):
+
+| Handler | Kenapa harus `Number(...)` |
+|---|---|
+| `changeCalendarMonth(delta)` | `currentCalendarMonth += delta` — kalau `delta` string `"-1"`, `+=` pada number+string jadi **penggabungan string** (`5 + "-1"` = `"5-1"`), bukan pengurangan. Bulan yang tampil rusak, bukan error. |
+| `approveStage`/`rejectStage`/`findStage` | `APPROVAL_STAGES.find(s => s.id === stageId)` memakai `===`. `2 !== "2"`, jadi tahap tidak pernah ketemu — approve/reject diam-diam tidak melakukan apa pun. |
+| `openLightbox(images, index)` | `currentLightboxIndex + direction` di `navigateLightbox` — index string membuat navigasi berikutnya salah lewat masalah yang sama seperti `changeCalendarMonth`. |
+| `hapusTemuan(index)` | `Array.prototype.splice` sebenarnya mentoleransi string (ToIntegerOrInfinity), jadi ini tidak benar-benar bug — tapi tetap dikonversi untuk konsistensi tipe dengan pemanggilan langsung yang lama. |
+
+Setiap `registerAction(...)` untuk keempatnya membungkus pemanggilan dengan `Number(el.dataset.X)`.
+`openLightbox` juga perlu `JSON.parse(...)` untuk array gambar — mekanisme decode-lalu-parse
+yang sama yang membuktikan perbaikan D-1 dulu (lihat KNOWN-ISSUES.md), sekarang lewat
+`data-images` bukan argumen `onclick`.
+
+### `data-id` tidak lagi butuh `jsArg`
+
+Titik panggil yang dulu memakai `onclick="handler(${jsArg(item.id)})"` sekarang cukup
+`data-id="${escapeHtml(item.id)}"` — `jsArg` (JSON.stringify + escape) hanya diperlukan saat
+nilainya harus jadi **argumen JS** di dalam atribut. Nilai yang duduk di `data-*` biasa cukup
+di-escape sebagai teks atribut. `jsArg` sekarang hanya dipakai untuk `data-images` (satu-satunya
+nilai berbentuk array).
+
+### Sembilan fungsi kembali jadi scope module, bukan lagi `window.X`
+
+`approveStage`, `cetakPDF`, `editJadwal`, `exportTemuanPerItem`, `hapusJadwal`, `hapusTemuan`,
+`openJadwalModal`, `rejectStage`, `tambahPerbaikanCustom` dulu memasang diri langsung
+(`window.X = function`) karena itulah satu-satunya cara atribut `onclick` (scope global) bisa
+menemukannya. Tanpa `onclick`, tidak ada alasan lagi menaruhnya di `window` — semuanya jadi
+`function X() {}` biasa, dipanggil dari `registerAction()` atau langsung antar fungsi.
+
+`window.showToast` **sengaja tidak diubah** — itu bukan bagian jembatan onclick (tidak pernah
+ada di `INLINE_HANDLER_NAMES`), sudah jadi properti `window` sejak sebelum refactoring dimulai.
+Mengubahnya di luar lingkup Phase 9.
+
+### Ekspor legacy-app.js berubah tujuan, bukan hilang
+
+19 fungsi yang dulu diekspor untuk `installGlobalBridge` **tetap** diekspor — tapi sekarang
+alasannya murni supaya berkas uji (`scratchpad/test-*.mjs`) bisa mengimpornya langsung
+(`import { approveStage } from '.../legacy-app.js'`), bukan lagi untuk jembatan window. Runtime
+aplikasi sendiri tidak pernah membaca ekspor ini — ia memanggil fungsi-fungsi itu langsung
+antar sesama kode di `legacy-app.js`, atau lewat pendaftaran aksi.
+
+### Dampak pada metodologi pengujian
+
+Seluruh test yang sebelumnya memanggil `window.handleLogin(...)`, `window.editJadwal(...)`, dst.
+**tidak bisa lagi begitu** — itu justru properti yang sengaja dihapus. Diganti dua pola:
+
+1. **Impor langsung** (`legacyApp.editJadwal(...)`) untuk menguji logika handler-nya — dipakai
+   di sebagian besar test lama yang cuma perlu memicu suatu aksi.
+2. **Klik sungguhan lewat dispatcher** (`document.dispatchEvent({type:'click', target: el})`,
+   dengan `el.dataset` diisi manual meniru apa yang seharusnya datang dari HTML) — dipakai
+   khusus untuk membuktikan jebakan tipe data di atas benar-benar tertangani, karena hanya
+   jalur ini yang melewati `registerAction()`nya sungguhan, bukan memanggil fungsi aslinya
+   langsung (yang akan lolos meski konversi Number-nya lupa ditulis).
+3. `handleLogin` diuji lewat `document.getElementById('loginForm').dispatchEvent({type:'submit',...})`
+   — membuktikan `addEventListener('submit', handleLogin)` yang menggantikan
+   `onsubmit="handleLogin(event)"` benar-benar terpasang.
+4. Modul dispatcher sendiri (`action-dispatcher.js`) diuji terisolasi di `test-dispatcher.mjs`
+   (9 assertion): registrasi, klik cocok, klik tanpa `data-action`, `data-action` tak
+   dikenal, dan penimpaan pendaftaran dengan nama sama.
+
+### Verifikasi
+
+Tidak ada satu pun assertion behavior lama yang berubah maknanya — semua 313 assertion Phase
+0-8 tetap ditulis ulang memakai pola baru (bukan dihapus), plus 3 assertion baru di
+`test-views.mjs` (klik sungguhan `changeCalendarMonth` dan `approveStage` lewat dispatcher)
+dan 9 assertion baru di `test-dispatcher.mjs`. Total: **325 assertion, 0 gagal**. Diverifikasi
+juga: 0 `onclick=`/`onsubmit="handleLogin` tersisa di `src/`+`index.html`, `src/compat/`
+terhapus, 18 nama `data-action` di markup persis cocok 1:1 dengan 18 `registerAction(...)`
+(dihitung lewat grep, bukan dibaca manual).

@@ -50,7 +50,7 @@
                 ⚠️ Username atau password salah!
             </div>
 
-            <form id="loginForm" onsubmit="handleLogin(event)">
+            <form id="loginForm">
                 <div class="form-group">
                     <label for="loginUsername">Username</label>
                     <input type="text" id="loginUsername" placeholder="Masukkan username" required autofocus>
@@ -112,7 +112,7 @@
                     <div class="user-profile">
                         <div class="avatar-placeholder" id="userAvatar">AP</div>
                         <span style="font-weight:500; font-size:0.9rem;" id="userName">Andi</span>
-                        <button class="btn-sm danger" onclick="logout()" style="margin-left:0.5rem;font-size:0.65rem;padding:0.15rem 0.6rem;">
+                        <button class="btn-sm danger" data-action="logout" style="margin-left:0.5rem;font-size:0.65rem;padding:0.15rem 0.6rem;">
                             <i class="fas fa-sign-out-alt"></i>
                         </button>
                     </div>
@@ -157,7 +157,7 @@
                 <div class="table-wrap" style="margin-bottom:1.5rem;">
                     <div class="table-header">
                         <h4><i class="fas fa-calendar-alt"></i> Jadwal Inspeksi Mingguan <span class="demo-badge">DEMO</span></h4>
-                        <button class="btn-sm primary" onclick="switchTab('jadwal')"><i class="fas fa-arrow-right"></i> Kelola</button>
+                        <button class="btn-sm primary" data-action="switchTab" data-panel="jadwal"><i class="fas fa-arrow-right"></i> Kelola</button>
                     </div>
                     <div class="calendar-container" id="calendarContainer"></div>
                 </div>
@@ -216,7 +216,7 @@
                                 <button class="clear-search" id="clearSearchJadwal">&times;</button>
                                 <span class="search-count" id="searchJadwalCount"></span>
                             </div>
-                            <button class="btn-sm primary" onclick="openJadwalModal()"><i class="fas fa-plus"></i> Tambah</button>
+                            <button class="btn-sm primary" data-action="openJadwalModal"><i class="fas fa-plus"></i> Tambah</button>
                         </div>
                     </div>
                     <table>
@@ -466,7 +466,7 @@
                     <div class="form-group">
                         <label>&nbsp;</label>
                         <div style="display:flex;gap:0.5rem;">
-                            <button type="button" class="btn-sm success" onclick="setRealisasiHariIni()" style="padding:0.4rem 1rem;">
+                            <button type="button" class="btn-sm success" data-action="setRealisasiHariIni" style="padding:0.4rem 1rem;">
                                 <i class="fas fa-calendar-check"></i> Set Hari Ini
                             </button>
                         </div>

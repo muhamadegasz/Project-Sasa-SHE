@@ -1,9 +1,9 @@
 /* main.js — satu-satunya entry point aplikasi.
 
-   Urutan penting: legacy-app.js dievaluasi lebih dulu (efek sampingnya
-   memasang seluruh event listener), baru jembatan global dipasang. */
+   Mengevaluasi legacy-app.js sudah cukup: efek sampingnya memasang seluruh
+   event listener (termasuk pendaftaran aksi klik lewat action-dispatcher.js).
+   Sejak Phase 9 tidak ada lagi atribut onclick="..." yang butuh fungsi di
+   scope global, sehingga jembatan window (src/compat/global-bridge.js,
+   dipakai Phase 2-8) sudah dihapus. */
 
-import * as legacyApp from './legacy-app.js';
-import { installGlobalBridge } from './compat/global-bridge.js';
-
-installGlobalBridge(legacyApp);
+import './legacy-app.js';

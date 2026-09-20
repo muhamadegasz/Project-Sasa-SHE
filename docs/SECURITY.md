@@ -7,7 +7,7 @@ Severity memakai skala CRITICAL / HIGH / MEDIUM / LOW.
 |---|---|---|---|
 | S-01 | CRITICAL | Kredensial hard-coded di client, ditampilkan pula di UI login | **TERBUKA** — dipisahkan ke `config/demo-auth.js` pada Phase 4 dengan peringatan eksplisit, tetapi **tetap tidak aman**. Hanya backend yang dapat menutupnya. |
 | S-02 | HIGH | DOM XSS: data pengguna disisipkan mentah ke `innerHTML` | **DITANGANI** — Phase 3 |
-| S-03 | HIGH | HTML attribute injection lewat argumen `onclick` dan `title` | **DITANGANI** — Phase 3 |
+| S-03 | HIGH | HTML attribute injection lewat argumen `onclick` dan `title` | **DITANGANI** — Phase 3 (jsArg). Phase 9 menghapus seluruh atribut `onclick` itu sendiri (bukan cuma mengamankan isinya) — lihat bagian Phase 9 di bawah. |
 | S-04 | HIGH | Spreadsheet formula injection pada ekspor XLSX | **DITANGANI** — Phase 6 |
 | S-05 | MEDIUM | Empat resource CDN tanpa Subresource Integrity | **TERBUKA** |
 | S-06 | MEDIUM | Pipeline PDF menyuntik HTML pengguna tak ter-escape | **DITANGANI** — Phase 3 |
@@ -126,13 +126,39 @@ dikirim ke SheetJS — bukan hanya fungsi sanitasinya yang diuji terpisah.
 
 ### Isolasi library
 
-Setelah Phase 6, setiap library pihak ketiga hanya disentuh satu berkas:
+Sejak Phase 8, seluruh library pihak ketiga terisolasi — masing-masing hanya disentuh satu
+berkas:
 
 | Library | Satu-satunya pemakai |
 |---|---|
 | SheetJS (`XLSX`) | `src/infrastructure/excel-exporter.js` |
 | html2pdf | `src/infrastructure/pdf-exporter.js` |
-| Chart.js | `src/legacy-app.js` — pindah ke `charts.view.js` pada Phase 8 |
+| Chart.js | `src/presentation/views/charts.view.js` |
+
+Diverifikasi lewat `grep -rn "new Chart(" src/` — hanya muncul di `charts.view.js`.
 
 Kalau kelak SheetJS diganti karena CVE-2024-22363 (S-08), hanya satu berkas yang perlu
 disentuh.
+
+---
+
+## Yang ditangani pada Phase 9
+
+### Seluruh atribut `onclick`/`onsubmit` inline dihapus (perpanjangan S-03)
+
+Bukan sekadar mengamankan ISI atribut `onclick` (sudah selesai Phase 3 lewat `jsArg`) —
+Phase 9 menghapus atributnya sendiri di seluruh aplikasi (27 titik + 1 `onsubmit`), diganti
+`data-action="..."` + satu listener klik terdelegasi
+(`src/presentation/controllers/action-dispatcher.js`). Detail mekanisme di
+docs/DECISIONS.md K-13.
+
+Konsekuensi keamanan tambahan (bonus, bukan tujuan utama refactoring ini): aplikasi sekarang
+kompatibel dengan Content-Security-Policy yang melarang `unsafe-inline` untuk script.
+Sebelum Phase 9, CSP seketat itu akan mematikan seluruh atribut `onclick`/`onsubmit` — bukan
+sesuatu yang pernah diterapkan di aplikasi ini, tapi kini menjadi opsi yang tersedia tanpa
+refactoring tambahan.
+
+**Bukan klaim baru bahwa aplikasi ini "aman dari XSS".** S-02 (DOM XSS) dan S-03 (attribute
+injection) sudah ditangani sejak Phase 3 lewat escaping yang benar — itulah yang mencegah
+XSS, bukan penghapusan `onclick`. Perubahan Phase 9 murni arsitektural (memisahkan struktur
+dari perilaku) dan memperkecil permukaan yang bisa jadi CSP-hostile di kemudian hari.

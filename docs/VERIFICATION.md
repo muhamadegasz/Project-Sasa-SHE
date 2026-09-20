@@ -47,6 +47,11 @@ Kredensial demo: `sasapolkesma` / `sasapolkesma`.
 | A-6 | Cari `XLSX.` di `src/` | Hanya di `infrastructure/excel-exporter.js` |
 | A-7 | Cari `html2pdf` di `src/` | Hanya di `infrastructure/pdf-exporter.js` |
 | A-8 | DevTools → tab Network | Semua file `src/` dan `assets/css/` status 200, tidak ada 404 |
+| A-9 | Cari `selectedPlant`/`selectedPlantJadwal`/`tandaiPlantBelumDipilih` di `src/legacy-app.js` | **0** hasil — dipindah ke `presentation/components/plant-select.js` sejak Phase 7 |
+| A-10 | Cari `renderApprovalStages`/`renderInspeksiTable`/`renderPerbaikanTable`/`updateNotifBadge`/`temuanPlantChart`/`perbaikanChart`/`countRepairStatuses` di `src/legacy-app.js` | **0** hasil — dipindah ke `presentation/views/` sejak Phase 8 |
+| A-11 | Cari `onsubmit=` di `index.html` | Hanya pada `#inspeksiForm`/`#jadwalForm` (`onsubmit="return false;"` — bukan bagian bridge, tidak memanggil fungsi apa pun). **0** pada `#loginForm` sejak Phase 9 |
+| A-12 | Cek `src/compat/` | Folder **tidak ada** — dihapus Phase 9 bersama `global-bridge.js` |
+| A-13 | Cari `window\.(approveStage\|cetakPDF\|editJadwal\|exportTemuanPerItem\|hapusJadwal\|hapusTemuan\|openJadwalModal\|rejectStage\|tambahPerbaikanCustom)\s*=` di `src/legacy-app.js` | **0** hasil — kesembilan fungsi ini dulu memasang diri ke `window` langsung, sejak Phase 9 jadi `function` biasa + didaftarkan lewat `registerAction()` |
 
 ---
 
@@ -195,8 +200,8 @@ Kredensial demo: `sasapolkesma` / `sasapolkesma`.
 | J-1 | Buka setiap modal (Jadwal, Detail, Perbaikan, Approval, Kalender) | Semua terbuka dengan benar |
 | J-2 | Tutup setiap modal via tombol × | Tertutup |
 | J-3 | Tutup setiap modal via klik backdrop | Tertutup |
-| J-4 | 🔴 Detail modal → klik thumbnail foto | **Lightbox terbuka** (D-1 — rusak saat ini, harus berfungsi setelah Phase 7) |
-| J-5 | 🔴 Modal perbaikan → klik thumbnail foto pada timeline | Lightbox terbuka |
+| J-4 | Detail modal → klik thumbnail foto | Lightbox terbuka (D-1, diperbaiki Phase 3; komponennya sendiri di `presentation/components/lightbox.js` sejak Phase 7) |
+| J-5 | Modal perbaikan → klik thumbnail foto pada timeline | Lightbox terbuka |
 | J-6 | Lightbox: tombol next / prev | Berpindah antar foto, counter "n dari N" ter-update |
 | J-7 | Lightbox: panah kiri/kanan keyboard | Sama dengan J-6 |
 | J-8 | Lightbox: tombol Escape | Tertutup, scroll halaman kembali normal |
@@ -227,7 +232,7 @@ Kredensial demo: `sasapolkesma` / `sasapolkesma`.
 |---|---|---|
 | L-1 | Login → logout → login, ulangi 3× | Tidak ada error di console |
 | L-2 | Setelah L-1, ketik satu karakter di search | Render terjadi **sekali**, bukan berlipat (cek dengan `console.count` atau breakpoint) |
-| L-3 | Setelah logout, amati jam di header | Interval dihentikan saat logout, timer tidak menumpuk |
+| L-3 | ~~Setelah logout, amati jam di header~~ — **tidak berlaku lagi**, badge jam sudah dihapus (K-6). Ganti dengan: amati console setelah logout → login ulang 3× | Tidak ada `setInterval` yang menumpuk (cek lewat breakpoint atau hitung pemanggilan) |
 | L-4 | Setelah login ulang, amati chart | Kedua chart tampil normal (chart lama sudah di-destroy) |
 | L-5 | Biarkan aplikasi terbuka >30 detik | Refresh berkala tabel jadwal + kalender berjalan tepat sekali per 10 detik |
 
