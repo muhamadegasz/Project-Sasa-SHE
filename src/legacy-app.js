@@ -176,10 +176,8 @@ function handleLogin(event) {
 
     const username = document.getElementById('loginUsername').value.trim();
     const password = document.getElementById('loginPassword').value.trim();
-    const errorMessage = document.getElementById('loginError');
 
     if (isValidDemoLogin(username, password)) {
-        errorMessage.classList.remove('show');
         document.getElementById('loginPage').classList.add('hidden');
         document.getElementById('mainApp').classList.add('visible');
 
@@ -187,18 +185,10 @@ function handleLogin(event) {
         document.getElementById('userAvatar').textContent = initial + initial;
         document.getElementById('userName').textContent = DEMO_DISPLAY_NAME;
 
-        showToast('✅ Selamat datang, Safety Officer!');
-
         setTimeout(initApp, 300);
     } else {
-        errorMessage.textContent = '⚠️ Username atau password salah!';
-        errorMessage.classList.add('show');
         document.getElementById('loginPassword').value = '';
         document.getElementById('loginPassword').focus();
-
-        setTimeout(() => {
-            errorMessage.classList.remove('show');
-        }, 3000);
     }
 }
 
@@ -213,18 +203,12 @@ function logout() {
     }
 }
 
-document.addEventListener('keydown', function(event) {
-    if (event.key === 'Enter') {
-        const loginPage = document.getElementById('loginPage');
-        if (!loginPage.classList.contains('hidden')) {
-            const form = document.getElementById('loginForm');
-            if (document.activeElement === document.getElementById('loginUsername') ||
-                document.activeElement === document.getElementById('loginPassword')) {
-                form.dispatchEvent(new Event('submit'));
-            }
-        }
-    }
-});
+// D-2 (docs/KNOWN-ISSUES.md): dulu ada listener keydown di sini yang secara
+// manual men-dispatch submit lagi saat Enter ditekan. Itu berlebihan — form
+// HTML sudah submit sendiri saat Enter ditekan di dalam input teks, tanpa
+// perlu JS. Menduplikasi itu membuat handleLogin() terpanggil 2-3 kali per
+// Enter, yang menjadwalkan setTimeout(initApp, 300) berkali-kali (pemicu D-3).
+// Dihapus pada Phase 10, bukan diganti — sudah tidak diperlukan.
 
 window.addEventListener('load', function() {
     document.getElementById('loginUsername').focus();
@@ -649,36 +633,52 @@ document.querySelectorAll('#syncToSheets, #syncToSheets2, #syncToSheets3').forEa
 // ========== INIT APP ==========
 // ========================================================================
 
+// D-3 (docs/KNOWN-ISSUES.md): initApp() dipanggil ulang setiap login berhasil,
+// termasuk logout lalu login lagi di sesi yang sama — bukan cuma sekali per
+// pemuatan halaman. initPlantSelect(), setupSearch(), dan setInterval() di
+// bawah MEMASANG listener/timer baru pada pemanggilan pertama; kalau diulang
+// akan menumpuk duplikat (listener dobel, interval dobel) tanpa pernah
+// dibersihkan, karena elemen DOM-nya sendiri tidak pernah dibuat ulang (login
+// hanya mengganti class CSS, bukan membongkar #mainApp). Penjaga ini membuat
+// bagian yang memasang listener/timer hanya berjalan sekali per pemuatan
+// halaman; bagian yang menyegarkan tampilan (form default, chart, tabel)
+// tetap berjalan di setiap login.
+let appInitialized = false;
+
 function initApp() {
-    initPlantSelect();
+    if (!appInitialized) {
+        appInitialized = true;
+
+        initPlantSelect();
+
+        setupSearch('searchInspeksiInput', 'clearSearchInspeksi', 'searchInspeksiCount',
+            () => inspectionRepository.getAll(), renderInspeksiWithSearch, ['id', 'lokasi', 'petugas', 'status', 'dueDate']);
+
+        setupSearch('searchAllInspeksiInput', 'clearSearchAllInspeksi', 'searchAllInspeksiCount',
+            () => inspectionRepository.getAll(), renderAllInspeksiWithSearch, ['id', 'lokasi', 'keteranganLokasi', 'petugas',
+                'status'
+            ]);
+
+        setupSearch('searchJadwalInput', 'clearSearchJadwal', 'searchJadwalCount',
+            () => scheduleRepository.getAll(), renderJadwalWithSearch, ['plantName', 'officer', 'status']);
+
+        setupSearch('searchPerbaikanInput', 'clearSearchPerbaikan', 'searchPerbaikanCount',
+            () => inspectionRepository.getAll(), renderPerbaikanWithSearch, ['id', 'lokasi', 'petugas', 'dueDate']);
+
+        setInterval(() => {
+            renderJadwalTable();
+            renderCalendar();
+        }, 10000);
+    }
 
     document.getElementById('formTanggal').value = new Date().toISOString().split('T')[0];
     const defaultDueDate = new Date();
     defaultDueDate.setDate(defaultDueDate.getDate() + 14);
     document.getElementById('formDueDate').value = defaultDueDate.toISOString().split('T')[0];
 
-    setupSearch('searchInspeksiInput', 'clearSearchInspeksi', 'searchInspeksiCount',
-        () => inspectionRepository.getAll(), renderInspeksiWithSearch, ['id', 'lokasi', 'petugas', 'status', 'dueDate']);
-
-    setupSearch('searchAllInspeksiInput', 'clearSearchAllInspeksi', 'searchAllInspeksiCount',
-        () => inspectionRepository.getAll(), renderAllInspeksiWithSearch, ['id', 'lokasi', 'keteranganLokasi', 'petugas',
-            'status'
-        ]);
-
-    setupSearch('searchJadwalInput', 'clearSearchJadwal', 'searchJadwalCount',
-        () => scheduleRepository.getAll(), renderJadwalWithSearch, ['plantName', 'officer', 'status']);
-
-    setupSearch('searchPerbaikanInput', 'clearSearchPerbaikan', 'searchPerbaikanCount',
-        () => inspectionRepository.getAll(), renderPerbaikanWithSearch, ['id', 'lokasi', 'petugas', 'dueDate']);
-
     renderTemuanList();
     initCharts();
     refreshAll();
-
-    setInterval(() => {
-        renderJadwalTable();
-        renderCalendar();
-    }, 10000);
 
     console.log('🚀 SHE Sasa K3 System - DEMO MODE ACTIVE');
     console.log(`📊 ${inspectionRepository.count()} inspeksi, ${scheduleRepository.count()} jadwal mingguan`);
@@ -687,14 +687,15 @@ function initApp() {
     console.log(`📅 Jadwal mingguan setiap plant - ${scheduleRepository.count()} total jadwal`);
 }
 
-document.getElementById('loginPassword').addEventListener('keydown', function(e) {
-    if (e.key === 'Enter') {
-        document.getElementById('loginForm').dispatchEvent(new Event('submit'));
-    }
-});
+// Enter di #loginPassword dulu men-dispatch submit lagi secara manual di sini
+// (D-2) — dihapus, submit form asli sudah cukup (lihat catatan di LOGIN SYSTEM).
 
 document.getElementById('loginUsername').addEventListener('keydown', function(e) {
     if (e.key === 'Enter') {
+        // preventDefault: tanpa ini, submit form asli TETAP jalan (dengan
+        // password yang mungkin masih kosong) bersamaan dengan pemindahan
+        // fokus — persis pola berlebihan yang sama seperti D-2.
+        e.preventDefault();
         document.getElementById('loginPassword').focus();
     }
 });

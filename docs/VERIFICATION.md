@@ -59,14 +59,14 @@ Kredensial demo: `sasapolkesma` / `sasapolkesma`.
 
 | # | Langkah | Hasil yang diharapkan |
 |---|---|---|
-| B-1 | Login `sasapolkesma` / `sasapolkesma` via **klik tombol Masuk** | Masuk ke dashboard, toast "Selamat datang" |
-| B-2 | Login dengan password salah | Pesan error merah muncul, hilang sendiri setelah ±3 detik, field password dikosongkan dan di-fokus |
+| B-1 | Login `sasapolkesma` / `sasapolkesma` via **klik tombol Masuk** | Masuk ke dashboard langsung, tanpa toast (dihapus atas permintaan pengguna — lihat DECISIONS.md K-15) |
+| B-2 | Login dengan password salah | Tidak ada notifikasi visual (dihapus — K-15), field password dikosongkan dan di-fokus untuk dicoba ulang |
 | B-3 | Login dengan username salah | Sama seperti B-2 |
-| B-4 | 🔴 Login dengan menekan **Enter** di field password | Masuk ke dashboard. Console bersih. `handleLogin` dieksekusi **sekali** (D-2) |
+| B-4 | Login dengan menekan **Enter** di field password | Masuk ke dashboard. Console bersih. `handleLogin` dieksekusi **sekali** (D-2, SELESAI Phase 10 — diuji otomatis di `test-lifecycle.mjs`) |
 | B-5 | Tekan Enter di field username | Fokus berpindah ke field password |
 | B-6 | Klik logout → konfirmasi OK | Kembali ke halaman login, field dikosongkan, toast "Anda telah keluar" |
 | B-7 | Klik logout → Cancel | Tetap di aplikasi, tidak ada perubahan |
-| B-8 | 🔴 Logout lalu login ulang **3 kali berturut-turut** | Dashboard tampil utuh setiap kali, chart tetap muncul, console bersih — khususnya tanpa `Canvas is already in use` (D-3) |
+| B-8 | Logout lalu login ulang **3 kali berturut-turut** | Dashboard tampil utuh setiap kali, chart tetap muncul, console bersih — khususnya tanpa `Canvas is already in use` (D-3, SELESAI Phase 10 — diuji otomatis di `test-lifecycle.mjs`) |
 | B-9 | Setelah B-8, buka panel Jadwal dan ketik di search | Hasil benar, tidak ada render ganda / listener berlipat |
 
 ---
@@ -226,7 +226,7 @@ Kredensial demo: `sasapolkesma` / `sasapolkesma`.
 
 ---
 
-## L. Lifecycle (berlaku penuh setelah Phase 10)
+## L. Lifecycle (D-2/D-3 SELESAI sejak Phase 10 — lihat docs/KNOWN-ISSUES.md dan `test-lifecycle.mjs`)
 
 | # | Langkah | Hasil yang diharapkan |
 |---|---|---|

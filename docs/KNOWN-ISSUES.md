@@ -5,7 +5,7 @@ Tujuan dokumen ini: memisahkan "perilaku yang memang begitu" dari "perilaku yang
 supaya aturan *preserve behavior* selama refactoring punya acuan yang jujur.
 
 Tanggal audit: 2026-09-19
-Baseline commit: `4734b5c` · Nomor baris disegarkan setelah Phase 9.
+Baseline commit: `4734b5c` · Nomor baris disegarkan setelah Phase 10.
 
 Status:
 - **FIX** — akan diperbaiki selama refactoring (fase disebutkan)
@@ -51,16 +51,26 @@ dan escape seluruh nilai atribut. **Diterapkan pada Phase 9** — lihat docs/DEC
 | | |
 |---|---|
 | Severity | MEDIUM |
-| Status | **FIX** — Phase 10 (lifecycle) |
-| Lokasi | `src/legacy-app.js:172` (submit `#loginForm`), `src/legacy-app.js:216`, `src/legacy-app.js:690` |
+| Status | **SELESAI** — Phase 10 |
+| Lokasi | `src/legacy-app.js:172` (satu-satunya listener submit yang tersisa), `src/legacy-app.js:703` (`#loginUsername`, kini dengan `preventDefault()`) |
 
-Tiga jalur memicu submit untuk satu penekanan Enter:
-1. `document.getElementById('loginForm').addEventListener('submit', handleLogin)` (baris 172) — submit implisit browser saat Enter ditekan di dalam form. Sebelum Phase 9 ini `onsubmit="handleLogin(event)"` inline; perilakunya sama persis, cuma cara pemasangannya yang berubah.
-2. listener `keydown` pada `document` (baris 216 di `src/legacy-app.js`) yang memanggil `form.dispatchEvent(new Event('submit'))`
-3. listener `keydown` pada `#loginPassword` (baris 690 di `src/legacy-app.js`) yang melakukan hal yang sama
+Dulu tiga jalur memicu submit untuk satu penekanan Enter: submit implisit form (native
+browser), listener `keydown` pada `document` yang men-dispatch submit manual, dan listener
+`keydown` khusus pada `#loginPassword` yang melakukan hal yang sama. Ketiganya menjalankan
+`handleLogin` untuk satu penekanan Enter yang sama, menjadwalkan `setTimeout(initApp, 300)`
+2-3 kali, yang memicu D-3.
 
-Akibatnya `setTimeout(initApp, 300)` terjadwal 2–3 kali, yang langsung memicu D-3.
-Login lewat klik tombol "Masuk" hanya memanggil sekali.
+**Perbaikan:** kedua listener `keydown` yang men-dispatch submit manual dihapus — submit
+form native saja sudah cukup, keduanya murni duplikat. Listener `keydown` pada
+`#loginUsername` (yang memindahkan fokus ke `#loginPassword`, bukan submit) dipertahankan
+tapi diberi `event.preventDefault()`, supaya Enter di situ **hanya** memindahkan fokus, tidak
+ikut submit form dengan password yang mungkin masih kosong. Hasil akhir: tepat satu jalur
+submit (`addEventListener('submit', handleLogin)`), untuk Enter di field mana pun.
+
+Diuji lewat `test-lifecycle.mjs`: dispatch `keydown` Enter ke `document` dan ke
+`#loginPassword` dipastikan tidak lagi memicu dispatch `submit` tambahan; Enter di
+`#loginUsername` dipastikan memanggil `preventDefault()` dan memindahkan fokus tanpa ikut
+submit.
 
 ---
 
@@ -69,24 +79,33 @@ Login lewat klik tombol "Masuk" hanya memanggil sekali.
 | | |
 |---|---|
 | Severity | HIGH |
-| Status | **FIX** — Phase 10 (lifecycle) |
-| Lokasi | `src/presentation/views/charts.view.js:107` (`initCharts`), bandingkan `src/presentation/views/charts.view.js:30` (`renderTemuanPlantChart`) — keduanya dipindah dari `legacy-app.js` pada Phase 8 |
+| Status | **SELESAI** — Phase 10 |
+| Lokasi | `src/presentation/views/charts.view.js:115` (`initCharts`, destroy sebelum re-create), `src/legacy-app.js:656` (`appInitialized`, penjaga setup sekali-jalan) |
 
 `renderTemuanPlantChart()` sudah benar (`destroy()` sebelum `new Chart()`), tetapi
-`initCharts()` membuat `perbaikanChart` **tanpa** destroy.
+`initCharts()` membuat `perbaikanChart` **tanpa** destroy. Chart.js 4.4.0 (versi yang di-pin)
+memiliki guard eksplisit di constructor yang melempar `"Canvas is already in use…"` pada
+pemanggilan kedua, membatalkan sisa `initApp()` untuk run itu.
 
-Chart.js 4.4.0 (versi yang di-pin) memiliki guard eksplisit di constructor:
+**Perbaikan, dua lapis:**
+1. `initCharts()` sekarang men-destroy `perbaikanChart` yang lama (jika ada) sebelum membuat
+   yang baru — menyamakan pola dengan `renderTemuanPlantChart()`. Ini sendiri sudah cukup
+   membuat `initApp()` tidak lagi crash pada pemanggilan kedua.
+2. **Tapi** menghilangkan crash saja tidak cukup — `initPlantSelect()`, `setupSearch()` (4×),
+   dan `setInterval()` di dalam `initApp()` MEMASANG listener/timer baru setiap kali dipanggil.
+   Sebelum fix ini, efek itu sudah terjadi diam-diam pada setiap pemanggilan kedua (bagian ini
+   dieksekusi SEBELUM titik crash di kode lama) — cuma tidak terlihat karena `refreshAll()`
+   dan `setInterval()` di baris-baris setelahnya tidak sempat berjalan. Begitu crash-nya
+   ditutup tanpa mengatasi ini, aplikasi tidak lagi error tapi diam-diam menumpuk listener dan
+   timer duplikat setiap kali pengguna logout lalu login lagi. Ditangani dengan penjaga
+   `appInitialized`: bagian yang memasang listener/timer hanya berjalan pada panggilan
+   pertama; bagian yang menyegarkan tampilan (form default, chart, tabel) tetap berjalan di
+   setiap login.
 
-```js
-constructor(t,e){ … const o=Dn(n); if(o) throw new Error("Canvas is already in use…") }
-```
-
-Pemanggilan kedua melempar exception dan **membatalkan sisa `initApp()`**, sehingga
-`refreshAll()`, `updateClock()`, dan kedua `setInterval()` tidak pernah dijalankan pada run itu.
-
-Pemicu: D-2 (login via Enter) dan logout → login ulang.
-Efek samping tambahan: `initPlantSelect()` dan `setupSearch()` memasang listener berulang
-sebelum exception terjadi.
+Diuji lewat `test-lifecycle.mjs` dengan simulasi login → logout → login (dua kali berturut):
+tidak ada exception, chart di-destroy sebelum dibuat ulang, dan jumlah listener pada
+`#searchInspeksiInput`/`#plantSearchInput` serta jumlah pemanggilan `setInterval` **tidak
+bertambah** setelah login kedua/ketiga.
 
 ---
 
@@ -118,7 +137,7 @@ Selama refactoring: struktur `updateNotifBadge(count)` dipertahankan apa adanya.
 |---|---|
 | Severity | LOW |
 | Status | **FIX (sebagian)** — Phase 11 |
-| Lokasi | `src/legacy-app.js:623` (`syncToGoogleSheets`), `src/legacy-app.js:637` (relabel di blok `finally`) |
+| Lokasi | `src/legacy-app.js:617` (`syncToGoogleSheets`), `src/legacy-app.js:631` (relabel di blok `finally`) |
 
 Dua hal berbeda:
 
@@ -192,5 +211,5 @@ deterministik, sehingga perbandingan baseline antar fase dapat diandalkan.
 - **Tanggal bersifat relatif.** `getDateOffset()` menghitung dari hari ini, sehingga nilai tanggal
   pada data demo berubah setiap hari. Saat membandingkan baseline antar hari, bandingkan
   *struktur dan status*, bukan string tanggal.
-- **Dead code** yang akan dihapus pada Phase 11: `renderGallery()` di `src/legacy-app.js:259` (didefinisikan, tidak dipakai),
+- **Dead code** yang akan dihapus pada Phase 11: `renderGallery()` di `src/legacy-app.js:253` (didefinisikan, tidak dipakai),
   `<audio id="alertSound">` di `index.html:405` (tidak pernah disentuh), field `lat`/`lng` (tidak pernah dirender).

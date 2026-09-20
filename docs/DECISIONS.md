@@ -610,3 +610,98 @@ dan 9 assertion baru di `test-dispatcher.mjs`. Total: **325 assertion, 0 gagal**
 juga: 0 `onclick=`/`onsubmit="handleLogin` tersisa di `src/`+`index.html`, `src/compat/`
 terhapus, 18 nama `data-action` di markup persis cocok 1:1 dengan 18 `registerAction(...)`
 (dihitung lewat grep, bukan dibaca manual).
+
+---
+
+## K-14 — Phase 10: D-2 (submit Enter berlipat) dan D-3 (initApp tidak idempotent)
+
+**Tanggal:** 2026-09-20 · **Status:** disetujui (bagian dari K-1, dieksekusi di Phase 10)
+
+### D-2: dihapus, bukan diganti
+
+Dua dari tiga jalur submit adalah duplikat murni dari perilaku native browser (form HTML
+submit sendiri saat Enter ditekan di input teks) — tidak butuh JS sama sekali. Perbaikannya
+karena itu adalah **penghapusan**, bukan penambahan logika dedup/debounce. Satu-satunya
+listener `keydown` yang punya tujuan asli (memindahkan fokus username → password)
+dipertahankan, hanya ditambah `event.preventDefault()` supaya tidak lagi *juga* ikut submit
+form dengan password kosong.
+
+### D-3: dua lapis, bukan satu
+
+Awalnya deskripsi defect ini terlihat seperti "chart crash" saja — cukup tambah
+`perbaikanChart.destroy()` sebelum `new Chart()`, seperti yang sudah dilakukan
+`renderTemuanPlantChart()`. Itu memang **perlu**, tapi tidak **cukup**: dokumentasi audit awal
+(KNOWN-ISSUES.md) sendiri mencatat "efek samping tambahan" — `initPlantSelect()` dan
+`setupSearch()` memasang listener berulang **sebelum** titik crash lama, yang berarti
+duplikasi listener itu sudah terjadi hari ini setiap kali `initApp()` terpanggil dua kali,
+independen dari chart crash-nya.
+
+Menutup crash tanpa menutup ini akan menukar bug yang **berisik** (exception, mudah
+ketahuan) dengan bug yang **diam** (listener dan `setInterval` menumpuk tanpa batas setiap
+logout/login, memperlambat aplikasi secara halus, susah dilacak). Karena D-3 secara eksplisit
+disetujui untuk diperbaiki (K-1), dan "initApp tidak idempotent" adalah judul defect-nya
+sendiri, menutup separuh masalah dan membiarkan separuh lain aktif bukan perbaikan yang
+jujur terhadap judul itu.
+
+**Solusi:** satu flag module-level `appInitialized` di `legacy-app.js`. Bagian `initApp()`
+yang memasang listener/timer (initPlantSelect, 4× setupSearch, setInterval) hanya berjalan
+saat `appInitialized` masih `false`; bagian yang menyegarkan tampilan (reset field form,
+`renderTemuanList`, `initCharts`, `refreshAll`) tetap berjalan di setiap login — supaya
+logout lalu login lagi tetap menghasilkan dashboard yang benar-benar segar, bukan cuma
+"tidak crash".
+
+Ini **bukan** state-machine lifecycle umum (tidak ada `teardown()`/`destroy()` untuk
+`initApp`) — elemen DOM aplikasi memang tidak pernah dibongkar saat logout (hanya
+class CSS `.hidden`/`.visible` yang berganti), jadi listener yang terpasang sekali tetap
+valid selamanya untuk elemen yang sama. Satu flag boolean sudah cukup; membangun mekanisme
+lifecycle penuh (register/unregister eksplisit) untuk masalah yang sebenarnya "pasang
+sekali, pakai selamanya" akan jadi abstraksi yang tidak diminta.
+
+### Verifikasi
+
+`test-lifecycle.mjs` (baru, 17 assertion) mensimulasikan login → logout → login → logout →
+login (dua kali ulang, bukan cuma sekali, supaya bukan kebetulan). Diverifikasi: tidak ada
+exception pada login kedua/ketiga, `perbaikanChart.destroy()` benar-benar terpanggil sebelum
+instance baru, dan — ini yang paling penting — **jumlah** listener `input` pada
+`#searchInspeksiInput`/`#plantSearchInput` serta jumlah pemanggilan `setInterval` **tidak
+bertambah** setelah login kedua/ketiga (bukan cuma "tidak error", tapi benar-benar terbukti
+tidak menumpuk). D-2 diuji terpisah: dispatch `keydown` Enter ke `document` dan
+`#loginPassword` dipastikan tidak lagi memicu dispatch `submit` tambahan.
+
+Seluruh 325 assertion Phase 0-9 tetap lulus tanpa perubahan. Total: **342 assertion, 0
+gagal**.
+
+---
+
+## K-15 — Notifikasi login (toast sukses & pesan error) dihapus atas permintaan pengguna
+
+**Tanggal:** 2026-09-20 · **Status:** disetujui, dieksekusi langsung (di luar penomoran phase —
+perubahan perilaku eksplisit, bukan refactor struktural)
+
+**Permintaan:** hapus toast "✅ Selamat datang, Safety Officer!" yang muncul setelah login
+berhasil, dan hapus kotak pesan merah "⚠️ Username atau password salah!" yang muncul di
+`#loginError` saat login gagal.
+
+**Implementasi — dihapus sampai akar, bukan disembunyikan lewat CSS:**
+- `handleLogin()` (`src/legacy-app.js`): baris `showToast(...)` pada jalur sukses dihapus;
+  pada jalur gagal, seluruh blok `errorMessage.textContent/classList.add('show')` +
+  `setTimeout(... classList.remove('show'), 3000)` dihapus. Variabel `errorMessage` (dan
+  `classList.remove('show')` pada jalur sukses) ikut dihapus karena jadi tidak terpakai.
+  Perilaku yang **dipertahankan**: field password dikosongkan dan di-fokus ulang saat login
+  gagal — ini bukan "notifikasi", tapi UX standar supaya pengguna bisa langsung mencoba lagi.
+- `index.html`: elemen `<div id="loginError" class="error-message">...</div>` dihapus —
+  tidak ada lagi kode yang mengisi atau menampilkannya, jadi mempertahankan markup-nya
+  (walau `display:none` secara default) adalah dead code.
+- `assets/css/02-login.css`: aturan `.error-message`, `.error-message.show`, dan
+  `@keyframes shake` dihapus — diverifikasi lebih dulu (grep) bahwa `.error-message` dan
+  `shake` tidak dipakai elemen lain mana pun di proyek.
+
+**Konsekuensi UX yang disadari:** pengguna yang salah memasukkan kredensial sekarang **tidak
+mendapat umpan balik visual apa pun** selain field password yang mengosong dan
+ter-fokus-ulang — ini adalah permintaan eksplisit pengguna, bukan defect yang terlewat.
+
+**Dampak ke test suite:** `test-crud.mjs` (skenario "login gagal") sebelumnya membaca
+`byId('loginError').textContent` — mengasumsikan elemen itu masih ada. Perlu disesuaikan
+karena elemen sudah tidak ada di stub DOM manapun; skenario diuji ulang lewat efek yang masih
+ada (field password kosong + halaman login tetap tampil), bukan lewat teks error yang sudah
+tidak ada.

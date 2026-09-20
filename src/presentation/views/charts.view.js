@@ -107,6 +107,15 @@ let perbaikanChart;
 export function initCharts() {
     renderTemuanPlantChart();
 
+    // D-3 (docs/KNOWN-ISSUES.md): Chart.js melempar "Canvas is already in use"
+    // kalau instance lama di canvas yang sama belum di-destroy. renderTemuanPlantChart()
+    // di atas sudah benar (destroy sebelum new Chart); ini menyamakan perbaikanChart
+    // dengan pola yang sama, supaya initCharts() aman dipanggil ulang (mis. logout lalu
+    // login lagi) tanpa melempar exception yang membatalkan sisa initApp().
+    if (perbaikanChart) {
+        perbaikanChart.destroy();
+    }
+
     const ctx2 = document.getElementById('perbaikanChart').getContext('2d');
     const counts = countRepairStatuses();
     perbaikanChart = new Chart(ctx2, {
