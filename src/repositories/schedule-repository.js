@@ -27,11 +27,24 @@ export function findById(id) {
     return schedules.find((schedule) => schedule.id === id);
 }
 
-/** Menambahkan jadwal baru di posisi paling belakang. */
+/**
+ * Menambahkan jadwal baru di posisi paling belakang. Id ditentukan DI SINI
+ * (lewat nextId()) — lihat catatan yang sama di inspection-repository.js.
+ */
 export function add(schedule) {
-    schedules.push(schedule);
-    return schedule;
+    const withId = { id: nextId(), ...schedule };
+    schedules.push(withId);
+    return withId;
 }
+
+/**
+ * Menyimpan perubahan field jadwal (dipanggil schedule-service.js setelah
+ * Object.assign ke objek hasil findById()).
+ *
+ * No-op di sini dengan alasan yang sama seperti saveApproval() di
+ * inspection-repository.js — findById() mengembalikan referensi hidup.
+ */
+export function update(_id, _patch) {}
 
 /**
  * Menghapus jadwal berdasarkan id.

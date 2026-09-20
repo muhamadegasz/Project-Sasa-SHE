@@ -16,8 +16,11 @@ const actions = new Map();
  * Mendaftarkan satu handler aksi.
  *
  * @param {string} name nilai atribut data-action yang dicocokkan
- * @param {(el: HTMLElement, event: Event) => void} handler menerima elemen
- *   yang diklik (baca data-*-nya sendiri) dan event asli
+ * @param {(el: HTMLElement, event: Event) => void|Promise<void>} handler
+ *   menerima elemen yang diklik (baca data-*-nya sendiri) dan event asli.
+ *   Boleh async (beberapa handler sejak Phase 12 memanggil service yang
+ *   menyimpan ke backend) — nilai kembaliannya diteruskan oleh listener di
+ *   bawah, browser mengabaikannya begitu saja pada listener klik biasa.
  */
 export function registerAction(name, handler) {
     actions.set(name, handler);
@@ -38,6 +41,6 @@ export function initActionDispatcher() {
         const handler = actions.get(el.dataset.action);
         if (!handler) return;
 
-        handler(el, event);
+        return handler(el, event);
     });
 }

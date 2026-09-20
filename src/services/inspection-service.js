@@ -4,8 +4,8 @@
  * memvalidasi dan membentuk datanya.
  */
 
-import * as inspectionRepository from '../repositories/inspection-repository.js';
-import * as plantRepository from '../repositories/plant-repository.js';
+import * as inspectionRepository from '#repositories/inspection-repository.js';
+import * as plantRepository from '#repositories/plant-repository.js';
 import { buildInitialApprovals } from '../domain/approval-rules.js';
 import { ACTION_STATUS } from '../domain/statuses.js';
 import { formatDate } from '../shared/date.js';
@@ -28,9 +28,14 @@ export const INSPECTION_ERROR = {
  * sehingga daftar perbaikan tidak pernah kosong untuk inspeksi yang punya
  * temuan. Tahap pengesahan pertama langsung disetujui atas nama petugas.
  *
+ * Sejak Phase 12: async, karena repository backend adalah query MySQL
+ * sungguhan. Id tidak lagi dihitung di sini — inspectionRepository.add()
+ * yang menentukannya (nextId() di in-memory, AUTO_INCREMENT di MySQL) dan
+ * mengembalikan objek lengkap.
+ *
  * @returns ok({ inspection }) atau fail(INSPECTION_ERROR.*)
  */
-export function create(input) {
+export async function create(input) {
     if (!input.plantId) return fail(INSPECTION_ERROR.PLANT_REQUIRED);
 
     const findings = input.temuan || [];
@@ -38,16 +43,20 @@ export function create(input) {
 
     if (!input.tanggal) return fail(INSPECTION_ERROR.DATE_REQUIRED);
 
-    const plant = plantRepository.findById(input.plantId);
+    const plant = await plantRepository.findById(input.plantId);
     const today = new Date().toLocaleDateString('id-ID');
 
-    const inspection = {
-        id: inspectionRepository.nextId(),
+    const inspection = await inspectionRepository.add({
         lokasi: plant ? plant.name : '',
         plantId: parseInt(input.plantId, 10),
         keteranganLokasi: input.keteranganLokasi || '-',
         tanggal: formatDate(input.tanggal),
         petugas: input.petugas,
+        // Opsional: hanya diisi oleh route handler backend (req.user.id), yang
+        // memaksanya di luar input pengguna (lihat docs/ROADMAP-PHASE12.md,
+        // Keamanan). Frontend in-memory (belum ada auth sampai Phase 13/14)
+        // tidak pernah mengirim ini — repository in-memory mengabaikannya.
+        petugasUserId: input.petugasUserId,
         status: input.status,
         dueDate: formatDate(input.dueDate),
         fotoDekat: input.fotoDekat && input.fotoDekat.length ? input.fotoDekat : ['-'],
@@ -61,8 +70,7 @@ export function create(input) {
             pic: input.petugas,
             foto: [],
         })),
-    };
+    });
 
-    inspectionRepository.add(inspection);
     return ok({ inspection });
 }

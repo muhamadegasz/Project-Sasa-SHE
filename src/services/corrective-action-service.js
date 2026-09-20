@@ -3,7 +3,7 @@
  * Tidak menyentuh DOM dan tidak menampilkan pesan.
  */
 
-import * as inspectionRepository from '../repositories/inspection-repository.js';
+import * as inspectionRepository from '#repositories/inspection-repository.js';
 import { statusFromActions } from '../domain/inspection-rules.js';
 import { fail, ok } from './result.js';
 
@@ -23,12 +23,17 @@ export const CORRECTIVE_ACTION_ERROR = {
  * Status inspeksi ikut diperbarui: selesai bila seluruh tindakan sudah closed,
  * selain itu kembali ke proses.
  *
+ * Sejak Phase 12: async (repository backend adalah MySQL sungguhan).
+ * addCorrectiveAction() adalah jalur yang benar-benar menyimpan tindakan ke
+ * backend (INSERT ke tabel corrective_actions + photos) — lihat catatan di
+ * src/repositories/inspection-repository.js.
+ *
  * @param {string} inspectionId
  * @param {{action: string, status: string, pic: string, photos: string[]}} input
  * @returns ok({ inspection, action }) atau fail(CORRECTIVE_ACTION_ERROR.*)
  */
-export function addAction(inspectionId, input) {
-    const inspection = inspectionRepository.findById(inspectionId);
+export async function addAction(inspectionId, input) {
+    const inspection = await inspectionRepository.findById(inspectionId);
     if (!inspection) return fail(CORRECTIVE_ACTION_ERROR.INSPECTION_NOT_FOUND);
 
     const description = String(input.action || '').trim();
@@ -47,7 +52,10 @@ export function addAction(inspectionId, input) {
 
     inspection.perbaikan = inspection.perbaikan || [];
     inspection.perbaikan.push(action);
+    await inspectionRepository.addCorrectiveAction(inspectionId, action);
+
     inspection.status = statusFromActions(inspection);
+    await inspectionRepository.setStatus(inspectionId, inspection.status);
 
     return ok({ inspection, action });
 }

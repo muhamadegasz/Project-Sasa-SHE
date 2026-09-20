@@ -508,6 +508,23 @@
 
     <div id="toastMessage" class="toast-msg no-print"><i class="fas fa-bolt"></i> <span id="toastText"></span></div>
 
+    <!-- Import map (Phase 12): src/services/*.js meng-import repository lewat
+         specifier "#repositories/*.js", bukan path relatif langsung. Node
+         (backend, package.json "imports") mengarahkannya ke server/repositories/
+         (MySQL); browser di sini diarahkan ke src/repositories/ (in-memory) yang
+         SAMA seperti sebelum Phase 12 — demo browser tetap jalan tanpa backend.
+         Lihat docs/ROADMAP-PHASE12.md dan docs/DECISIONS.md K-18. HARUS berada
+         SEBELUM script type="module" apa pun yang mengimpor services. -->
+    <script type="importmap">
+    {
+        "imports": {
+            "#repositories/inspection-repository.js": "./src/repositories/inspection-repository.js",
+            "#repositories/schedule-repository.js": "./src/repositories/schedule-repository.js",
+            "#repositories/plant-repository.js": "./src/repositories/plant-repository.js"
+        }
+    }
+    </script>
+
     <!-- Aplikasi dimuat sebagai ES module. Modul otomatis deferred, sehingga
          berjalan setelah dokumen selesai di-parse.
 

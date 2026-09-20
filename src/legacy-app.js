@@ -243,8 +243,8 @@ function switchTab(tabName) {
 // ========== APPROVAL FUNCTIONS ==========
 // ========================================================================
 
-function approveStage(inspeksiId, stageId) {
-    const result = approvalService.approve(inspeksiId, stageId);
+async function approveStage(inspeksiId, stageId) {
+    const result = await approvalService.approve(inspeksiId, stageId);
     if (!result.ok) { showToast(pesanGagal(result.reason)); return; }
 
     const { stage, fullyApproved } = result.data;
@@ -256,12 +256,12 @@ function approveStage(inspeksiId, stageId) {
     openApprovalModal(inspeksiId);
 }
 
-function rejectStage(inspeksiId, stageId) {
+async function rejectStage(inspeksiId, stageId) {
     const stage = findStage(stageId);
     if (!stage) { showToast(pesanGagal('STAGE_NOT_FOUND')); return; }
     if (!confirm(`Tolak inspeksi ${inspeksiId} oleh ${stage.title}?`)) return;
 
-    const result = approvalService.reject(inspeksiId, stageId);
+    const result = await approvalService.reject(inspeksiId, stageId);
     if (!result.ok) { showToast(pesanGagal(result.reason)); return; }
 
     showToast(`❌ ${result.data.stage.title} menolak inspeksi ${inspeksiId}`);
@@ -369,19 +369,19 @@ function editJadwal(id) {
     if (item) openJadwalModal(item);
 }
 
-function hapusJadwal(id) {
+async function hapusJadwal(id) {
     if (!confirm(`Hapus jadwal ${id}?`)) return;
 
-    scheduleService.remove(id);
+    await scheduleService.remove(id);
     refreshAll();
     showToast(`🗑️ Jadwal ${id} dihapus`);
 }
 
 bindModalClose('jadwalModal', 'closeJadwalModal');
 
-document.getElementById('submitJadwal').addEventListener('click', function(e) {
+document.getElementById('submitJadwal').addEventListener('click', async function(e) {
     e.preventDefault();
-    const result = scheduleService.save({
+    const result = await scheduleService.save({
         id: document.getElementById('editJadwalId').value,
         plantId: document.getElementById('selectedPlantJadwal').value,
         periode: parseInt(document.getElementById('jadwalPeriode').value),
@@ -412,9 +412,9 @@ document.getElementById('submitJadwal').addEventListener('click', function(e) {
 // ========== PERBAIKAN MODAL ==========
 // ========================================================================
 
-function tambahPerbaikanCustom(id) {
+async function tambahPerbaikanCustom(id) {
     const fotoFiles = Array.from(document.getElementById('newFoto').files).map(f => f.name);
-    const result = correctiveActionService.addAction(id, {
+    const result = await correctiveActionService.addAction(id, {
         action: document.getElementById('newAction').value,
         status: document.getElementById('newStatus').value,
         pic: document.getElementById('newPIC').value.trim() || getRandomOfficer(),
@@ -479,12 +479,12 @@ document.getElementById('temuanInput').addEventListener('keypress', function(e) 
 // ========== SUBMIT FORM ==========
 // ========================================================================
 
-document.getElementById('submitInspeksi').addEventListener('click', function(e) {
+document.getElementById('submitInspeksi').addEventListener('click', async function(e) {
     e.preventDefault();
-    
+
     const temuanData = document.getElementById('temuanData').value;
 
-    const result = inspectionService.create({
+    const result = await inspectionService.create({
         plantId: document.getElementById('selectedPlant').value,
         keteranganLokasi: document.getElementById('formKeteranganLokasi').value.trim(),
         tanggal: document.getElementById('formTanggal').value,

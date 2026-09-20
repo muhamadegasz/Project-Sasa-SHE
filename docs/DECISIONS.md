@@ -757,3 +757,127 @@ cek `colspan` cocok dengan jumlah kolom sungguhan masing-masing; buat inspeksi b
 Seluruh 342 assertion Phase 0-10 tetap lulus tanpa perubahan. Total: **352 assertion, 0
 gagal**. Syntax check 40/40 modul, HTTP serving 57/57 berkas (bertambah dari 40 karena
 verifikasi kali ini juga mencakup seluruh berkas `assets/css/*.css`, bukan hanya modul JS).
+
+---
+
+## K-18 — Phase 12: backend Node/Express/MySQL — tiga koreksi teknis terhadap
+docs/ROADMAP-PHASE12.md
+
+**Tanggal:** 2026-09-20 · **Status:** disetujui (K-1 lanjutan; koreksi #1 lewat konfirmasi
+eksplisit pemilik project, #2 dan #3 ditemukan dan diperbaiki selama implementasi)
+
+Rencana di `docs/ROADMAP-PHASE12.md` menjanjikan "services butuh nol perubahan". Janji itu
+**tidak sepenuhnya bertahan** begitu diimplementasikan — tiga hal yang tidak terlihat saat
+perencanaan (karena baru muncul ketika kode sungguhan ditulis dan diuji terhadap MySQL
+sungguhan, bukan cuma dibaca) memaksa penyesuaian. Ketiganya didokumentasikan di sini secara
+jujur, bukan disembunyikan di balik commit message.
+
+### Koreksi #1 — approvals/temuan/perbaikan tetap tabel relasional terpisah, bukan kolom JSON
+
+`approval-service.js`, `corrective-action-service.js`, dan `schedule-service.js` (jalur update)
+semuanya mengambil objek lewat `findById()` lalu **memutasinya langsung** (`inspection.approvals[stageId]
+= ...`, `inspection.perbaikan.push(...)`) — pola yang hanya bekerja karena "database" in-memory
+memang sebuah objek JS yang bisa dimutasi lewat referensi. Skema MySQL yang sudah dibuat
+menyimpan `approvals`/`findings`/`corrective_actions` sebagai TABEL TERPISAH dari `inspections`
+(demi integritas relasional dan query langsung seperti "inspeksi yang menunggu approval role
+X") — memutasi sebuah objek JS lokal tidak menyentuh tabel-tabel itu sama sekali.
+
+Dua opsi diajukan ke pemilik project secara eksplisit lewat pertanyaan langsung: (a) pertahankan
+tabel relasional, terima bahwa 3 service butuh perubahan nyata (bukan cuma sync→async) berupa
+pemanggilan eksplisit `saveApproval()`/`setStatus()`/`addCorrectiveAction()` setelah mutasi; atau
+(b) simpan `approvals`/`temuan`/`perbaikan` sebagai kolom JSON di tabel `inspections`, yang
+mempertahankan pola mutate-in-place hampir apa adanya tapi kehilangan FK/index relasional.
+**Dipilih (a).** Diterapkan sebagai: repository in-memory (`src/repositories/inspection-repository.js`,
+`schedule-repository.js`) mendapat method baru yang **no-op** (`saveApproval`, `setStatus`,
+`addCorrectiveAction`, `update`) — mutasi lewat referensi tetap jadi sumber kebenaran di
+browser, method-method itu ada supaya kontraknya sama dengan versi backend, di mana isinya
+query UPDATE/INSERT sungguhan.
+
+### Koreksi #2 — services jadi async, plus `add()` menentukan id (bukan `nextId()` di pemanggil)
+
+MySQL nyata berarti setiap panggilan repository adalah operasi async — kebalikan dari array
+in-memory yang selalu langsung tersedia. `inspection-service.create()`, `approval-service.approve/reject()`,
+`schedule-service.save/remove()`, `corrective-action-service.addAction()` semuanya jadi
+`async function` dengan `await` di setiap pemanggilan repository. Ini merambat ke pemanggilnya:
+6 titik di `src/legacy-app.js` (`approveStage`, `rejectStage`, `hapusJadwal`, listener
+`submitJadwal`, `tambahPerbaikanCustom`, listener `submitInspeksi`) jadi `async function`/`await`,
+dan `action-dispatcher.js` diberi satu baris `return handler(el, event)` supaya klik lewat
+delegasi bisa di-`await` (browser mengabaikan return value listener klik, jadi ini aman).
+
+Konsekuensi kedua: id (`INS-nnn`/`SCH-nnn`) tidak lagi dihitung terpisah oleh
+`inspectionRepository.nextId()`/`scheduleRepository.nextId()` SEBELUM `add()` dipanggil — kedua
+`add()` sekarang menentukan id SENDIRI (lewat `nextId()` internal di versi in-memory,
+`AUTO_INCREMENT` MySQL di versi backend) dan mengembalikan objek lengkap. `nextId()` sendiri
+dipertahankan (tidak dihapus) tapi tidak lagi dipanggil dari service — cukup langkah tambahan,
+bukan penghapusan.
+
+Seluruh 352 assertion frontend disesuaikan (tambah `await`, ubah `dispatchEvent`/`click()` pada
+stub DOM di scratchpad supaya mengembalikan Promise) — tidak ada assertion yang dihapus atau
+diperlunak, semuanya tetap lulus dengan makna yang sama.
+
+### Koreksi #3 — repository backend butuh import map + Node `--conditions`, bukan sekadar folder terpisah
+
+Rencana awal ("Backend TIDAK menimpa `src/repositories/*.js` — folder terpisah") ternyata
+**tidak cukup** begitu diuji end-to-end. `src/services/*.js` meng-import repository lewat path
+RELATIF TETAP (`'../repositories/inspection-repository.js'`) — resolusi modul JS selalu relatif
+terhadap LOKASI FILE YANG MENG-IMPOR, bukan siapa yang meng-import file itu. Akibatnya, ketika
+backend meng-import `src/services/inspection-service.js` apa adanya, import internal
+service itu TETAP resolve ke `src/repositories/inspection-repository.js` (versi in-memory) —
+bukan ke `server/repositories/` yang baru dibuat. Gejalanya menipu: `POST /api/inspections`
+mengembalikan 201 dengan data lengkap yang terlihat benar (karena in-memory `add()` memang
+valid dan mengembalikan objek utuh), tapi `GET /api/inspections/:id` sesudahnya 404 — karena
+baris itu sungguhan tidak pernah masuk MySQL. Ditemukan lewat pembandingan langsung: query
+`SELECT COUNT(*)` ke MySQL via pool yang SAMA menunjukkan baris tidak bertambah, padahal
+response API menunjukkan data "berhasil".
+
+**Solusi:** `src/services/*.js` diubah meng-import lewat *subpath import* Node
+(`'#repositories/inspection-repository.js'`, bukan path relatif) — satu-satunya perubahan pada
+kelima berkas services yang murni soal mekanisme resolusi modul, tanpa menyentuh logika bisnis
+apa pun. `package.json` mendefinisikan `imports` dengan **kondisi kustom** `"server"`:
+```json
+"imports": {
+  "#repositories/inspection-repository.js": {
+    "server": "./server/repositories/inspection-repository.js",
+    "default": "./src/repositories/inspection-repository.js"
+  }
+}
+```
+Backend dijalankan dengan flag `node --conditions=server` (lihat `package.json` scripts
+`server`/`test:api`) sehingga specifier itu resolve ke MySQL. Tanpa flag itu — termasuk skrip
+test frontend di scratchpad yang menjalankan `src/legacy-app.js` lewat Node biasa untuk
+mensimulasikan browser — resolusinya tetap ke `default`, yaitu versi in-memory, PERSIS seperti
+sebelum Phase 12. Percobaan pertama (hanya `package.json "imports"` tanpa kondisi) GAGAL karena
+Node tidak bisa membedakan "proses Node yang berperan sebagai backend" dari "proses Node yang
+menjalankan test frontend" — keduanya sama-sama proses Node biasa; baru dengan flag
+`--conditions` keduanya bisa dibedakan.
+
+Untuk BROWSER sungguhan (bukan Node), mekanismenya berbeda lagi: browser tidak mengenal
+`package.json` sama sekali, jadi `index.html` diberi `<script type="importmap">` yang memetakan
+specifier YANG SAMA ke `src/repositories/*.js` — demo browser Phase 12-13 tetap hidup tanpa
+backend, sesuai rencana awal, hanya mekanismenya (import map, bukan "folder terpisah" saja)
+yang berbeda dari yang direncanakan.
+
+### Temuan tambahan selama implementasi (bukan koreksi rencana, tapi bug nyata yang ditemukan+diperbaiki)
+
+`inspection-service.js` memformat tanggal lewat `formatDate()`/`toLocaleDateString('id-ID')` —
+format lokal "D/M/YYYY" (lihat `shared/date.js`). Kolom `DATE` MySQL butuh ISO "YYYY-MM-DD".
+Tanpa konversi, `corrective_actions.tgl` (dan `inspections.tanggal`/`due_date`) gagal di-insert.
+Diperbaiki di `server/repositories/inspection-repository.js`: `toSqlDate()` (lokal → ISO) saat
+menulis, `formatDate()` yang sudah ada (ISO → lokal) saat membaca — supaya bentuk data yang
+dilihat domain/services/presentation tetap format lokal seperti sekarang, MySQL tetap dapat
+format yang benar secara internal.
+
+### Verifikasi
+
+- Backend: `server/test/api.test.js` (supertest + `node --test`, 8 test) terhadap MySQL
+  sungguhan (database `she_sasa`, di-reseed di awal lewat `server/db/seed.js`) — mencakup 401
+  tanpa identitas, 403 role salah, alur penuh buat inspeksi → tolak lompat tahap (`PREVIOUS_STAGE_PENDING`)
+  → approve berjenjang 2→3→4 oleh 3 akun berbeda (Dewi/Andi/Hadi) dengan identitas asli
+  tersimpan (`approved_by_name` bukan lagi literal `'Approver'` — menutup S-07) → tambah
+  tindakan perbaikan (foto wajib) → CRUD jadwal (hapus hanya admin).
+- Frontend: seluruh 352 assertion Phase 0-11 (scratchpad) tetap lulus SETELAH disesuaikan untuk
+  async (lihat Koreksi #2) — dijalankan TANPA flag `--conditions=server`, membuktikan resolusi
+  default (in-memory) benar-benar tidak berubah untuk browser/pengujian frontend.
+- Syntax check: seluruh `src/*.js` dan `server/*.js`.
+- HTTP serving: `index.html`, seluruh `src/*.js`, `assets/*.css` tetap 200 lewat server statis
+  dev — termasuk `<script type="importmap">` yang divalidasi JSON-nya valid.

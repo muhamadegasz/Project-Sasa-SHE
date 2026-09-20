@@ -3,8 +3,8 @@
  * Tidak menyentuh DOM.
  */
 
-import * as scheduleRepository from '../repositories/schedule-repository.js';
-import * as plantRepository from '../repositories/plant-repository.js';
+import * as scheduleRepository from '#repositories/schedule-repository.js';
+import * as plantRepository from '#repositories/plant-repository.js';
 import { SCHEDULE_STATE } from '../domain/statuses.js';
 import { fail, ok } from './result.js';
 
@@ -29,9 +29,15 @@ const EARLIEST_YEAR = 2020;
  * tetap di-refresh. Kasus ini tidak terjangkau lewat UI, karena id selalu
  * datang dari baris yang memang ada.
  *
+ * Sejak Phase 12: async. Id pada jalur create tidak lagi dihitung di sini —
+ * scheduleRepository.add() yang menentukannya, sama seperti inspection-service.js.
+ * Jalur update memanggil scheduleRepository.update() setelah Object.assign,
+ * supaya perubahan benar-benar tersimpan pada repository backend (MySQL) —
+ * lihat catatan di src/repositories/schedule-repository.js.
+ *
  * @returns ok({ schedule, created }) atau fail(SCHEDULE_ERROR.*)
  */
-export function save(input) {
+export async function save(input) {
     if (!input.plantId) return fail(SCHEDULE_ERROR.PLANT_REQUIRED);
 
     const officer = String(input.officer || '').trim();
@@ -40,7 +46,7 @@ export function save(input) {
     if (!input.tahun || input.tahun < EARLIEST_YEAR) return fail(SCHEDULE_ERROR.YEAR_REQUIRED);
     if (!input.tanggalJadwal) return fail(SCHEDULE_ERROR.DATE_REQUIRED);
 
-    const plant = plantRepository.findById(input.plantId);
+    const plant = await plantRepository.findById(input.plantId);
     const fields = {
         plantId: parseInt(input.plantId, 10),
         plantName: plant ? plant.name : '',
@@ -49,19 +55,23 @@ export function save(input) {
         tanggalJadwal: input.tanggalJadwal,
         tanggalRealisasi: input.tanggalRealisasi || null,
         officer,
+        // Opsional, sama seperti petugasUserId di inspection-service.js —
+        // hanya diisi route handler backend dari req.user, diabaikan
+        // repository in-memory.
+        officerUserId: input.officerUserId,
         minggu: input.minggu,
     };
 
     if (input.id) {
-        const existing = scheduleRepository.findById(input.id);
+        const existing = await scheduleRepository.findById(input.id);
         if (!existing) return ok({ schedule: null, created: false });
 
         Object.assign(existing, fields);
+        await scheduleRepository.update(input.id, fields);
         return ok({ schedule: existing, created: false });
     }
 
-    const schedule = scheduleRepository.add({
-        id: scheduleRepository.nextId(),
+    const schedule = await scheduleRepository.add({
         ...fields,
         status: SCHEDULE_STATE.AKTIF,
     });
@@ -75,6 +85,6 @@ export function save(input) {
  *
  * @returns ok({ removed }) — removed bernilai false bila id tidak ditemukan.
  */
-export function remove(id) {
-    return ok({ removed: scheduleRepository.remove(id) });
+export async function remove(id) {
+    return ok({ removed: await scheduleRepository.remove(id) });
 }

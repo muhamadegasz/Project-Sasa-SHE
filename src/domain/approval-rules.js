@@ -73,18 +73,18 @@ export function totalStages() {
 /**
  * Record pengesahan untuk satu tahap yang disetujui.
  *
- * Aturan penamaan penyetuju dipertahankan apa adanya: tahap Safety Officer
- * memakai nama petugas inspeksi, tahap lain memakai literal 'Approver'.
- *
- * Itu jelas merupakan kekurangan — lihat temuan S-07 di docs/SECURITY.md:
- * tidak ada otorisasi sama sekali, siapa pun yang login dapat menyetujui
- * keempat tahap. Memperbaikinya butuh identitas pengguna yang sungguhan,
- * jadi bukan pekerjaan refactoring.
+ * Tahap Safety Officer selalu memakai nama petugas inspeksi (ia yang membuat
+ * laporannya). Tahap lain memakai nama tampilan `approver` bila disediakan —
+ * ini menutup S-07 (docs/SECURITY.md): sebelum Phase 12, tahap 2-4 selalu
+ * memakai literal 'Approver', tanpa identitas sungguhan sama sekali.
+ * `approver` opsional (undefined) supaya kode lama yang belum punya identitas
+ * pengguna (sebelum auth sungguhan di Phase 13) tetap berperilaku sama persis
+ * seperti sebelumnya — fallback ke 'Approver'.
  */
-export function buildApprovalRecord(stage, inspection) {
+export function buildApprovalRecord(stage, inspection, approver) {
     return {
         approved: true,
-        by: stage.name === 'Safety Officer' ? inspection.petugas : 'Approver',
+        by: stage.name === 'Safety Officer' ? inspection.petugas : (approver ? approver.displayName : 'Approver'),
         jabatan: stage.title,
         tanggal: new Date().toLocaleString('id-ID'),
     };

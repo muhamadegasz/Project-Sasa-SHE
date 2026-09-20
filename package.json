@@ -1,0 +1,36 @@
+{
+  "name": "she-sasa",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "SHE Sasa - Sistem Informasi K3. Backend Node.js/Express/MySQL (Phase 12+); frontend statis di index.html tetap berjalan tanpa backend (lihat docs/ROADMAP-PHASE12.md).",
+  "scripts": {
+    "server": "node --conditions=server server/listen.js",
+    "db:migrate": "node server/db/migrate.js",
+    "db:seed": "node server/db/seed.js",
+    "test:api": "node --conditions=server --test server/test/*.test.js"
+  },
+  "imports": {
+    "#repositories/inspection-repository.js": {
+      "server": "./server/repositories/inspection-repository.js",
+      "default": "./src/repositories/inspection-repository.js"
+    },
+    "#repositories/schedule-repository.js": {
+      "server": "./server/repositories/schedule-repository.js",
+      "default": "./src/repositories/schedule-repository.js"
+    },
+    "#repositories/plant-repository.js": {
+      "server": "./server/repositories/plant-repository.js",
+      "default": "./src/repositories/plant-repository.js"
+    }
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "mysql2": "^3.11.0",
+    "dotenv": "^16.4.5",
+    "bcryptjs": "^2.4.3"
+  },
+  "devDependencies": {
+    "supertest": "^7.0.0"
+  }
+}
