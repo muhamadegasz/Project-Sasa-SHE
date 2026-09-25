@@ -12,7 +12,7 @@ import * as correctiveActionService from '../../src/services/corrective-action-s
 import { requireRole } from '../middleware/session-auth.js';
 import { sendResult } from '../middleware/to-http.js';
 import { asyncHandler } from '../middleware/async-handler.js';
-import { upload, UPLOAD_DIR } from '../config/upload.js';
+import { upload, UPLOAD_DIR, verifyImageContent, cleanupUploadedFiles } from '../config/upload.js';
 
 export const inspectionsRouter = Router();
 
@@ -46,17 +46,28 @@ inspectionsRouter.post(
     '/',
     requireRole('safety_officer'),
     upload.fields([{ name: 'fotoDekat' }, { name: 'fotoJauh' }]),
+    asyncHandler(verifyImageContent),
     asyncHandler(async (req, res) => {
-        const temuan = typeof req.body.temuan === 'string' ? JSON.parse(req.body.temuan) : req.body.temuan;
-        const result = await inspectionService.create({
-            ...req.body,
-            temuan,
-            petugas: req.user.displayName,
-            petugasUserId: req.user.id,
-            fotoDekat: filesToPhotoMeta(req.files?.fotoDekat),
-            fotoJauh: filesToPhotoMeta(req.files?.fotoJauh),
-        });
-        sendResult(res, result, 201);
+        try {
+            const temuan = typeof req.body.temuan === 'string' ? JSON.parse(req.body.temuan) : req.body.temuan;
+            const result = await inspectionService.create({
+                ...req.body,
+                temuan,
+                petugas: req.user.displayName,
+                petugasUserId: req.user.id,
+                fotoDekat: filesToPhotoMeta(req.files?.fotoDekat),
+                fotoJauh: filesToPhotoMeta(req.files?.fotoJauh),
+            });
+            // F-04: validasi bisnis gagal (mis. PLANT_NOT_FOUND) SETELAH multer
+            // sudah menulis file ke disk -> file itu tidak akan pernah tersimpan
+            // ke tabel photos (repository.add() tidak pernah dipanggil untuk
+            // path fail()), jadi harus dihapus di sini atau jadi yatim permanen.
+            if (!result.ok) await cleanupUploadedFiles(req);
+            sendResult(res, result, 201);
+        } catch (error) {
+            await cleanupUploadedFiles(req);
+            throw error;
+        }
     }),
 );
 
@@ -86,13 +97,20 @@ inspectionsRouter.post(
     '/:id/corrective-actions',
     requireRole('safety_officer'),
     upload.array('photos'),
+    asyncHandler(verifyImageContent),
     asyncHandler(async (req, res) => {
-        const result = await correctiveActionService.addAction(req.params.id, {
-            ...req.body,
-            photos: filesToPhotoMeta(req.files),
-            uploadedBy: req.user.id,
-        });
-        sendResult(res, result, 201);
+        try {
+            const result = await correctiveActionService.addAction(req.params.id, {
+                ...req.body,
+                photos: filesToPhotoMeta(req.files),
+                uploadedBy: req.user.id,
+            });
+            if (!result.ok) await cleanupUploadedFiles(req);
+            sendResult(res, result, 201);
+        } catch (error) {
+            await cleanupUploadedFiles(req);
+            throw error;
+        }
     }),
 );
 
@@ -103,6 +121,12 @@ inspectionsRouter.post(
 inspectionsRouter.get('/photos/:photoId/file', asyncHandler(async (req, res) => {
     const photo = await inspectionRepository.findPhotoFile(req.params.photoId);
     if (!photo) return res.status(404).json({ error: 'NOT_FOUND' });
+    // F-02: photo.mimeType sekarang hasil deteksi signature byte server saat
+    // upload (verifyImageContent() di server/config/upload.js), bukan lagi
+    // klaim klien mentah — nosniff mencegah browser menafsirkan ulang isi
+    // respons ini seandainya pun ada baris lama (pra-F-01) yang mime_type-nya
+    // belum terverifikasi.
+    res.set('X-Content-Type-Options', 'nosniff');
     res.type(photo.mimeType).sendFile(photo.filePath, { root: UPLOAD_DIR }, (error) => {
         // Baris `photos` seed (server/db/seed.js) sengaja punya file_path palsu
         // (tidak ada byte sungguhan di disk, cuma demo data) — ENOENT di sini
