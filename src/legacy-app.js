@@ -279,8 +279,24 @@ async function logout() {
 // Enter, yang menjadwalkan setTimeout(initApp, 300) berkali-kali (pemicu D-3).
 // Dihapus pada Phase 10, bukan diganti — sudah tidak diperlukan.
 
-window.addEventListener('load', async function() {
+// Phase 16.1 (U-01): DOMContentLoaded, bukan lagi window.load — load baru
+// terpicu setelah SELURUH subresource selesai (gambar latar login yang
+// dihosting eksternal, tiga <script> CDN Chart.js/XLSX/html2pdf.js), yang
+// memperpanjang jendela waktu #authLoading harus menutupi #loginPage tanpa
+// alasan. main.js dimuat sebagai <script type="module">, yang SELALU
+// deferred setara defer — kode ini sendiri baru berjalan setelah dokumen
+// selesai di-parse, yaitu SEBELUM DOMContentLoaded ditembakkan (bukan
+// sesudahnya), jadi listener di bawah dijamin belum ketinggalan event-nya.
+// Chart.js/XLSX/html2pdf.js dimuat lewat <script> biasa (bukan
+// defer/async) di <head>, yang blocking terhadap parsing — sudah pasti
+// selesai dieksekusi jauh sebelum DOMContentLoaded, jadi initApp() (lewat
+// restoreSession() di bawah) tetap aman memanggil initCharts() dst.
+document.addEventListener('DOMContentLoaded', async function() {
     const restored = await restoreSession();
+    // Status sesi sudah diketahui (berhasil -> showMainApp() di dalam
+    // restoreSession() sudah menampilkan #mainApp; gagal -> #loginPage
+    // tetap dalam keadaan default-nya) — aman menyingkap salah satunya.
+    document.getElementById('authLoading').classList.add('hidden');
     if (!restored) document.getElementById('loginUsername').focus();
 });
 

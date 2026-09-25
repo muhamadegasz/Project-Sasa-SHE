@@ -35,6 +35,17 @@
 </head>
 <body>
 
+    <!-- ========== AUTH LOADING (Phase 16.1, U-01) ==========
+         Ditampilkan di atas #loginPage/#mainApp SEBELUM status sesi diketahui
+         (lihat restoreSession() di legacy-app.js) — #loginPage visible-by-
+         default (lihat 02-login.css) sehingga tanpa ini pengguna yang
+         sesungguhnya masih login akan melihatnya sekilas sebelum GET
+         /api/auth/me selesai. Disembunyikan (class "hidden", display:none)
+         begitu status sesi diketahui, berhasil maupun tidak. -->
+    <div id="authLoading">
+        <div class="login-icon"><div class="hard-hat"><i class="fas fa-hard-hat"></i></div></div>
+    </div>
+
     <!-- ========== LOGIN PAGE ========== -->
     <div class="login-page" id="loginPage">
         <div class="login-container">

@@ -42,6 +42,29 @@
     pointer-events: none;
 }
 
+/* Phase 16.1 (U-01): lihat komentar #authLoading di index.html. Warna sama
+ * dengan .login-page supaya tidak ada perubahan warna yang terlihat begitu
+ * elemen ini disembunyikan dan .login-page tampil di baliknya. Disembunyikan
+ * lewat display:none (class "hidden" di sini, BUKAN class yang sama dengan
+ * .login-page.hidden di atas) — tidak perlu transisi, statusnya sudah
+ * diketahui begitu ini disembunyikan, tidak ada yang perlu dianimasikan. */
+#authLoading {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, rgba(180, 20, 20, 0.85) 0%, rgba(120, 10, 10, 0.9) 50%, rgba(60, 5, 5, 0.95) 100%);
+}
+
+#authLoading.hidden {
+    display: none;
+}
+
 .login-container {
     background: rgba(255, 255, 255, 0.95);
     backdrop-filter: blur(20px);
@@ -121,12 +144,19 @@
     font-size: 14px;
 }
 
-.form-group {
+/* Phase 16.1 (U-01/U-02, docs/DECISIONS.md): di-scope ke .login-page supaya
+ * menang lewat SPESIFISITAS, bukan lewat urutan <link> — 06-forms.css punya
+ * .form-group generik untuk form di dalam #mainApp (padding/warna berbeda)
+ * pada spesifisitas yang sama; tanpa scoping di sini, siapa pun yang termuat
+ * belakangan menang tanpa sengaja. Login TIDAK memakai .form-group generik
+ * itu: .input-icon (👤/🔑) posisinya (right:15px; top:42px) dihitung untuk
+ * padding form login ini secara spesifik, bukan padding 06-forms.css. */
+.login-page .form-group {
     margin-bottom: 20px;
     position: relative;
 }
 
-.form-group label {
+.login-page .form-group label {
     display: block;
     margin-bottom: 8px;
     font-weight: 600;
@@ -134,7 +164,7 @@
     font-size: 14px;
 }
 
-.form-group input {
+.login-page .form-group input {
     width: 100%;
     padding: 14px 15px;
     padding-right: 45px;
@@ -146,13 +176,13 @@
     background: #f8f9fc;
 }
 
-.form-group input:focus {
+.login-page .form-group input:focus {
     border-color: #d42a2a;
     background: white;
     box-shadow: 0 0 0 4px rgba(212, 42, 42, 0.08);
 }
 
-.form-group .input-icon {
+.login-page .form-group .input-icon {
     position: absolute;
     right: 15px;
     top: 42px;
