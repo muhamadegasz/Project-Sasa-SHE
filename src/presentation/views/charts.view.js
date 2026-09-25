@@ -16,8 +16,8 @@ import { allActionsClosed, hasActionInProgress, hasActionOpen } from '../../doma
 
 // Dipakai dua tempat: saat chart dibuat dan saat di-refresh. Dulu ekspresinya
 // ditulis dua kali dan sempat berbeda formatnya.
-function countRepairStatuses() {
-    const inspections = inspectionRepository.getAll();
+async function countRepairStatuses() {
+    const inspections = await inspectionRepository.getAll();
     return {
         selesai: inspections.filter(allActionsClosed).length,
         perbaikan: inspections.filter(hasActionInProgress).length,
@@ -27,15 +27,15 @@ function countRepairStatuses() {
 
 let temuanPlantChart = null;
 
-export function renderTemuanPlantChart() {
+export async function renderTemuanPlantChart() {
     const ctx = document.getElementById('temuanPlantChart').getContext('2d');
 
     const plantCounts = {};
-    plantRepository.getAll().forEach(p => {
+    (await plantRepository.getAll()).forEach(p => {
         plantCounts[p.name] = 0;
     });
 
-    inspectionRepository.getAll().forEach(item => {
+    (await inspectionRepository.getAll()).forEach(item => {
         if (item.temuan && item.temuan.length > 0) {
             const plantName = item.lokasi;
             if (plantCounts[plantName] !== undefined) {
@@ -104,8 +104,8 @@ export function renderTemuanPlantChart() {
 
 let perbaikanChart;
 
-export function initCharts() {
-    renderTemuanPlantChart();
+export async function initCharts() {
+    await renderTemuanPlantChart();
 
     // D-3 (docs/KNOWN-ISSUES.md): Chart.js melempar "Canvas is already in use"
     // kalau instance lama di canvas yang sama belum di-destroy. renderTemuanPlantChart()
@@ -117,7 +117,7 @@ export function initCharts() {
     }
 
     const ctx2 = document.getElementById('perbaikanChart').getContext('2d');
-    const counts = countRepairStatuses();
+    const counts = await countRepairStatuses();
     perbaikanChart = new Chart(ctx2, {
         type: 'doughnut',
         data: {
@@ -131,9 +131,9 @@ export function initCharts() {
 }
 
 /** Menyegarkan data perbaikanChart tanpa membuat ulang instance-nya. Dipanggil dari refreshAll(). */
-export function updatePerbaikanChart() {
+export async function updatePerbaikanChart() {
     if (!perbaikanChart) return;
-    const counts = countRepairStatuses();
+    const counts = await countRepairStatuses();
     perbaikanChart.data.datasets[0].data = [counts.selesai, counts.perbaikan, counts.tinjau];
     perbaikanChart.update();
 }

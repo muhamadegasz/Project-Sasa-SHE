@@ -8,7 +8,19 @@
  * Modul ini generik, tidak tahu apa pun tentang aplikasi: legacy-app.js yang
  * mendaftarkan setiap handler lewat registerAction(), lalu memanggil
  * initActionDispatcher() sekali saat startup.
+ *
+ * Sejak Phase 14: handler yang terdaftar sering memanggil backend lewat
+ * fetch (lihat src/infrastructure/api-client.js). Tanpa penangkap di sini,
+ * error yang dilempar handler async (sesi kedaluwarsa, backend mati, dst)
+ * jadi unhandled promise rejection — diam-diam gagal tanpa umpan balik apa
+ * pun ke pengguna. 401 sengaja dilewati di sini: api-client.js sudah memicu
+ * notifySessionExpired() (session.js) untuk kasus itu, jadi pesannya sudah
+ * ditangani di sana, bukan di sini.
  */
+
+import { ApiError } from '../../infrastructure/api-client.js';
+import { showToast } from '../components/toast.js';
+import { reportError } from '../../shared/errors.js';
 
 const actions = new Map();
 
@@ -41,6 +53,9 @@ export function initActionDispatcher() {
         const handler = actions.get(el.dataset.action);
         if (!handler) return;
 
-        return handler(el, event);
+        return Promise.resolve(handler(el, event)).catch((error) => {
+            if (error instanceof ApiError && error.status === 401) return;
+            showToast(reportError(`aksi "${el.dataset.action}"`, error, '⚠️ Terjadi kesalahan. Coba ulangi beberapa saat lagi.'));
+        });
     });
 }

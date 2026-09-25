@@ -30,6 +30,42 @@
 > sampai Phase 14 menyambungkannya ke API sungguhan; menghapusnya sekarang akan mematahkan demo
 > sebelum waktunya. `approval-rules.buildApprovalRecord()`/`approval-service.approve()`/`reject()`
 > sudah menerima `approver` sejak Phase 12 (K-18), jadi tidak ada perubahan lagi di titik itu.
+>
+> **Status: Phase 14 (sambungkan frontend ke API) SELESAI diimplementasikan** pada 2026-09-20.
+> `src/repositories/*.js` sekarang `fetch()` ke backend sungguhan (bukan in-memory lagi) —
+> `src/config/demo-auth.js` sekarang benar-benar dihapus, login sungguhan lewat `POST
+> /api/auth/login`. Bug nyata ditemukan lewat pengujian BROWSER SUNGGUHAN (Playwright, bukan
+> Postman/test backend): tanggal inspeksi ter-format dua kali (klien lalu server) menghasilkan
+> `NULL` di database — diperbaiki di `src/repositories/inspection-repository.js`. Field
+> `petugas` dikunci sesuai rencana; `officer`/PIC SENGAJA tidak dikunci karena backend sendiri
+> tidak menegakkannya. Konsekuensi penting: 8 dari 11 file test scratchpad Phase 0-11 tidak lagi
+> bisa dijalankan apa adanya (repository bukan lagi in-memory sinkron) — lihat `docs/DECISIONS.md`
+> K-21 untuk rincian lengkap dan keputusan yang belum diambil soal itu.
+>
+> **Status: Phase 14.1 (testing infrastructure & security regression hardening) SELESAI
+> diimplementasikan** pada 2026-09-21, menindaklanjuti independent audit Phase 14 (PASS WITH
+> FINDINGS). Coverage yang hilang di K-21 dipulihkan lewat DI (dependency injection), bukan
+> mengembalikan repository jadi in-memory: `test/fakes/*.js` + kondisi baru `"test"` pada
+> `package.json` "imports" (mekanisme sama seperti K-18), `test/unit/services.test.js` (26 test,
+> bisnis rules) + `test/unit/xss-regression.test.js` (13 test, S-03) — keduanya lewat `npm run
+> test:unit`, tanpa jaringan. Suite E2E permanen dibangun dengan `@playwright/test` sungguhan
+> (`tests/e2e/`, `npm run test:e2e`) menggantikan skrip ad hoc Phase 14 yang sudah dihapus — 14
+> test independen dan deterministik (fixture lewat API dengan tag unik, bukan variabel global
+> antar test), tanpa `waitForTimeout`. Tiga bug locator ASLI (bukan bug aplikasi) ditemukan dan
+> diperbaiki dalam prosesnya — lihat `docs/DECISIONS.md` K-22 untuk rincian lengkap. Security
+> hardening dibatasi ke 3 item sesuai instruksi eksplisit: CSRF pada `POST /api/auth/logout`,
+> logout klien membedakan sukses/gagal server, timeout `AbortSignal` pada `api-client.js`.
+>
+> **Status: Phase 15 (upload foto sungguhan) SELESAI diimplementasikan** pada 2026-09-24. Foto
+> pada form inspeksi/perbaikan sebelumnya cuma nama file (byte dibuang); sekarang tersimpan
+> sungguhan lewat `multer` (`server/config/upload.js`, disk `uploads/`) dan tersaji kembali lewat
+> `GET /api/inspections/photos/:photoId/file` yang butuh sesi login (bukan `express.static()`
+> publik — konsisten dengan seluruh data lain di aplikasi ini). Bentuk data foto berubah dari
+> `string[]` (nama file) jadi `{id, originalName}[]` di seluruh jalur baca; placeholder `'-'`
+> dihapus. Transport form jadi FormData/multipart hanya ketika ada file sungguhan — body JSON
+> biasa (tanpa file) tetap didukung penuh, terbukti lewat 14 test E2E dan seluruh fixture backend
+> yang sudah ada tetap hijau tanpa modifikasi jalur itu. Lightbox (`lightbox.js`) menampilkan foto
+> sungguhan, bukan lagi placeholder SVG. Lihat `docs/DECISIONS.md` K-23 untuk rincian lengkap.
 
 ## Context
 

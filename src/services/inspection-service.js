@@ -62,8 +62,8 @@ export async function create(input) {
         petugasUserId: input.petugasUserId,
         status: input.status,
         dueDate: formatDate(input.dueDate),
-        fotoDekat: input.fotoDekat && input.fotoDekat.length ? input.fotoDekat : ['-'],
-        fotoJauh: input.fotoJauh && input.fotoJauh.length ? input.fotoJauh : ['-'],
+        fotoDekat: input.fotoDekat || [],
+        fotoJauh: input.fotoJauh || [],
         approvals: buildInitialApprovals(input.petugas),
         temuan: findings,
         perbaikan: findings.map((finding, index) => ({

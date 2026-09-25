@@ -11,7 +11,7 @@ import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import * as userRepository from '../repositories/user-repository.js';
 import { sessionAuth } from '../middleware/session-auth.js';
-import { generateCsrfToken } from '../middleware/csrf.js';
+import { generateCsrfToken, requireCsrf } from '../middleware/csrf.js';
 import { asyncHandler } from '../middleware/async-handler.js';
 
 export const authRouter = Router();
@@ -40,7 +40,13 @@ authRouter.post('/login', asyncHandler(async (req, res) => {
     res.json({ user: publicUser(user), csrfToken: req.session.csrfToken });
 }));
 
-authRouter.post('/logout', sessionAuth, (req, res) => {
+// Phase 14.1-J: requireCsrf ditambahkan eksplisit di sini (router /api/auth
+// dipasang SEBELUM gate CSRF blanket di app.js, sengaja — /login belum punya
+// sesi untuk menyimpan token). Sebelumnya logout TIDAK memerlukan token sama
+// sekali; tidak tereksploitasi hari ini (cookie SameSite=Lax sudah memblokir
+// pengirimannya pada POST cross-site), tapi tetap endpoint pengubah-state
+// yang seharusnya konsisten dengan endpoint lain — lihat audit Phase 14.
+authRouter.post('/logout', sessionAuth, requireCsrf, (req, res) => {
     req.session.destroy(() => {
         res.clearCookie('she_sasa.sid');
         res.json({ ok: true });
@@ -48,5 +54,9 @@ authRouter.post('/logout', sessionAuth, (req, res) => {
 });
 
 authRouter.get('/me', sessionAuth, (req, res) => {
-    res.json({ user: req.user });
+    // csrfToken ikut dikembalikan (bukan hanya saat login): Phase 14 memakai
+    // ini untuk memulihkan sesi setelah reload halaman browser — state JS
+    // (termasuk token yang disimpan di src/infrastructure/session.js) hilang
+    // saat reload walau cookie sesinya sendiri masih berlaku.
+    res.json({ user: req.user, csrfToken: req.session.csrfToken });
 });

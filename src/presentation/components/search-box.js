@@ -12,8 +12,8 @@ import { filterByFields } from '../../services/search-service.js';
  * @param {string} inputId
  * @param {string} clearId
  * @param {string} countId
- * @param {() => object[]} dataGetter
- * @param {(items: object[], query: string) => void} renderFunction
+ * @param {() => Promise<object[]>} dataGetter sejak Phase 14: repository async (fetch ke backend)
+ * @param {(items: object[], query: string) => void|Promise<void>} renderFunction
  * @param {string[]} searchFields
  */
 export function setupSearch(inputId, clearId, countId, dataGetter, renderFunction, searchFields) {
@@ -22,19 +22,19 @@ export function setupSearch(inputId, clearId, countId, dataGetter, renderFunctio
     const countEl = document.getElementById(countId);
     if (!input) return;
 
-    function doSearch() {
+    async function doSearch() {
         const query = input.value.trim().toLowerCase();
-        const data = dataGetter();
+        const data = await dataGetter();
         if (query === '') {
             clearBtn.classList.remove('visible');
             countEl.textContent = '';
-            renderFunction(data, '');
+            await renderFunction(data, '');
             return;
         }
         clearBtn.classList.add('visible');
         const filtered = filterByFields(data, query, searchFields);
         countEl.textContent = `${filtered.length} dari ${data.length}`;
-        renderFunction(filtered, query);
+        await renderFunction(filtered, query);
     }
     input.addEventListener('input', doSearch);
     clearBtn.addEventListener('click', function() {

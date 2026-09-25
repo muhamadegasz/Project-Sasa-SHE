@@ -15,8 +15,8 @@ import * as inspectionRepository from '../../repositories/inspection-repository.
 import { bindModalClose } from '../components/modal.js';
 import { showToast } from '../components/toast.js';
 
-export function openPerbaikanModal(id) {
-    const item = inspectionRepository.findById(id);
+export async function openPerbaikanModal(id) {
+    const item = await inspectionRepository.findById(id);
     if (!item) { showToast('⚠️ Data tidak ditemukan'); return; }
     const modal = document.getElementById('perbaikanModal');
     const content = document.getElementById('modalContent');
@@ -35,8 +35,8 @@ export function openPerbaikanModal(id) {
         timelineHtml = item.perbaikan.map(p => {
             const fotoList = p.foto && p.foto.length > 0 ? p.foto : [];
             const galleryHtml = fotoList.length > 0 ?
-                fotoList.map(f => `
-                    <div class="thumb-mini" data-action="openLightbox" data-images="${jsArg(fotoList)}" data-index="${fotoList.indexOf(f)}" title="${escapeHtml(f)}">
+                fotoList.map((f, idx) => `
+                    <div class="thumb-mini" data-action="openLightbox" data-images="${jsArg(fotoList)}" data-index="${idx}" title="${escapeHtml(f.originalName)}">
                         📷
                     </div>
                 `).join('') :

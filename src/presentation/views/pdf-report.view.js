@@ -10,7 +10,7 @@ import { APPROVAL_STAGES } from '../../config/constants.js';
 
 function buildGalleryHtml(item) {
     const allPhotos = [...(item.fotoDekat || []), ...(item.fotoJauh || [])];
-    return allPhotos.length > 0 && allPhotos[0] !== '-' ?
+    return allPhotos.length > 0 ?
         allPhotos.map(() => `<div class="pdf-thumb">📷</div>`).join('') :
         '<span style="color:#888;">Tidak ada foto</span>';
 }

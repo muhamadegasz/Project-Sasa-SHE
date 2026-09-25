@@ -1,95 +1,126 @@
-/* inspection-repository.js — pemilik tunggal koleksi data inspeksi (versi
- * in-memory, dipakai BROWSER).
+/* inspection-repository.js — pemilik tunggal koleksi data inspeksi, versi
+ * BROWSER (Phase 14).
  *
- * Menggantikan variabel global `let inspeksiData`. Tidak ada modul lain yang
- * boleh menyimpan atau mengganti koleksi ini; semua akses lewat sini.
+ * Sejak Phase 14: seluruh fungsi bicara ke backend lewat api-client.js,
+ * bukan array in-memory lagi. Backend punya implementasinya sendiri di
+ * server/repositories/inspection-repository.js (query MySQL) — signature
+ * fungsi sama persis, dipertukarkan lewat specifier
+ * "#repositories/inspection-repository.js" (lihat docs/ROADMAP-PHASE12.md,
+ * docs/DECISIONS.md K-18).
  *
- * Sejak Phase 12: berkas ini TIDAK diganti/ditimpa oleh backend — backend
- * punya implementasi sendiri di server/repositories/inspection-repository.js
- * (MySQL), dengan signature fungsi yang sama persis. src/services/*.js
- * meng-import salah satu dari keduanya lewat specifier
- * "#repositories/inspection-repository.js", diarahkan oleh import map di
- * index.html (browser) atau package.json "imports" + Node --conditions=server
- * (backend). Lihat docs/ROADMAP-PHASE12.md dan docs/DECISIONS.md K-18.
- *
- * ---------------------------------------------------------------------------
- * CATATAN PENTING soal getAll()
- *
- * getAll() mengembalikan array HIDUP, bukan salinan. Ini disengaja karena
- * kode pemanggil masih memutasi objek inspeksi secara langsung
- * (item.approvals[...] = ..., item.perbaikan.push(...), item.status = ...).
- * Mengembalikan salinan justru akan menyembunyikan mutasi itu dan mengubah
- * perilaku yang sedang berjalan.
- *
- * Abstraksinya memang bocor, dan itu diterima DI SINI secara permanen —
- * versi backend (MySQL) TIDAK bisa memutasi-lewat-referensi seperti ini;
- * approval-service.js dkk memanggil saveApproval()/setStatus()/
- * addCorrectiveAction() secara eksplisit untuk kasus itu (no-op di berkas
- * ini, query sungguhan di server/repositories/).
- * ---------------------------------------------------------------------------
+ * saveApproval()/setStatus()/addCorrectiveAction() TIDAK menyimpan data
+ * mentah seperti versi MySQL — endpoint backend yang dipanggil di sini
+ * (POST .../approve, .../reject, .../corrective-actions) adalah AKSI BISNIS
+ * lengkap (approval-service.js/corrective-action-service.js dijalankan LAGI,
+ * penuh, di server, dengan data yang sungguh terbaru), bukan operasi tulis
+ * baris-per-baris. Parameter `record`/`status` yang dikirim pemanggil di
+ * sini karena itu SENGAJA tidak dipakai untuk membangun body request — server
+ * selalu menjadi sumber kebenaran, persis seperti `petugas`/`approvedByName`
+ * yang sudah dipaksa dari sesi login sejak Phase 12/13. Lihat
+ * docs/DECISIONS.md entri Phase 14.
  */
 
-import { createInspectionSeed } from '../data/inspections.seed.js';
+import { apiGet, apiPost } from '../infrastructure/api-client.js';
 
-let inspections = createInspectionSeed();
-
-/** Seluruh inspeksi, urutan terbaru di depan. Array hidup — lihat catatan di atas. */
-export function getAll() {
-    return inspections;
+/**
+ * "D/M/YYYY" (format lokal — inspection-service.js `create()` sudah memanggil
+ * formatDate() atas tanggal/dueDate SEBELUM add() dipanggil, lihat header
+ * berkas ini) -> "YYYY-MM-DD" ISO. Wajib dikonversi balik di sini: backend
+ * menjalankan inspection-service.js `create()` LAGI dari awal dan memanggil
+ * formatDate() SEKALI LAGI atas apa pun yang dikirim sebagai tanggal/dueDate
+ * — memformat string yang sudah dalam format lokal sebagai kalau itu ISO
+ * menghasilkan "Invalid Date" (lalu NULL di kolom MySQL, ER_BAD_NULL_ERROR).
+ * Ditemukan lewat pengujian browser sungguhan (Playwright), bukan test
+ * otomatis — lihat docs/DECISIONS.md entri Phase 14.
+ */
+function toIsoDate(localDate) {
+    if (!localDate || localDate === '-') return undefined;
+    const [day, month, year] = String(localDate).split('/');
+    if (!day || !month || !year) return undefined;
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
 }
 
-/** Satu inspeksi berdasarkan id, atau undefined bila tidak ada. */
-export function findById(id) {
-    return inspections.find((inspection) => inspection.id === id);
+/** Seluruh inspeksi, urutan terbaru di depan (backend mengurutkan ORDER BY id DESC). */
+export async function getAll() {
+    return apiGet('/inspections');
+}
+
+/** Satu inspeksi berdasarkan id, atau undefined bila tidak ada (404). */
+export async function findById(id) {
+    try {
+        return await apiGet(`/inspections/${encodeURIComponent(id)}`);
+    } catch (error) {
+        if (error.status === 404) return undefined;
+        throw error;
+    }
 }
 
 /**
- * Menyimpan inspeksi baru di posisi PALING DEPAN. Id ditentukan DI SINI
- * (lewat nextId()), bukan oleh pemanggil — sejak Phase 12 ini juga jadi
- * kontrak yang dipakai backend (id ditentukan oleh datastore saat insert,
- * bukan dihitung di service).
+ * Menyimpan inspeksi baru. Mengirim seluruh objek yang sudah dibangun
+ * inspection-service.js (termasuk approvals/perbaikan yang dihitung di sisi
+ * klien) — backend mengabaikan field itu dan menghitung ulang sendiri dari
+ * plantId/temuan/tanggal (lihat inspection-service.js `create()`, dipakai
+ * ulang APA ADANYA oleh backend). Pengecualian: tanggal/dueDate DIKONVERSI
+ * BALIK ke ISO (toIsoDate() di atas) sebelum dikirim — backend memanggil
+ * formatDate() atas keduanya lagi, dan itu bukan operasi yang aman dipanggil
+ * dua kali (lihat komentar toIsoDate()).
  *
- * Urutan ini penting dan harus dipertahankan: tabel "Inspeksi Terbaru" di
- * dashboard menampilkan koleksi ini apa adanya, sehingga entri baru harus
- * muncul di baris teratas.
+ * Phase 15: fotoDekat/fotoJauh berisi File asli (bukan nama file) sejak
+ * legacy-app.js diubah — dikirim lewat FormData (multipart), bukan JSON,
+ * supaya byte-nya sungguhan sampai ke server (lihat api-client.js `request()`).
+ * temuan (array objek) tidak bisa ikut sebagai field FormData biasa, jadi
+ * dikirim sebagai string JSON dan di-parse balik oleh route handler backend.
  */
-export function add(inspection) {
-    const withId = { id: nextId(), ...inspection };
-    inspections.unshift(withId);
-    return withId;
+export async function add(inspection) {
+    const formData = new FormData();
+    formData.append('plantId', inspection.plantId);
+    formData.append('keteranganLokasi', inspection.keteranganLokasi ?? '');
+    formData.append('tanggal', toIsoDate(inspection.tanggal) || '');
+    formData.append('status', inspection.status ?? '');
+    formData.append('dueDate', toIsoDate(inspection.dueDate) || '');
+    formData.append('temuan', JSON.stringify(inspection.temuan || []));
+    for (const file of inspection.fotoDekat || []) formData.append('fotoDekat', file);
+    for (const file of inspection.fotoJauh || []) formData.append('fotoJauh', file);
+
+    const { inspection: created } = await apiPost('/inspections', formData);
+    return created;
 }
 
 /**
- * Menyimpan satu tahap pengesahan (dipanggil approval-service.js setelah
- * memutasi inspection.approvals[stageId]).
- *
- * Di sini SENGAJA no-op: findById() mengembalikan array hidup, jadi objek
- * yang dimutasi pemanggil SUDAH menjadi data yang tersimpan. Method ini ada
- * supaya bentuk kontraknya sama dengan server/repositories/ (yang bukan
- * no-op — di sana ini satu-satunya jalur yang benar-benar menyimpan ke MySQL).
+ * Menyetujui/menolak satu tahap — memicu endpoint aksi bisnis penuh di
+ * backend (approve() atau reject() dijalankan LAGI di sana, dengan data
+ * server yang terbaru). `record.rejected` yang menentukan endpoint mana yang
+ * dipanggil; `approverId` diabaikan di sini karena server selalu mengambil
+ * identitas dari sesi login, bukan dari body request.
  */
-export function saveApproval(_inspectionId, _stageId, _record, _approverId) {}
-
-/** Sama seperti saveApproval() — no-op di sini, real UPDATE di backend. */
-export function setStatus(_inspectionId, _status) {}
-
-/** Sama seperti saveApproval() — no-op di sini, real INSERT di backend. */
-export function addCorrectiveAction(_inspectionId, _action) {
-    return _action;
-}
-
-/** Jumlah inspeksi. */
-export function count() {
-    return inspections.length;
+export async function saveApproval(inspectionId, stageId, record) {
+    const path = record.rejected
+        ? `/inspections/${encodeURIComponent(inspectionId)}/reject`
+        : `/inspections/${encodeURIComponent(inspectionId)}/approve`;
+    await apiPost(path, { stageId });
 }
 
 /**
- * Id berikutnya, format INS-nnn.
- *
- * Diturunkan dari jumlah data, persis seperti kode sebelumnya. Skema ini akan
- * menghasilkan id kembar bila kelak ada fitur hapus inspeksi — saat ini tidak
- * ada, jadi dibiarkan apa adanya. Backend nanti sebaiknya yang menerbitkan id.
+ * No-op di sini: status inspeksi sudah ikut diperbarui backend sebagai efek
+ * samping saveApproval()/addCorrectiveAction() di atas (masing-masing
+ * memanggil approval-service.js/corrective-action-service.js penuh di
+ * server, yang sudah menghitung dan menyimpan status baru sendiri).
  */
-export function nextId() {
-    return `INS-${String(inspections.length + 1).padStart(3, '0')}`;
+export async function setStatus(_inspectionId, _status) {}
+
+/** Menambahkan satu tindakan perbaikan lewat endpoint aksi bisnis penuh (foto wajib ditegakkan ulang di server). Phase 15: action.foto berisi File asli, dikirim lewat FormData. */
+export async function addCorrectiveAction(inspectionId, action) {
+    const formData = new FormData();
+    formData.append('action', action.action);
+    formData.append('status', action.status);
+    formData.append('pic', action.pic);
+    for (const file of action.foto || []) formData.append('photos', file);
+
+    const { action: created } = await apiPost(`/inspections/${encodeURIComponent(inspectionId)}/corrective-actions`, formData);
+    return created;
+}
+
+/** Jumlah inspeksi. Tidak ada endpoint hitung khusus — dihitung dari panjang array. */
+export async function count() {
+    return (await getAll()).length;
 }

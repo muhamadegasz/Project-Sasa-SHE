@@ -1,76 +1,63 @@
-/* schedule-repository.js — pemilik tunggal koleksi data jadwal inspeksi.
+/* schedule-repository.js — pemilik tunggal koleksi data jadwal, versi
+ * BROWSER (Phase 14).
  *
- * Menggantikan variabel global `let jadwalData`.
+ * Sejak Phase 14: bicara ke backend lewat api-client.js. Backend punya
+ * implementasinya sendiri di server/repositories/schedule-repository.js
+ * (query MySQL) — signature sama persis, dipertukarkan lewat specifier
+ * "#repositories/schedule-repository.js" (docs/ROADMAP-PHASE12.md,
+ * docs/DECISIONS.md K-18).
  *
- * Perhatikan remove(): kode lama melakukan `jadwalData = jadwalData.filter(...)`,
- * yaitu MENGGANTI binding variabel global. Itu persis alasan kenapa state
- * semacam ini perlu punya pemilik — penggantian binding di satu tempat diam-diam
- * memutus referensi yang dipegang tempat lain. Sekarang penggantian itu terjadi
- * di dalam modul ini saja, dan pemanggil selalu mendapat koleksi terkini lewat
- * getAll().
- *
- * Soal getAll() yang mengembalikan array hidup, berlaku catatan yang sama
- * seperti pada inspection-repository.js.
+ * Tidak ada endpoint GET /api/schedules/:id tersendiri (di luar cakupan
+ * Phase 12 — lihat server/routes/schedules.routes.js) — findById() di sini
+ * mengambil seluruh daftar lalu memfilter di klien. Jumlah jadwal kecil
+ * (mingguan per plant), jadi ini bukan masalah performa; tidak ditambah
+ * endpoint baru semata untuk ini (YAGNI).
  */
 
-import { generateWeeklySchedule } from '../data/schedules.seed.js';
+import { apiGet, apiPost, apiPut, apiDelete } from '../infrastructure/api-client.js';
 
-let schedules = generateWeeklySchedule();
-
-/** Seluruh jadwal. Array hidup. */
-export function getAll() {
-    return schedules;
+/** Seluruh jadwal. */
+export async function getAll() {
+    return apiGet('/schedules');
 }
 
 /** Satu jadwal berdasarkan id, atau undefined bila tidak ada. */
-export function findById(id) {
+export async function findById(id) {
+    const schedules = await getAll();
     return schedules.find((schedule) => schedule.id === id);
 }
 
-/**
- * Menambahkan jadwal baru di posisi paling belakang. Id ditentukan DI SINI
- * (lewat nextId()) — lihat catatan yang sama di inspection-repository.js.
- */
-export function add(schedule) {
-    const withId = { id: nextId(), ...schedule };
-    schedules.push(withId);
-    return withId;
+/** Menambahkan jadwal baru. Id ditentukan backend (AUTO_INCREMENT). */
+export async function add(schedule) {
+    const { schedule: created } = await apiPost('/schedules', schedule);
+    return created;
 }
 
 /**
- * Menyimpan perubahan field jadwal (dipanggil schedule-service.js setelah
- * Object.assign ke objek hasil findById()).
- *
- * No-op di sini dengan alasan yang sama seperti saveApproval() di
- * inspection-repository.js — findById() mengembalikan referensi hidup.
+ * Menyimpan perubahan field jadwal lewat PUT — beda dari versi in-memory
+ * lama (no-op): di sini benar-benar satu-satunya jalur yang menyimpan ke
+ * server. schedule-service.js tidak memakai nilai kembaliannya (ia sudah
+ * membangun objek gabungan sendiri secara lokal sebelum memanggil ini),
+ * tapi TETAP di-await dan TIDAK menelan error — kalau PUT gagal, error-nya
+ * harus tetap sampai ke pemanggil, supaya UI tidak salah bilang "berhasil
+ * diupdate" padahal sebenarnya gagal.
  */
-export function update(_id, _patch) {}
+export async function update(id, patch) {
+    await apiPut(`/schedules/${encodeURIComponent(id)}`, patch);
+}
 
-/**
- * Menghapus jadwal berdasarkan id.
- *
- * @returns {boolean} true bila ada yang terhapus.
- */
-export function remove(id) {
-    const before = schedules.length;
-    schedules = schedules.filter((schedule) => schedule.id !== id);
-    return schedules.length < before;
+/** Menghapus jadwal berdasarkan id. @returns {boolean} true bila ada yang terhapus. */
+export async function remove(id) {
+    try {
+        const result = await apiDelete(`/schedules/${encodeURIComponent(id)}`);
+        return Boolean(result && result.removed);
+    } catch (error) {
+        if (error.status === 404) return false;
+        throw error;
+    }
 }
 
 /** Jumlah jadwal. */
-export function count() {
-    return schedules.length;
-}
-
-/**
- * Id berikutnya, format SCH-nnn.
- *
- * Diturunkan dari jumlah data, persis seperti kode sebelumnya. Berbeda dengan
- * inspeksi, jadwal BISA dihapus — sehingga skema ini memang dapat menghasilkan
- * id kembar (hapus SCH-003 lalu tambah baru akan menghasilkan SCH-003 lagi).
- * Perilaku ini sudah ada sebelum refactoring dan sengaja tidak diubah di sini;
- * memperbaikinya adalah perubahan yang terlihat dan pantas dikerjakan terpisah.
- */
-export function nextId() {
-    return `SCH-${String(schedules.length + 1).padStart(3, '0')}`;
+export async function count() {
+    return (await getAll()).length;
 }

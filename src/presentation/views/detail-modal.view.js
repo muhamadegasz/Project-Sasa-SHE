@@ -10,8 +10,8 @@ import { bindModalClose } from '../components/modal.js';
 import { showToast } from '../components/toast.js';
 import { renderApprovalStages } from './approval.view.js';
 
-export function openDetailModal(id) {
-    const item = inspectionRepository.findById(id);
+export async function openDetailModal(id) {
+    const item = await inspectionRepository.findById(id);
     if (!item) { showToast('⚠️ Data tidak ditemukan'); return; }
     const modal = document.getElementById('detailModal');
     const content = document.getElementById('detailContent');
@@ -25,11 +25,11 @@ export function openDetailModal(id) {
         '<li style="color:#8a6a6a;">Tidak ada temuan</li>';
 
     const allPhotos = [...(item.fotoDekat || []), ...(item.fotoJauh || [])];
-    const galleryHtml = allPhotos.length > 0 && allPhotos[0] !== '-' ?
-        allPhotos.map((img, idx) =>
+    const galleryHtml = allPhotos.length > 0 ?
+        allPhotos.map((photo, idx) =>
                 `<div class="gallery-item" data-action="openLightbox" data-images="${jsArg(allPhotos)}" data-index="${idx}" title="Klik untuk preview">
                     <span class="preview-icon">📷</span>
-                    <span class="file-name">${escapeHtml(img)}</span>
+                    <span class="file-name">${escapeHtml(photo.originalName)}</span>
                 </div>`
             ).join('') :
         '<div style="color:#8a6a6a;font-size:0.8rem;">Tidak ada foto</div>';

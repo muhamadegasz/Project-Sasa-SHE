@@ -5,6 +5,15 @@
  * luar berkas ini (lewat setupSearch() dan setInterval() di initApp()).
  * renderInspeksiTable/renderPerbaikanTable/updateNotifBadge sengaja tidak
  * diekspor: tidak ada pemanggil lain di luar berkas ini.
+ *
+ * Phase 14.1-E: tombol "Kelola Pengesahan" (ikon stempel) pada baris tabel
+ * Semua Inspeksi diberi data-testid="row-approve-btn" — ikon tanpa teks tidak
+ * punya accessible name apa pun untuk getByRole(), jadi tidak ada locator
+ * semantik yang bisa membedakannya.
+ *
+ * Phase 15: alasan yang sama berlaku untuk tombol detail (ikon mata) di
+ * tabel Dashboard — diberi data-testid="row-detail-btn", dipakai test upload
+ * foto sungguhan untuk membuka modal detail lalu lightbox.
  */
 
 import { escapeHtml, highlight } from '../../shared/html.js';
@@ -100,7 +109,7 @@ function renderInspeksiTable(data, tbodyId, isFull, highlightQuery = '') {
                         <td><span class="status-badge ${escapeHtml(item.status)}">${escapeHtml(item.status.charAt(0).toUpperCase() + item.status.slice(1))}</span></td>
                         <td>
                             <span class="status-badge ${approvalColor}">${approvalStatus}</span>
-                            <button class="btn-sm info" data-action="openApprovalModal" data-id="${escapeHtml(item.id)}" style="margin-top:0.2rem;"><i class="fas fa-stamp"></i></button>
+                            <button class="btn-sm info" data-action="openApprovalModal" data-id="${escapeHtml(item.id)}" data-testid="row-approve-btn" style="margin-top:0.2rem;"><i class="fas fa-stamp"></i></button>
                         </td>
                         <td>${exportBtn} ${pdfBtn}</td>
                     </tr>
@@ -115,7 +124,7 @@ function renderInspeksiTable(data, tbodyId, isFull, highlightQuery = '') {
                         <td><span class="status-badge ${escapeHtml(item.status)}">${escapeHtml(item.status.charAt(0).toUpperCase() + item.status.slice(1))}</span></td>
                         <td>${progressBar}</td>
                         <td>
-                            <button class="btn-sm info" data-action="openDetailModal" data-id="${escapeHtml(item.id)}"><i class="fas fa-eye"></i></button>
+                            <button class="btn-sm info" data-action="openDetailModal" data-id="${escapeHtml(item.id)}" data-testid="row-detail-btn"><i class="fas fa-eye"></i></button>
                             <button class="btn-sm primary" data-action="openPerbaikanModal" data-id="${escapeHtml(item.id)}"><i class="fas fa-tools"></i></button>
                             <button class="btn-sm warning" data-action="openApprovalModal" data-id="${escapeHtml(item.id)}"><i class="fas fa-stamp"></i></button>
                             ${exportBtn}
@@ -127,10 +136,10 @@ function renderInspeksiTable(data, tbodyId, isFull, highlightQuery = '') {
     }).join('');
 }
 
-export function renderJadwalTable(data = null, highlightQuery = '') {
+export async function renderJadwalTable(data = null, highlightQuery = '') {
     const tbody = document.getElementById('jadwalTableBody');
     if (!tbody) return;
-    const displayData = data !== null ? data : scheduleRepository.getAll();
+    const displayData = data !== null ? data : await scheduleRepository.getAll();
     let notifCount = 0;
 
     if (displayData.length === 0) {
@@ -142,9 +151,9 @@ export function renderJadwalTable(data = null, highlightQuery = '') {
 
     const limitedData = displayData.slice(0, 100);
 
-    tbody.innerHTML = limitedData.map(item => {
+    const rows = await Promise.all(limitedData.map(async (item) => {
         const periode = PERIODE_LIST.find(p => p.id === item.periode);
-        const plant = plantRepository.findById(item.plantId);
+        const plant = await plantRepository.findById(item.plantId);
 
         const plantDisplay = highlight(item.plantName, highlightQuery);
         const officerDisplay = highlight(item.officer, highlightQuery);
@@ -180,7 +189,8 @@ export function renderJadwalTable(data = null, highlightQuery = '') {
                     </td>
                 </tr>
             `;
-    }).join('');
+    }));
+    tbody.innerHTML = rows.join('');
 
     if (data === null) {
         updateNotifBadge(notifCount);
@@ -188,10 +198,10 @@ export function renderJadwalTable(data = null, highlightQuery = '') {
     return notifCount;
 }
 
-function renderPerbaikanTable(data = null, highlightQuery = '') {
+async function renderPerbaikanTable(data = null, highlightQuery = '') {
     const tbody = document.getElementById('perbaikanTableBody');
     if (!tbody) return;
-    const sourceData = data !== null ? data : inspectionRepository.getAll();
+    const sourceData = data !== null ? data : await inspectionRepository.getAll();
     const displayData = sourceData.filter(item => item.perbaikan && item.perbaikan.length > 0);
 
     if (displayData.length === 0) {
@@ -258,10 +268,10 @@ export function renderAllInspeksiWithSearch(data, query) {
     renderInspeksiTable(data, 'allInspeksiTable', true, query);
 }
 
-export function renderJadwalWithSearch(data, query) {
-    renderJadwalTable(data, query);
+export async function renderJadwalWithSearch(data, query) {
+    await renderJadwalTable(data, query);
 }
 
-export function renderPerbaikanWithSearch(data, query) {
-    renderPerbaikanTable(data, query);
+export async function renderPerbaikanWithSearch(data, query) {
+    await renderPerbaikanTable(data, query);
 }

@@ -13,11 +13,13 @@ import { escapeHtml } from './shared/html.js';
 import { reportError } from './shared/errors.js';
 
 import { APPROVAL_STAGES } from './config/constants.js';
-import { isValidDemoLogin, DEMO_DISPLAY_NAME } from './config/demo-auth.js';
 import { getRandomOfficer } from './data/officers.js';
 import * as inspectionRepository from './repositories/inspection-repository.js';
 import * as scheduleRepository from './repositories/schedule-repository.js';
 import * as plantRepository from './repositories/plant-repository.js';
+
+import { apiPost, apiGet, ApiError } from './infrastructure/api-client.js';
+import { setSession, clearSession, getCurrentUser, onSessionExpired } from './infrastructure/session.js';
 
 import { allActionsClosed, countAllFindings } from './domain/inspection-rules.js';
 import { findStage, isFullyApproved } from './domain/approval-rules.js';
@@ -124,6 +126,7 @@ import { registerAction, initActionDispatcher } from './presentation/controllers
 
 const PESAN_GAGAL = {
     INSPECTION_NOT_FOUND: '⚠️ Data tidak ditemukan',
+    PLANT_NOT_FOUND: '⚠️ Plant tidak ditemukan, coba pilih ulang',
     STAGE_NOT_FOUND: '⚠️ Tahap tidak ditemukan',
     PREVIOUS_STAGE_PENDING: '⚠️ Tahap sebelumnya belum disetujui!',
     ALREADY_APPROVED: '⚠️ Tahap ini sudah disetujui!',
@@ -171,34 +174,101 @@ function initPlantSelect() {
 
 document.getElementById('loginForm').addEventListener('submit', handleLogin);
 
-function handleLogin(event) {
+/** Inisial dari nama tampilan, dipakai avatar header (mis. "Arif" -> "AR"). */
+function initialsOf(displayName) {
+    const parts = String(displayName || '').trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return '?';
+    return parts.length === 1
+        ? parts[0].slice(0, 2).toUpperCase()
+        : (parts[0][0] + parts[1][0]).toUpperCase();
+}
+
+/** Menampilkan #mainApp dan mengisi header dari identitas yang sedang login. */
+function showMainApp(user) {
+    document.getElementById('loginPage').classList.add('hidden');
+    document.getElementById('mainApp').classList.add('visible');
+    document.getElementById('userAvatar').textContent = initialsOf(user.displayName);
+    document.getElementById('userName').textContent = user.displayName;
+    // Terkunci sejak Phase 14 (docs/DECISIONS.md): server SELALU memaksa
+    // petugas dari identitas login (lihat inspections.routes.js), field ini
+    // kini murni tampilan — bukan lagi input bebas yang bisa menyimpang dari
+    // apa yang benar-benar tersimpan.
+    const formPetugas = document.getElementById('formPetugas');
+    if (formPetugas) formPetugas.value = user.displayName;
+}
+
+async function handleLogin(event) {
     event.preventDefault();
 
     const username = document.getElementById('loginUsername').value.trim();
     const password = document.getElementById('loginPassword').value.trim();
 
-    if (isValidDemoLogin(username, password)) {
-        document.getElementById('loginPage').classList.add('hidden');
-        document.getElementById('mainApp').classList.add('visible');
-
-        const initial = username.charAt(0).toUpperCase();
-        document.getElementById('userAvatar').textContent = initial + initial;
-        document.getElementById('userName').textContent = DEMO_DISPLAY_NAME;
-
+    try {
+        const { user, csrfToken } = await apiPost('/auth/login', { username, password });
+        setSession(user, csrfToken);
+        showMainApp(user);
         setTimeout(initApp, 300);
-    } else {
+    } catch (error) {
+        // Sengaja tanpa toast pesan gagal (permintaan pengguna sebelumnya,
+        // lihat git log "remove error message notifications from login
+        // process") — cukup kosongkan password dan kembalikan fokus.
+        if (!(error instanceof ApiError)) reportError('login', error, '');
         document.getElementById('loginPassword').value = '';
         document.getElementById('loginPassword').focus();
     }
 }
 
-function logout() {
-    if (confirm('Anda yakin ingin keluar?')) {
-        document.getElementById('mainApp').classList.remove('visible');
-        document.getElementById('loginPage').classList.remove('hidden');
-        document.getElementById('loginUsername').value = '';
-        document.getElementById('loginPassword').value = '';
-        document.getElementById('loginUsername').focus();
+/** Dipanggil saat startup (window load): memulihkan sesi lewat cookie yang masih berlaku, tanpa perlu login ulang setelah reload halaman. */
+async function restoreSession() {
+    try {
+        const { user, csrfToken } = await apiGet('/auth/me');
+        setSession(user, csrfToken);
+        showMainApp(user);
+        initApp();
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+/** Dipanggil session.js saat server menolak permintaan dengan 401 di tengah sesi (kedaluwarsa/dihapus). */
+onSessionExpired(() => {
+    clearSession();
+    document.getElementById('mainApp').classList.remove('visible');
+    document.getElementById('loginPage').classList.remove('hidden');
+    document.getElementById('loginPassword').value = '';
+    showToast('⚠️ Sesi berakhir, silakan login kembali');
+});
+
+async function logout() {
+    if (!confirm('Anda yakin ingin keluar?')) return;
+
+    // Phase 14.1-J: sebelumnya kegagalan apa pun di sini (bukan cuma network
+    // down) tetap diam-diam diperlakukan sebagai "logout berhasil" — state
+    // klien dibersihkan tanpa syarat, padahal sesi di server bisa saja masih
+    // hidup. Sekarang dibedakan eksplisit: berhasil -> bersih tanpa pesan
+    // (perilaku lama, disengaja tetap tanpa toast pada kasus normal). Gagal
+    // -> state klien TETAP dibersihkan (pengguna tidak punya cara lain
+    // memaksa logout dari sini, dan meninggalkan UI seolah masih login lebih
+    // menyesatkan), TAPI diberi tahu eksplisit bahwa sesi di server mungkin
+    // belum benar-benar berakhir — bukan diam-diam disamarkan sebagai sukses.
+    let serverConfirmedLogout = true;
+    try {
+        await apiPost('/auth/logout');
+    } catch (error) {
+        serverConfirmedLogout = false;
+        reportError('logout', error, '');
+    }
+
+    clearSession();
+    document.getElementById('mainApp').classList.remove('visible');
+    document.getElementById('loginPage').classList.remove('hidden');
+    document.getElementById('loginUsername').value = '';
+    document.getElementById('loginPassword').value = '';
+    document.getElementById('loginUsername').focus();
+
+    if (!serverConfirmedLogout) {
+        showToast('⚠️ Sesi lokal dibersihkan, tapi server belum mengonfirmasi logout. Tutup browser bila memakai perangkat bersama.');
     }
 }
 
@@ -209,8 +279,9 @@ function logout() {
 // Enter, yang menjadwalkan setTimeout(initApp, 300) berkali-kali (pemicu D-3).
 // Dihapus pada Phase 10, bukan diganti — sudah tidak diperlukan.
 
-window.addEventListener('load', function() {
-    document.getElementById('loginUsername').focus();
+window.addEventListener('load', async function() {
+    const restored = await restoreSession();
+    if (!restored) document.getElementById('loginUsername').focus();
 });
 
 // Badge jam, status "Online", dan tanggal semuanya dihapus dari header
@@ -244,7 +315,7 @@ function switchTab(tabName) {
 // ========================================================================
 
 async function approveStage(inspeksiId, stageId) {
-    const result = await approvalService.approve(inspeksiId, stageId);
+    const result = await approvalService.approve(inspeksiId, stageId, getCurrentUser());
     if (!result.ok) { showToast(pesanGagal(result.reason)); return; }
 
     const { stage, fullyApproved } = result.data;
@@ -252,8 +323,8 @@ async function approveStage(inspeksiId, stageId) {
         ? '🎉 Semua tahap pengesahan telah disetujui! Inspeksi selesai.'
         : `✅ ${stage.title} telah menyetujui inspeksi ${inspeksiId}`);
 
-    refreshAll();
-    openApprovalModal(inspeksiId);
+    await refreshAll();
+    await openApprovalModal(inspeksiId);
 }
 
 async function rejectStage(inspeksiId, stageId) {
@@ -261,20 +332,20 @@ async function rejectStage(inspeksiId, stageId) {
     if (!stage) { showToast(pesanGagal('STAGE_NOT_FOUND')); return; }
     if (!confirm(`Tolak inspeksi ${inspeksiId} oleh ${stage.title}?`)) return;
 
-    const result = await approvalService.reject(inspeksiId, stageId);
+    const result = await approvalService.reject(inspeksiId, stageId, getCurrentUser());
     if (!result.ok) { showToast(pesanGagal(result.reason)); return; }
 
     showToast(`❌ ${result.data.stage.title} menolak inspeksi ${inspeksiId}`);
-    refreshAll();
-    openApprovalModal(inspeksiId);
+    await refreshAll();
+    await openApprovalModal(inspeksiId);
 }
 
 // ========================================================================
 // ========== PDF GENERATOR ==========
 // ========================================================================
 
-function cetakPDF(id) {
-    const item = inspectionRepository.findById(id);
+async function cetakPDF(id) {
+    const item = await inspectionRepository.findById(id);
     if (!item) { showToast('⚠️ Data tidak ditemukan'); return; }
 
     const allApproved = isFullyApproved(item);
@@ -299,8 +370,8 @@ function cetakPDF(id) {
 // ========== EXPORT FUNCTIONS ==========
 // ========================================================================
 
-function exportTemuanPerItem(id) {
-    const item = inspectionRepository.findById(id);
+async function exportTemuanPerItem(id) {
+    const item = await inspectionRepository.findById(id);
     if (!item) { showToast('⚠️ Data tidak ditemukan'); return; }
     if (!item.temuan || item.temuan.length === 0) { showToast('⚠️ Tidak ada temuan'); return; }
 
@@ -309,8 +380,8 @@ function exportTemuanPerItem(id) {
 }
 
 
-function exportAllTemuan() {
-    const inspections = inspectionRepository.getAll();
+async function exportAllTemuan() {
+    const inspections = await inspectionRepository.getAll();
     const total = inspections.reduce((sum, item) => sum + (item.temuan ? item.temuan.length : 0), 0);
     if (total === 0) { showToast('⚠️ Tidak ada temuan'); return; }
 
@@ -333,7 +404,7 @@ function setRealisasiHariIni() {
     showToast('📅 Tanggal realisasi diisi hari ini');
 }
 
-function openJadwalModal(data = null) {
+async function openJadwalModal(data = null) {
     const modal = document.getElementById('jadwalModal');
     document.getElementById('jadwalModalTitle').textContent = data ? 'Edit Jadwal' : 'Tambah Jadwal';
     const currentYear = new Date().getFullYear();
@@ -341,7 +412,7 @@ function openJadwalModal(data = null) {
 
     if (data) {
         document.getElementById('editJadwalId').value = data.id;
-        const plant = plantRepository.findById(data.plantId);
+        const plant = await plantRepository.findById(data.plantId);
         if (plant) {
             plantSelectJadwal.select(plant.id, plant.name, plant.code);
         }
@@ -364,16 +435,16 @@ function openJadwalModal(data = null) {
     modal.classList.add('show');
 }
 
-function editJadwal(id) {
-    const item = scheduleRepository.findById(id);
-    if (item) openJadwalModal(item);
+async function editJadwal(id) {
+    const item = await scheduleRepository.findById(id);
+    if (item) await openJadwalModal(item);
 }
 
 async function hapusJadwal(id) {
     if (!confirm(`Hapus jadwal ${id}?`)) return;
 
     await scheduleService.remove(id);
-    refreshAll();
+    await refreshAll();
     showToast(`🗑️ Jadwal ${id} dihapus`);
 }
 
@@ -381,31 +452,37 @@ bindModalClose('jadwalModal', 'closeJadwalModal');
 
 document.getElementById('submitJadwal').addEventListener('click', async function(e) {
     e.preventDefault();
-    const result = await scheduleService.save({
-        id: document.getElementById('editJadwalId').value,
-        plantId: document.getElementById('selectedPlantJadwal').value,
-        periode: parseInt(document.getElementById('jadwalPeriode').value),
-        tahun: parseInt(document.getElementById('jadwalTahun').value),
-        tanggalJadwal: document.getElementById('jadwalTanggal').value,
-        officer: document.getElementById('jadwalPetugas').value,
-        tanggalRealisasi: document.getElementById('jadwalRealisasi').value,
-        minggu: parseInt(document.getElementById('jadwalMinggu').value),
-    });
-    if (!result.ok) { showToast(pesanGagal(result.reason)); return; }
+    try {
+        const result = await scheduleService.save({
+            id: document.getElementById('editJadwalId').value,
+            plantId: document.getElementById('selectedPlantJadwal').value,
+            periode: parseInt(document.getElementById('jadwalPeriode').value),
+            tahun: parseInt(document.getElementById('jadwalTahun').value),
+            tanggalJadwal: document.getElementById('jadwalTanggal').value,
+            officer: document.getElementById('jadwalPetugas').value,
+            tanggalRealisasi: document.getElementById('jadwalRealisasi').value,
+            minggu: parseInt(document.getElementById('jadwalMinggu').value),
+        });
+        if (!result.ok) { showToast(pesanGagal(result.reason)); return; }
 
-    // schedule bernilai null hanya bila id yang diedit tidak ditemukan —
-    // kode lama juga diam pada kasus itu. Lihat schedule-service.js.
-    const { schedule, created } = result.data;
-    if (schedule) {
-        showToast(created
-            ? `✅ Jadwal ${schedule.id} berhasil ditambahkan`
-            : `✅ Jadwal ${schedule.id} berhasil diupdate`);
+        // schedule bernilai null hanya bila id yang diedit tidak ditemukan —
+        // kode lama juga diam pada kasus itu. Lihat schedule-service.js.
+        const { schedule, created } = result.data;
+        if (schedule) {
+            showToast(created
+                ? `✅ Jadwal ${schedule.id} berhasil ditambahkan`
+                : `✅ Jadwal ${schedule.id} berhasil diupdate`);
+        }
+
+        plantSelectJadwal.clear();
+
+        await refreshAll();
+        closeModal('jadwalModal');
+    } catch (error) {
+        if (!(error instanceof ApiError) || error.status !== 401) {
+            showToast(reportError('simpan jadwal', error, '⚠️ Gagal menyimpan jadwal. Coba ulangi beberapa saat lagi.'));
+        }
     }
-
-    plantSelectJadwal.clear();
-
-    refreshAll();
-    closeModal('jadwalModal');
 });
 
 // ========================================================================
@@ -413,7 +490,7 @@ document.getElementById('submitJadwal').addEventListener('click', async function
 // ========================================================================
 
 async function tambahPerbaikanCustom(id) {
-    const fotoFiles = Array.from(document.getElementById('newFoto').files).map(f => f.name);
+    const fotoFiles = Array.from(document.getElementById('newFoto').files);
     const result = await correctiveActionService.addAction(id, {
         action: document.getElementById('newAction').value,
         status: document.getElementById('newStatus').value,
@@ -422,12 +499,12 @@ async function tambahPerbaikanCustom(id) {
     });
     if (!result.ok) { showToast(pesanGagal(result.reason)); return; }
 
-    refreshAll();
+    await refreshAll();
     showToast(`✅ Tindakan "${result.data.action.action}" ditambahkan dengan ${fotoFiles.length} foto`);
     document.getElementById('newAction').value = '';
     document.getElementById('newFoto').value = '';
     document.getElementById('newFotoCount').textContent = 'Belum ada file';
-    openPerbaikanModal(id);
+    await openPerbaikanModal(id);
 }
 
 // ========================================================================
@@ -483,71 +560,92 @@ document.getElementById('submitInspeksi').addEventListener('click', async functi
     e.preventDefault();
 
     const temuanData = document.getElementById('temuanData').value;
+    // petugas TIDAK lagi dibaca dari input bebas sejak Phase 14 — server
+    // selalu memaksanya dari identitas login (lihat inspections.routes.js);
+    // mengirim nilai lain di sini tidak berpengaruh, field formPetugas kini
+    // hanya tampilan (lihat showMainApp()).
+    const user = getCurrentUser();
 
-    const result = await inspectionService.create({
-        plantId: document.getElementById('selectedPlant').value,
-        keteranganLokasi: document.getElementById('formKeteranganLokasi').value.trim(),
-        tanggal: document.getElementById('formTanggal').value,
-        petugas: document.getElementById('formPetugas').value.trim() || getRandomOfficer(),
-        status: document.getElementById('formStatus').value,
-        dueDate: document.getElementById('formDueDate').value,
-        fotoDekat: Array.from(document.getElementById('fotoDekat').files).map(f => f.name),
-        fotoJauh: Array.from(document.getElementById('fotoJauh').files).map(f => f.name),
-        temuan: temuanData ? JSON.parse(temuanData) : [],
-    });
+    try {
+        const result = await inspectionService.create({
+            plantId: document.getElementById('selectedPlant').value,
+            keteranganLokasi: document.getElementById('formKeteranganLokasi').value.trim(),
+            tanggal: document.getElementById('formTanggal').value,
+            petugas: user ? user.displayName : getRandomOfficer(),
+            status: document.getElementById('formStatus').value,
+            dueDate: document.getElementById('formDueDate').value,
+            fotoDekat: Array.from(document.getElementById('fotoDekat').files),
+            fotoJauh: Array.from(document.getElementById('fotoJauh').files),
+            temuan: temuanData ? JSON.parse(temuanData) : [],
+        });
 
-    if (!result.ok) {
-        if (result.reason === inspectionService.INSPECTION_ERROR.PLANT_REQUIRED) {
-            showToast('⚠️ Silakan pilih Lokasi / Plant terlebih dahulu!');
-            plantSelectForm.markInvalid();
-        } else if (result.reason === inspectionService.INSPECTION_ERROR.FINDINGS_REQUIRED) {
-            showToast('⚠️ Tambahkan minimal 1 temuan!');
-        } else {
-            showToast('⚠️ Tanggal inspeksi wajib diisi!');
+        if (!result.ok) {
+            if (result.reason === inspectionService.INSPECTION_ERROR.PLANT_REQUIRED) {
+                showToast('⚠️ Silakan pilih Lokasi / Plant terlebih dahulu!');
+                plantSelectForm.markInvalid();
+            } else if (result.reason === inspectionService.INSPECTION_ERROR.PLANT_NOT_FOUND) {
+                showToast(pesanGagal('PLANT_NOT_FOUND'));
+                plantSelectForm.markInvalid();
+            } else if (result.reason === inspectionService.INSPECTION_ERROR.FINDINGS_REQUIRED) {
+                showToast('⚠️ Tambahkan minimal 1 temuan!');
+            } else {
+                showToast('⚠️ Tanggal inspeksi wajib diisi!');
+            }
+            return;
         }
-        return;
+
+        const newId = result.data.inspection.id;
+
+        temuanList = [];
+        renderTemuanList();
+        document.getElementById('temuanInput').value = '';
+        document.getElementById('fotoDekat').value = '';
+        document.getElementById('fotoJauh').value = '';
+
+        plantSelectForm.clear();
+
+        await refreshAll();
+        showToast(`✅ Inspeksi ${newId} berhasil disimpan! Tahap 1 (Safety Officer) sudah disetujui.`);
+        this.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Menyimpan...';
+        setTimeout(() => { this.innerHTML = '<i class="fas fa-save"></i> Simpan Inspeksi'; }, 1000);
+    } catch (error) {
+        if (!(error instanceof ApiError) || error.status !== 401) {
+            showToast(reportError('simpan inspeksi', error, '⚠️ Gagal menyimpan inspeksi. Coba ulangi beberapa saat lagi.'));
+        }
     }
-
-    const newId = result.data.inspection.id;
-
-
-    temuanList = [];
-    renderTemuanList();
-    document.getElementById('temuanInput').value = '';
-    document.getElementById('fotoDekat').value = '';
-    document.getElementById('fotoJauh').value = '';
-    
-    plantSelectForm.clear();
-    
-    refreshAll();
-    showToast(`✅ Inspeksi ${newId} berhasil disimpan! Tahap 1 (Safety Officer) sudah disetujui.`);
-    this.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Menyimpan...';
-    setTimeout(() => { this.innerHTML = '<i class="fas fa-save"></i> Simpan Inspeksi'; }, 1000);
 });
 
 // ========================================================================
 // ========== STATS & REFRESH ==========
 // ========================================================================
 
-function updateStats() {
-    const total = inspectionRepository.count();
-    const totalTemuan = countAllFindings(inspectionRepository.getAll());
-    const selesaiPerbaikan = inspectionRepository.getAll().filter(allActionsClosed).length;
-    const jadwalAktif = scheduleRules.countActive(scheduleRepository.getAll());
+async function updateStats() {
+    // getAll() dipanggil sekali dan dipakai ulang (bukan dua kali seperti
+    // sebelumnya) — sejak Phase 14 setiap panggilan adalah request jaringan.
+    const [inspections, schedules] = await Promise.all([
+        inspectionRepository.getAll(),
+        scheduleRepository.getAll(),
+    ]);
+    const total = inspections.length;
+    const totalTemuan = countAllFindings(inspections);
+    const selesaiPerbaikan = inspections.filter(allActionsClosed).length;
+    const jadwalAktif = scheduleRules.countActive(schedules);
     document.getElementById('statTotalInspeksi').textContent = total;
     document.getElementById('statTotalTemuan').textContent = totalTemuan;
     document.getElementById('statJadwalAktif').textContent = jadwalAktif;
     document.getElementById('statSelesaiPerbaikan').textContent = selesaiPerbaikan;
 }
 
-function refreshAll() {
+async function refreshAll() {
     document.querySelectorAll('.search-wrapper input').forEach(inp => {
         inp.dispatchEvent(new Event('input'));
     });
-    renderCalendar();
-    updateStats();
-    renderTemuanPlantChart();
-    updatePerbaikanChart();
+    await Promise.all([
+        renderCalendar(),
+        updateStats(),
+        renderTemuanPlantChart(),
+        updatePerbaikanChart(),
+    ]);
 }
 
 // ========================================================================
@@ -577,9 +675,24 @@ document.querySelectorAll('.nav-tab').forEach(tab => {
 // ========== EVENT LISTENERS EXPORT ==========
 // ========================================================================
 
-document.getElementById('exportSpreadsheet').addEventListener('click', () => exportToExcel(inspectionRepository.getAll(),
-    'Inspeksi_K3.xlsx'));
-document.getElementById('exportAllTemuan').addEventListener('click', exportAllTemuan);
+document.getElementById('exportSpreadsheet').addEventListener('click', async () => {
+    try {
+        exportToExcel(await inspectionRepository.getAll(), 'Inspeksi_K3.xlsx');
+    } catch (error) {
+        if (!(error instanceof ApiError) || error.status !== 401) {
+            showToast(reportError('export spreadsheet', error, '⚠️ Gagal mengekspor data. Coba ulangi beberapa saat lagi.'));
+        }
+    }
+});
+document.getElementById('exportAllTemuan').addEventListener('click', async () => {
+    try {
+        await exportAllTemuan();
+    } catch (error) {
+        if (!(error instanceof ApiError) || error.status !== 401) {
+            showToast(reportError('export semua temuan', error, '⚠️ Gagal mengekspor data. Coba ulangi beberapa saat lagi.'));
+        }
+    }
+});
 
 // ========================================================================
 // ========== SYNC ==========
@@ -592,7 +705,7 @@ async function syncToGoogleSheets(btn) {
             btn.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Menyiapkan...';
         }
         showToast('🔄 Menyiapkan data...');
-        excelExporter.downloadInspectionsWorkbook(inspectionRepository.getAll());
+        excelExporter.downloadInspectionsWorkbook(await inspectionRepository.getAll());
         showToast('✅ File Excel siap! Upload ke Google Sheets.');
     } catch (error) {
         showToast(reportError('siapkan file Excel', error, '⚠️ Gagal menyiapkan file Excel. Coba ulangi beberapa saat lagi.'));
@@ -626,7 +739,7 @@ document.querySelectorAll('#syncToSheets, #syncToSheets2, #syncToSheets3').forEa
 // tetap berjalan di setiap login.
 let appInitialized = false;
 
-function initApp() {
+async function initApp() {
     if (!appInitialized) {
         appInitialized = true;
 
@@ -647,8 +760,11 @@ function initApp() {
             () => inspectionRepository.getAll(), renderPerbaikanWithSearch, ['id', 'lokasi', 'petugas', 'dueDate']);
 
         setInterval(() => {
-            renderJadwalTable();
-            renderCalendar();
+            // Refresh berkala di latar belakang — kegagalan (mis. sesi
+            // kedaluwarsa saat tab dibiarkan idle) sudah ditangani
+            // notifySessionExpired() di session.js; di sini cukup jangan
+            // sampai jadi unhandled rejection yang mencemari console.
+            Promise.all([renderJadwalTable(), renderCalendar()]).catch(() => {});
         }, 10000);
     }
 
@@ -658,14 +774,19 @@ function initApp() {
     document.getElementById('formDueDate').value = defaultDueDate.toISOString().split('T')[0];
 
     renderTemuanList();
-    initCharts();
-    refreshAll();
+    await initCharts();
+    await refreshAll();
 
-    console.log('🚀 SHE Sasa K3 System - DEMO MODE ACTIVE');
-    console.log(`📊 ${inspectionRepository.count()} inspeksi, ${scheduleRepository.count()} jadwal mingguan`);
-    console.log(`🏭 ${plantRepository.count()} Plant terdaftar`);
+    const [totalInspeksi, totalJadwal, totalPlant] = await Promise.all([
+        inspectionRepository.count(),
+        scheduleRepository.count(),
+        plantRepository.count(),
+    ]);
+    console.log('🚀 SHE Sasa K3 System - PHASE 14 (backend sungguhan) ACTIVE');
+    console.log(`📊 ${totalInspeksi} inspeksi, ${totalJadwal} jadwal mingguan`);
+    console.log(`🏭 ${totalPlant} Plant terdaftar`);
     console.log(`📋 4 Tahap Pengesahan: ${APPROVAL_STAGES.map(s => s.title).join(' → ')}`);
-    console.log(`📅 Jadwal mingguan setiap plant - ${scheduleRepository.count()} total jadwal`);
+    console.log(`📅 Jadwal mingguan setiap plant - ${totalJadwal} total jadwal`);
 }
 
 // Enter di #loginPassword dulu men-dispatch submit lagi secara manual di sini

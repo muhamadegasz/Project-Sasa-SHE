@@ -14,9 +14,9 @@ let currentCalendarMonth = new Date().getMonth();
 let currentCalendarYear = new Date().getFullYear();
 
 /** Mengelompokkan seluruh jadwal per tanggal (kunci `YYYY-MM-DD`) untuk pewarnaan dot kalender. */
-function collectMonthEvents() {
+async function collectMonthEvents() {
     const events = {};
-    scheduleRepository.getAll().forEach(j => {
+    (await scheduleRepository.getAll()).forEach(j => {
         if (j.tanggalJadwal) {
             const d = new Date(j.tanggalJadwal);
             const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
@@ -49,7 +49,7 @@ function collectMonthEvents() {
     return events;
 }
 
-export function renderCalendar() {
+export async function renderCalendar() {
     const container = document.getElementById('calendarContainer');
     if (!container) return;
 
@@ -65,7 +65,7 @@ export function renderCalendar() {
     const todayMonth = today.getMonth();
     const todayYear = today.getFullYear();
 
-    const events = collectMonthEvents();
+    const events = await collectMonthEvents();
 
     let html = `
         <div class="calendar-header">
@@ -134,7 +134,7 @@ export function renderCalendar() {
     container.innerHTML = html;
 }
 
-export function changeCalendarMonth(delta) {
+export async function changeCalendarMonth(delta) {
     currentCalendarMonth += delta;
     if (currentCalendarMonth > 11) {
         currentCalendarMonth = 0;
@@ -143,12 +143,12 @@ export function changeCalendarMonth(delta) {
         currentCalendarMonth = 11;
         currentCalendarYear--;
     }
-    renderCalendar();
+    await renderCalendar();
 }
 
-export function showDayEvents(dateKey) {
+export async function showDayEvents(dateKey) {
     const events = [];
-    scheduleRepository.getAll().forEach(j => {
+    (await scheduleRepository.getAll()).forEach(j => {
         if (j.tanggalJadwal) {
             const d = new Date(j.tanggalJadwal);
             const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;

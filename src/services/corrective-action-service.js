@@ -29,7 +29,10 @@ export const CORRECTIVE_ACTION_ERROR = {
  * src/repositories/inspection-repository.js.
  *
  * @param {string} inspectionId
- * @param {{action: string, status: string, pic: string, photos: string[]}} input
+ * @param {{action: string, status: string, pic: string, photos: Array, uploadedBy?: number}} input
+ *   `photos`: `File[]` di browser (sebelum dikirim lewat FormData), objek metadata
+ *   `{path, originalName, mimeType, size}[]` di server (dari multer, lihat
+ *   inspections.routes.js) — service ini tidak menyentuh isinya, cuma memeriksa `.length`.
  * @returns ok({ inspection, action }) atau fail(CORRECTIVE_ACTION_ERROR.*)
  */
 export async function addAction(inspectionId, input) {
@@ -48,6 +51,10 @@ export async function addAction(inspectionId, input) {
         status: input.status,
         pic: input.pic,
         foto: photos,
+        // Diisi route handler backend dari req.user.id (bukan dari body permintaan) —
+        // sama seperti petugasUserId di inspection-service.js. undefined di browser,
+        // diabaikan repository in-memory di sana.
+        uploadedBy: input.uploadedBy,
     };
 
     inspection.perbaikan = inspection.perbaikan || [];

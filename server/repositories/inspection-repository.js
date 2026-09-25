@@ -64,24 +64,24 @@ async function loadFull(row) {
         [numericId],
     );
     const [dekatPhotos] = await pool.query(
-        "SELECT original_name FROM photos WHERE inspection_id = ? AND slot = 'dekat' ORDER BY id",
+        "SELECT id, original_name FROM photos WHERE inspection_id = ? AND slot = 'dekat' ORDER BY id",
         [numericId],
     );
     const [jauhPhotos] = await pool.query(
-        "SELECT original_name FROM photos WHERE inspection_id = ? AND slot = 'jauh' ORDER BY id",
+        "SELECT id, original_name FROM photos WHERE inspection_id = ? AND slot = 'jauh' ORDER BY id",
         [numericId],
     );
 
     const actionPhotosById = {};
     if (actions.length > 0) {
         const [actionPhotoRows] = await pool.query(
-            `SELECT corrective_action_id, original_name FROM photos
+            `SELECT id, corrective_action_id, original_name FROM photos
              WHERE corrective_action_id IN (${actions.map(() => '?').join(',')})
              ORDER BY id`,
             actions.map((a) => a.id),
         );
         for (const photo of actionPhotoRows) {
-            (actionPhotosById[photo.corrective_action_id] ||= []).push(photo.original_name);
+            (actionPhotosById[photo.corrective_action_id] ||= []).push({ id: photo.id, originalName: photo.original_name });
         }
     }
 
@@ -106,8 +106,8 @@ async function loadFull(row) {
         petugasUserId: row.petugas_user_id,
         status: row.status,
         dueDate: formatDate(row.due_date),
-        fotoDekat: dekatPhotos.length ? dekatPhotos.map((p) => p.original_name) : ['-'],
-        fotoJauh: jauhPhotos.length ? jauhPhotos.map((p) => p.original_name) : ['-'],
+        fotoDekat: dekatPhotos.map((p) => ({ id: p.id, originalName: p.original_name })),
+        fotoJauh: jauhPhotos.map((p) => ({ id: p.id, originalName: p.original_name })),
         approvals,
         temuan: findings.map((f) => ({ id: f.id, deskripsi: f.deskripsi, kategori: f.kategori })),
         perbaikan: actions.map((a) => ({
@@ -178,20 +178,18 @@ export async function add(inspection) {
         );
         const numericId = result.insertId;
 
-        for (const filename of inspection.fotoDekat || []) {
-            if (!filename || filename === '-') continue;
+        for (const photo of inspection.fotoDekat || []) {
             await connection.query(
-                `INSERT INTO photos (inspection_id, slot, file_path, original_name, mime_type, size_bytes)
-                 VALUES (?, 'dekat', ?, ?, 'application/octet-stream', 0)`,
-                [numericId, `pending/${filename}`, filename],
+                `INSERT INTO photos (inspection_id, slot, file_path, original_name, mime_type, size_bytes, uploaded_by)
+                 VALUES (?, 'dekat', ?, ?, ?, ?, ?)`,
+                [numericId, photo.path, photo.originalName, photo.mimeType, photo.size, inspection.petugasUserId],
             );
         }
-        for (const filename of inspection.fotoJauh || []) {
-            if (!filename || filename === '-') continue;
+        for (const photo of inspection.fotoJauh || []) {
             await connection.query(
-                `INSERT INTO photos (inspection_id, slot, file_path, original_name, mime_type, size_bytes)
-                 VALUES (?, 'jauh', ?, ?, 'application/octet-stream', 0)`,
-                [numericId, `pending/${filename}`, filename],
+                `INSERT INTO photos (inspection_id, slot, file_path, original_name, mime_type, size_bytes, uploaded_by)
+                 VALUES (?, 'jauh', ?, ?, ?, ?, ?)`,
+                [numericId, photo.path, photo.originalName, photo.mimeType, photo.size, inspection.petugasUserId],
             );
         }
 
@@ -276,14 +274,23 @@ export async function addCorrectiveAction(inspectionId, action) {
     );
     const actionId = result.insertId;
 
-    for (const filename of action.foto || []) {
-        if (!filename || filename === '-') continue;
+    for (const photo of action.foto || []) {
         await pool.query(
-            `INSERT INTO photos (corrective_action_id, slot, file_path, original_name, mime_type, size_bytes)
-             VALUES (?, 'perbaikan', ?, ?, 'application/octet-stream', 0)`,
-            [actionId, `pending/${filename}`, filename],
+            `INSERT INTO photos (corrective_action_id, slot, file_path, original_name, mime_type, size_bytes, uploaded_by)
+             VALUES (?, 'perbaikan', ?, ?, ?, ?, ?)`,
+            [actionId, photo.path, photo.originalName, photo.mimeType, photo.size, action.uploadedBy],
         );
     }
 
     return { id: actionId, ...action };
+}
+
+/** Metadata satu foto (untuk endpoint penyajian file, lihat inspections.routes.js). undefined bila tidak ada. */
+export async function findPhotoFile(photoId) {
+    const [rows] = await pool.query(
+        'SELECT file_path, mime_type, original_name FROM photos WHERE id = ?',
+        [photoId],
+    );
+    if (rows.length === 0) return undefined;
+    return { filePath: rows[0].file_path, mimeType: rows[0].mime_type, originalName: rows[0].original_name };
 }

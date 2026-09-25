@@ -993,3 +993,320 @@ fase ini hanya `server/middleware/dev-auth.js` (backend-only, tidak dipakai fron
   diberi request "Login sebagai <role>" di awal (satu cookie jar Postman = satu sesi aktif,
   login sebagai role baru menggantikan sesi sebelumnya), header `X-CSRF-Token` otomatis dari
   variable `{{csrfToken}}` yang di-set tiap login.
+
+## K-21: Phase 14 — Sambungkan frontend ke API sungguhan
+
+Menggantikan seluruh isi `src/repositories/*.js` (in-memory) dengan `fetch()` ke backend
+(`http://project-sasa-she.test:3001/api`, origin Laragon vhost yang sebenarnya dipakai — bukan
+port ad-hoc yang dipakai untuk testing manual di Phase 12/13). Signature fungsi setiap repository
+TIDAK berubah — domain/services tetap dipakai apa adanya, sesuai rencana. Login demo
+(`src/config/demo-auth.js`) dihapus, diganti login sungguhan lewat `POST /api/auth/login`.
+
+### Infrastruktur baru
+
+- `src/infrastructure/api-client.js` — satu-satunya pembungkus `fetch()`. `credentials:'include'`
+  wajib (frontend port 80 dan backend port 3001 adalah origin CORS berbeda walau domainnya sama).
+  Menyisipkan header `X-CSRF-Token` otomatis untuk POST/PUT/DELETE, melempar `ApiError` (punya
+  `.status`) untuk respons bukan 2xx, memanggil `notifySessionExpired()` khusus untuk 401.
+- `src/infrastructure/session.js` — state login sisi browser (user + csrfToken), disimpan di
+  memori modul (BUKAN localStorage), hilang saat reload. `restoreSession()` di legacy-app.js
+  memulihkannya lewat `GET /api/auth/me` saat startup — endpoint itu diberi tambahan
+  mengembalikan `csrfToken` (sebelumnya hanya `POST /login` yang mengembalikannya), karena tanpa
+  itu setiap reload halaman akan kehilangan token dan seluruh aksi mengubah-state gagal CSRF
+  sampai logout+login ulang.
+- `server/app.js` — CORS ditulis manual (bukan paket `cors`, konsisten dengan pendekatan
+  session-store.js/csrf.js sebelumnya): origin diambil dari `.env` `CORS_ORIGIN`
+  (`http://project-sasa-she.test`), preflight OPTIONS ditangani sebelum middleware lain.
+
+### Repository: pola "backend menjalankan aksi bisnis penuh, bukan operasi tulis baris"
+
+`saveApproval()`/`addCorrectiveAction()` versi browser TIDAK menulis data mentah seperti versi
+MySQL backend — keduanya memanggil endpoint AKSI (`POST .../approve`, `.../reject`,
+`.../corrective-actions`), yang menjalankan LAGI `approval-service.js`/`corrective-action-service.js`
+penuh di server dengan data ter-terbaru. Parameter `record`/`approverId` yang dikirim pemanggil
+sengaja tidak dipakai membangun body request — konsisten dengan `petugas` yang sejak Phase 12/13
+juga selalu dipaksa dari sesi server, bukan dari apa pun yang dikirim klien. Konsekuensinya:
+computation yang sudah dilakukan `approval-service.js` di sisi klien (mis. `isPreviousStageApproved`)
+jadi murni untuk validasi cepat sebelum request jaringan — hasil akhirnya tidak pernah dipakai,
+selalu dari refetch setelah aksi selesai.
+
+`inspection-repository.js` `add()` mengirim SELURUH objek yang sudah dibangun
+`inspection-service.js` (termasuk `approvals`/`perbaikan` hasil hitungan klien) — backend
+mengabaikan dan menghitung ulang sendiri dari `plantId`/`temuan`/`tanggal` (`create()` yang sama
+persis dipakai ulang di server). Pengecualian PENTING: lihat bug tanggal di bawah.
+
+### Bug ditemukan lewat pengujian browser sungguhan (Playwright), BUKAN test otomatis
+
+Tidak seperti Phase 12/13, verifikasi fase ini tidak bisa mengandalkan `node --test` semata —
+repository sekarang bicara ke jaringan sungguhan dari dalam browser sungguhan (cookie, CORS,
+DOM). Diinstal `playwright` (devDependency baru) + Chromium untuk menjalankan skrip E2E yang
+benar-benar mengklik UI: login, isi form, pilih plant lewat pencarian, submit, reload halaman,
+login sebagai role lain di browser context terpisah, approve, logout.
+
+**Bug nyata yang ketahuan lewat ini (tidak mungkin ketahuan lewat curl/Postman/test backend):**
+`inspection-service.js` `create()` memanggil `formatDate()` (ISO → lokal "D/M/YYYY") atas
+`tanggal`/`dueDate` SEBELUM memanggil `repository.add()`. Service yang SAMA dijalankan LAGI penuh
+di server (by design, lihat K-18/K-20) — yang berarti `formatDate()` terpanggil DUA KALI: sekali
+di klien (ISO asli → lokal), sekali lagi di server (lokal yang salah dikira ISO → `formatDate()`
+memproses ini sebagai tanggal ISO, gagal parse → "Invalid Date" → `toSqlDate()` di
+`server/repositories/inspection-repository.js` mengembalikan `null` → `ER_BAD_NULL_ERROR` dari
+MySQL karena kolom `tanggal` NOT NULL). Respons ke klien: `500 INTERNAL_ERROR` polos — inspeksi
+GAGAL tersimpan setiap kali dibuat lewat browser sungguhan, walau seluruh test otomatis backend
+(yang selalu mengirim tanggal ISO mentah lewat supertest, tidak pernah lewat
+`inspection-service.js` client-side) tetap hijau.
+
+**Fix:** `inspection-repository.js` (browser) menambah `toIsoDate()` — kebalikan `formatDate()`,
+mengonversi "D/M/YYYY" balik ke ISO — diterapkan pada `tanggal`/`dueDate` tepat sebelum dikirim
+lewat `add()`. Ini SATU-SATUNYA tempat masalah "kirim objek yang sudah diproses, biarkan server
+memproses ulang" ternyata tidak aman (`formatDate()` bukan operasi idempotent), karena field lain
+yang dihitung ulang penuh oleh server (`approvals`, `perbaikan`, `lokasi`) tidak pernah dibaca
+balik dari apa yang dikirim klien sama sekali — hanya `tanggal`/`dueDate` yang dibaca DAN
+diproses ulang oleh service yang sama. Field jadwal (`tanggalJadwal`/`tanggalRealisasi`) tidak
+kena masalah yang sama karena `schedule-service.js` tidak pernah memanggil `formatDate()` sama
+sekali (jadwal 100% ISO di kedua sisi, sudah didokumentasikan di `shared/date.js`).
+
+### Petugas/officer dikunci — hanya sebagian, sesuai yang benar-benar ditegakkan server
+
+Sesuai rencana ("field petugas/officer di form dikunci dari user yang login"), tapi diterapkan
+selektif: `#formPetugas` (form Buat Inspeksi) dibuat `readonly`, diisi dari
+`getCurrentUser().displayName` — konsisten dengan `inspections.routes.js` yang MEMANG selalu
+memaksa `petugas`/`petugasUserId` dari `req.user` sejak Phase 12, mengabaikan apa pun yang dikirim
+klien. `#jadwalPetugas` (form jadwal, field `officer`) SENGAJA TIDAK dikunci — `schedules.routes.js`
+hanya memaksa `officerUserId` dari sesi, `officer` (nama tampilan) tetap dibaca dari body request
+apa adanya, karena secara desain seorang Safety Officer bisa menjadwalkan inspeksi UNTUK rekan
+lain, bukan hanya untuk dirinya sendiri. Mengunci field yang datanya sendiri tidak ditegakkan
+server akan menyesatkan (terlihat "dipaksa" padahal tidak). PIC tindakan perbaikan (`#newPIC`)
+demikian juga tetap bebas, sesuai catatan lama di skema `corrective_actions.pic`: "tidak selalu
+user sistem".
+
+### Dampak ke suite pengujian frontend lama (352 assertion, scratchpad)
+
+Sejak `src/repositories/*.js` bicara ke jaringan sungguhan, 8 dari 11 file scratchpad (yang
+meng-import `legacy-app.js` atau service/repository secara langsung, mengasumsikan repository
+in-memory sinkron-ish) **tidak lagi bisa dijalankan apa adanya** — langsung crash begitu memanggil
+`fetch()` tanpa server/sesi yang tersedia di konteks pengujian Node telanjang itu. 3 file yang
+murni menguji logika domain/DOM tanpa menyentuh repository (`test-html.mjs`, `test-domain.mjs`,
+`smoke.mjs`) tetap lulus penuh tanpa perubahan. Ini KONSEKUENSI YANG DIHARAPKAN dari tujuan
+fase ini sendiri (roadmap Phase 14 sudah menyebutkan verifikasi manual browser sebagai metode
+utama, bukan lagi assertion Node), bukan regresi yang diam-diam lolos — sengaja TIDAK ditulis
+ulang jadi fetch-mock dalam fase ini (effort besar, di luar cakupan yang diminta), diserahkan ke
+pemilik project untuk diputuskan: adaptasi jadi fetch-mock, atau diterima gugur karena tujuan
+pengujiannya sudah digantikan test backend (`server/test/api.test.js`, 12 test) + E2E browser
+sungguhan (Playwright, 26 assertion, dijalankan sekali untuk verifikasi fase ini — skripnya tidak
+disimpan permanen di repo, murni alat verifikasi sesaat).
+
+### Verifikasi
+
+- Backend: `npm run test:api` tetap 12/12 — Phase 14 tidak menyentuh `server/` sama sekali selain
+  CORS (`server/app.js`) dan tambahan `csrfToken` di respons `GET /api/auth/me`.
+- Browser sungguhan (Playwright + Chromium, terhadap `http://project-sasa-she.test` + backend
+  port 3001 asli): 26/26 lulus — login gagal (tanpa toast, sesuai preferensi lama), login sukses
+  dengan data dashboard asli dari MySQL (bukan 0/NaN), kalender & chart Chart.js ter-render,
+  `formPetugas` terkunci & terisi identitas login, alur penuh buat inspeksi (cari plant, tambah
+  temuan, submit, toast sukses dengan id sungguhan), sesi pulih otomatis setelah reload halaman,
+  approval lintas-role di browser context terpisah (Dewi menyetujui inspeksi buatan Arif), logout
+  benar-benar menghapus sesi (reload setelah logout tetap di halaman login).
+
+## K-22: Phase 14.1 — Testing infrastructure & security regression hardening
+
+Menindaklanjuti audit independen Phase 14 (status: PASS WITH FINDINGS). Fokus: memulihkan
+regression coverage yang hilang saat `src/repositories/*.js` berhenti jadi in-memory, membangun
+suite E2E permanen (menggantikan skrip ad hoc Phase 14 yang sudah dihapus), dan tiga perbaikan
+keamanan yang secara eksplisit dibatasi cakupannya oleh pemilik project.
+
+### 14.1-A/B: Unit test recovery + regresi XSS (test/)
+
+`test/fakes/{inspection,schedule,plant}-repository.js` — fake repository minimal (HANYA method
+yang benar-benar dipanggil `src/services/*.js`; bukan salinan repository produksi), disuntikkan
+lewat kondisi BARU `"test"` pada `package.json` `"imports"` — mekanisme yang SAMA dengan yang
+sudah memilih repository server vs browser sejak Phase 12 (K-18), bukan mekanisme baru. Dijalankan
+lewat `npm run test:unit` (`node --conditions=test --test test/unit/*.test.js`), sama sekali tidak
+menyentuh jaringan/browser/MySQL.
+
+`test/unit/services.test.js` (26 test) — memulihkan cakupan approval-service, corrective-action-
+service, inspection-service (termasuk regresi PLANT_NOT_FOUND dari K-19), schedule-service,
+search-service, dan mitigasi formula-injection Excel (S-04, K-4) — seluruhnya lewat fake
+repository di atas.
+
+`test/unit/xss-regression.test.js` (13 test) — memulihkan regresi escaping (S-03). TIDAK
+memanggil `openDetailModal`/`openPerbaikanModal`/`openApprovalModal` (fungsi-fungsi itu mencampur
+fetch repository + render dalam satu fungsi async, tidak bisa dipanggil tanpa jaringan) — sebagai
+gantinya diuji LANGSUNG: primitif escaping (`escapeHtml`/`jsArg`/`highlight` di `shared/html.js`,
+dasar SETIAP permukaan render di aplikasi), `renderApprovalStages()` (satu-satunya fungsi render
+murni yang dipakai ulang APA ADANYA oleh ketiga modal), `renderInspeksiWithSearch`/
+`renderAllInspeksiWithSearch` (menerima data langsung, tidak fetch sendiri), dan
+`buildInspectionReportHtml()` (murni). Pendekatan ini terbukti LEBIH presisi dari test lama:
+menunjuk tepat fungsi mana yang menjamin keamanan tiap permukaan, bukan sekadar membuktikan alur
+integrasi penuh tidak menghasilkan tag aktif.
+
+### 14.1-C sampai I: Migrasi Playwright (tests/e2e/)
+
+`@playwright/test` menggantikan paket `playwright` mentah (dihapus). `playwright.config.js`:
+`globalSetup` (`tests/e2e/global-setup.js`) me-reseed database SEKALI di awal SETIAP run —
+menghilangkan ketergantungan pada "apa pun yang kebetulan ada di database" (K-19/K-21) — trace
+`retain-on-failure` + screenshot on-failure, reporter list+HTML, `retries: 0` disengaja.
+
+`tests/e2e/support/api.js` — setup data eksplisit lewat API (bukan lewat UI, bukan bergantung
+pada data test lain) dengan tag unik per fixture; kegagalan setup MELEMPAR ERROR, tidak pernah
+di-skip diam-diam. `tests/e2e/support/ui.js` — `loginViaUi`/`goToTab`/`selectPlant`.
+
+14 test di 4 file (`auth`, `session`, `inspection`, `approval.spec.js`) mencakup seluruh 15
+skenario yang diminta (skenario #13, login-logout-login, digabung ke dalam test regresi D-3 di
+`session.spec.js` karena sudah mencakupnya lebih ketat — 3 siklus, bukan 1 — bukan dipaksakan jadi
+test terpisah). Setiap test independen: context/cookie sendiri, fixture sendiri lewat API, tidak
+ada variabel global dibagi antar test (pola `newInspectionId` lama dihindari eksplisit).
+
+**Tiga bug locator asli — bukan bug aplikasi — ditemukan dan diperbaiki selama membangun suite
+ini** (didiagnosis lewat instrumentasi sementara: console/response listener, computed-style
+probe, dihapus lagi setelah akar masalah ditemukan):
+1. `#loginPage` disembunyikan lewat `opacity:0`/`pointer-events:none` (transisi fade), BUKAN
+   `display:none` — Playwright `toBeVisible()` TIDAK menganggap `opacity:0` sebagai "tidak
+   visible" (perilaku terdokumentasi resmi). Status login sekarang selalu diperiksa lewat
+   `getByTestId('user-name')` (turunan `#mainApp`, yang memang `display:none/block` sungguhan).
+2. Tombol navigasi diawali ikon FontAwesome (`<i class="fas fa-...">​</i> Nama`) — Chromium ikut
+   menghitung konten CSS `::before` ikon itu ke dalam NAMA AKSESIBEL tombol, sehingga
+   `getByRole('button', {name, exact:true})` gagal cocok walau teksnya benar (bahkan regex
+   berjangkar `^\s*Nama$` ikut gagal). `getByText()` (beroperasi pada `textContent` DOM asli,
+   tidak memuat konten `::before`) dipakai sebagai gantinya di `goToTab()`.
+3. Pencarian plant PERTAMA di suatu halaman memicu fetch jaringan sungguhan sebelum cache
+   `plant-repository.js` terisi (K-18) — `renderDropdown()` menandai dropdown "show" seketika tapi
+   mengisi kontennya async, menghasilkan race yang sesekali (~1 dari puluhan run) membuat dropdown
+   tertutup lagi tepat sebelum klik. `selectPlant()` menunggu eksplisit lewat assertion bermakna
+   (`toContainText`) sebelum klik, dengan pengulangan sempit (ketik-ulang lalu klik, maks 3×) khusus
+   untuk interaksi ini — bukan retries generik yang menyembunyikan kegagalan test (lihat 14.1-I).
+
+**Timeout dipanjangkan secara eksplisit dan terdokumentasi** (bukan retries) di 3 titik: toast
+"berhasil disimpan" (15s, submit sungguhan menempuh INSERT transaksional + `refreshAll()`) dan
+`#statTotalInspeksi` (10s, `initApp()` tertunda 300ms lalu memuat beberapa endpoint) — dikonfirmasi
+lewat run nyata di bawah beban worker paralel melewati default 5s Playwright bukan karena UI macet.
+
+**`workers` dipatok ke 2** (bukan otomatis = jumlah core): diverifikasi langsung bahwa dengan
+worker otomatis (4 di mesin ini), bahkan login/dashboard-load tercepat sekalipun sesekali melewati
+timeout default murni karena kontensi CPU satu backend + satu MySQL dipakai bersama seluruh worker
+— hilang total begitu dibatasi ke 2. ini kalibrasi kapasitas mesin dev, bukan retries.
+
+**Catatan proses lain (bukan bug produksi):** selama stress-test manual (5× invocation berturutan
+dalam <2 menit terhadap satu proses backend yang sama), sempat muncul kegagalan sesi-berakhir yang
+tidak reproduksibel lagi begitu backend di-restart bersih — diduga kuat akibat proses backend
+sudah berjalan berjam-jam menampung ratusan request selama debugging fase ini (bukan bug session
+store atau express-session), bukan sesuatu yang butuh perubahan kode. Dicatat sebagai observasi
+operasional: restart backend berkala (praktik umum di produksi/CI) sudah cukup.
+
+### 14.1-J: Security hardening (hanya 3 item yang diminta)
+
+1. `POST /api/auth/logout` sekarang lewat `requireCsrf` juga (`server/routes/auth.routes.js`) —
+   sebelumnya luput karena router `/api/auth` dipasang sebelum gate CSRF blanket. Tidak
+   tereksploitasi sebelumnya (SameSite=Lax sudah memblokir pengirimannya pada POST cross-site),
+   tapi sekarang konsisten dengan endpoint pengubah-state lain.
+2. `logout()` (`src/legacy-app.js`) membedakan logout yang benar-benar dikonfirmasi server vs
+   gagal: berhasil -> bersih tanpa pesan (perilaku lama dipertahankan). Gagal (bukan cuma network
+   down) -> state klien TETAP dibersihkan (tidak ada cara lain memaksa logout dari sini), TAPI
+   toast eksplisit memberi tahu sesi server mungkin belum benar-benar berakhir — sebelumnya
+   kegagalan apa pun diam-diam diperlakukan sebagai sukses.
+3. `api-client.js` `request()` menambah `signal: AbortSignal.timeout(10_000)` — sebelumnya
+   backend yang macet membuat `fetch()` menggantung tanpa batas waktu tanpa umpan balik apa pun ke
+   pengguna. 10 detik dipilih karena aplikasi ini LAN/dev (Laragon), bukan internet publik.
+
+Backlog yang SENGAJA tidak dikerjakan fase ini (instruksi eksplisit): login rate limiting,
+`timingSafeEqual` untuk perbandingan CSRF token, startup environment guard, pembersihan arsitektur
+`toIsoDate()`, refactor `action-dispatcher.js`.
+
+### Verifikasi
+
+- Domain (`test-domain.mjs`, scratchpad lama, tidak diubah): 59/59.
+- Unit baru (`npm run test:unit`): 39/39 (26 service + 13 XSS), < 1 detik, tanpa jaringan.
+- Backend (`npm run test:api`): 12/12, tidak berubah dari Phase 14.
+- E2E (`npx playwright test`): 14/14, dijalankan berulang — 2× berturutan dengan worker default
+  (2, paralel), 1× dengan `--workers=1` (serial, urutan berbeda dari eksekusi paralel) — seluruhnya
+  bersih setelah kalibrasi timeout/worker di atas. Trace+screenshot otomatis tersimpan untuk test
+  manapun yang gagal (`playwright-report/`, `test-results/` — keduanya di `.gitignore`, murni
+  artefak sesaat).
+- `npm audit`: 0 vulnerabilities (setelah mengganti `playwright` -> `@playwright/test`).
+- Perilaku aplikasi: tidak berubah kecuali 3 perbaikan keamanan eksplisit di atas.
+- `npm audit`: masih 0 vulnerabilities setelah menambah `playwright` (devDependency).
+
+---
+
+## K-23: Phase 15 — Upload foto sungguhan
+
+Foto pada form inspeksi/perbaikan sebelumnya cuma nama file (`Array.from(input.files).map(f =>
+f.name)`, byte dibuang) — tabel `photos` (ada sejak `001_init.sql`) diisi data palsu
+(`file_path='pending/'+filename`, `mime_type='application/octet-stream'`, `size_bytes=0`).
+Lightbox menampilkan placeholder SVG, bukan foto asli. Fase ini membuat upload sungguhan bekerja
+end-to-end: byte tersimpan di disk, tersaji kembali sebagai gambar sungguhan.
+
+### Keputusan arsitektur
+
+1. **`multer` (diskStorage), dipasang per-route** (`server/config/upload.js` + dua route di
+   `inspections.routes.js`), bukan global — route yang tidak butuh file tidak terpengaruh. Nama
+   file di disk di-random (`randomUUID() + ext`, bukan nama asli) — mencegah tabrakan nama DAN
+   path traversal lewat nama file upload; nama asli tetap tersimpan terpisah di `original_name`.
+2. **Foto disajikan lewat `GET /api/inspections/photos/:photoId/file` yang butuh sesi login**,
+   BUKAN `express.static()` publik — konsisten dengan SELURUH data lain di aplikasi ini yang
+   butuh login (`server/app.js` blanket `sessionAuth` untuk `/api`). Tetap sesederhana
+   `<img src>` biasa di frontend: cookie sesi (`sameSite:'lax'`) tetap otomatis terkirim karena
+   frontend dan backend adalah **situs yang sama**, cuma beda port — tidak perlu fetch+blob
+   manual. GET tidak butuh CSRF (`requireCsrf` mengecualikan method aman).
+3. **Bentuk data foto berubah dari `string[]` (nama file) jadi `{id, originalName}[]`** di jalur
+   baca (`loadFull()`, `server/repositories/inspection-repository.js`) — frontend butuh `id` untuk
+   membangun URL foto. Placeholder sentinel `'-'` ("tidak ada foto") **dihapus total**, diganti
+   pengecekan `array.length > 0` langsung di `detail-modal.view.js`, `perbaikan-modal.view.js`,
+   `pdf-report.view.js` — sudah tidak masuk akal begitu isinya objek, dan `inspection-service.js`
+   `create()` juga berhenti mensintesis `['-']` (cukup `input.fotoDekat || []`).
+4. **Transport form: FormData/multipart, hanya ketika ada file sungguhan.** `api-client.js`
+   `request()` menambah cabang `body instanceof FormData` -> dikirim apa adanya tanpa
+   `JSON.stringify`/`Content-Type` manual (browser yang menyusun boundary). Body JSON biasa (tanpa
+   file) **tetap harus jalan seperti sebelumnya** — `multer` hanya mem-parsing request yang
+   `Content-Type`-nya multipart; request JSON lewat `express.json()` (global) sama sekali tidak
+   tersentuh middleware `multer` di route yang sama. Ini bukan cuma kehati-hatian teoretis: 14
+   dari 15 test E2E yang sudah ada (`tests/e2e/support/api.js` `createInspectionFixture()`) dan
+   seluruh fixture di `server/test/api.test.js` membuat data lewat `POST /api/inspections` dengan
+   body JSON MURNI (tanpa file) — semuanya terbukti tetap hijau tanpa modifikasi jalur itu sama
+   sekali (lihat Verifikasi), bukti langsung bahwa desainnya kompatibel-mundur.
+5. **`uploadedBy` (identitas pengunggah) dipaksa dari `req.user.id` di route handler**, pola yang
+   sama persis dengan `petugasUserId` (K-18/K-20) — bukan dari body request. Untuk foto tindakan
+   perbaikan, ini butuh `corrective-action-service.js` `addAction()` meneruskan `input.uploadedBy`
+   ke `action` yang dibangunnya (satu-satunya field baru yang ditambahkan ke fungsi itu; service
+   tsb TIDAK meneruskan seluruh `input` secara opaque seperti `inspection-service.js`, jadi field
+   baru harus disebut eksplisit).
+6. **Validasi server-side**: `fileFilter` multer membatasi ke `image/jpeg|png|webp|gif`, limit
+   5MB/file, maks 10 file/field — atribut `accept="image/*"` di HTML cuma hint klien, tidak pernah
+   dipercaya sendirian.
+
+### Detail implementasi lain
+
+- `GET /api/inspections/photos/:photoId/file` menangani file yang tidak ada di disk (ENOENT dari
+  `res.sendFile()`) dengan 404, bukan membiarkannya jatuh ke error handler 500 generik — baris
+  `photos` hasil `server/db/seed.js` SENGAJA punya `file_path` palsu (`seed/xxx.jpg`, demo data,
+  tidak ada byte sungguhan), jadi ini kondisi normal yang diperkirakan, bukan kerusakan. Foto hasil
+  seed karena itu tidak bisa dibuka lewat lightbox (404) — hanya foto yang diunggah pengguna
+  sungguhan yang bisa; didokumentasikan sebagai known limitation, bukan bug.
+- `server/test/api.test.js`: test "foto wajib" yang lama mengirim `photos: ['label.jpg']` lewat
+  JSON (`.send()`) — valid di dunia lama (foto = array nama), sudah TIDAK valid lagi di dunia baru
+  (foto = file sungguhan) karena benar secara sengaja: mengirim nama file lewat JSON tanpa byte
+  sungguhan sekarang correctly ditolak PHOTO_REQUIRED. Diperbaiki pakai `.attach()` (multipart
+  sungguhan) dengan fixture `server/test/fixtures/label.jpg`; assertion `foto[0]` diikuti jadi
+  `.originalName` (bentuk objek, lihat #3 di atas).
+- File di disk **tidak** dibersihkan saat baris `photos` terhapus lewat `ON DELETE CASCADE` (mis.
+  induk terhapus) — file jadi yatim di `uploads/`. Backlog, bukan blocker: aplikasi ini belum
+  punya fitur hapus inspeksi sama sekali.
+- Tidak ada resize/thumbnail (disimpan ukuran asli, dibatasi 5MB), tidak ada fitur hapus/ganti satu
+  foto setelah tersimpan (tidak ada di aplikasi sebelumnya juga), dan PDF export tetap ikon kamera
+  (bukan foto sungguhan tertanam) — merender gambar lintas-origin+auth ke html2pdf adalah
+  kerumitan terpisah yang tidak diminta fase ini.
+- Observasi operasional yang SAMA seperti K-22: menjalankan suite E2E berulang kali dengan cepat
+  terhadap satu proses backend yang sama (tiga run beruntun saat debugging fase ini) sempat
+  menghasilkan kegagalan yang terlihat seperti bug lokator (`selectPlant()` gagal, toast salah)
+  tapi hilang total dan reproduksibel bersih 2× berturutan begitu backend di-restart segar — bukan
+  regresi kode, konsisten dengan "backend process fatigue" yang sudah didokumentasikan di K-22.
+
+### Verifikasi
+
+- Unit (`npm run test:unit`): 39/39, tidak berubah sama sekali — fake repository tidak pernah
+  menyentuh tabel `photos` (sudah begitu sejak K-22), jadi tidak terpengaruh perubahan bentuk data.
+- Backend (`npm run test:api`): 12/12 setelah perbaikan satu test (lihat di atas).
+- E2E (`npx playwright test`): 15/15 (14 lama + 1 baru: upload foto sungguhan -> buka lightbox ->
+  buktikan `img.src` menunjuk endpoint API sungguhan dan `GET` langsung ke situ mengembalikan byte
+  gambar dengan `Content-Type: image/*`, bukan `data:image/svg+xml` placeholder lama). Diverifikasi
+  bersih 2× berturutan dengan backend segar.
+- `npm audit`: 0 vulnerabilities setelah menambah `multer`.

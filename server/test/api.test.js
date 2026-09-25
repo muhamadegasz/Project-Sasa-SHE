@@ -16,9 +16,13 @@
 import { test, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import request from 'supertest';
 import { app } from '../app.js';
 import { pool } from '../db/pool.js';
+
+const FIXTURE_JPEG = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'label.jpg');
 
 before(() => {
     execFileSync(process.execPath, ['server/db/seed.js'], { cwd: process.cwd(), stdio: 'inherit' });
@@ -179,8 +183,15 @@ test('alur penuh: buat inspeksi -> approve berjenjang 2/3/4 -> tambah tindakan p
     assert.equal(noPhoto.status, 400);
     assert.equal(noPhoto.body.error, 'PHOTO_REQUIRED');
 
-    const withPhoto = await withCsrf(arif.agent.post(`/api/inspections/${id}/corrective-actions`), arif.csrfToken)
-        .send({ action: 'Ganti label', status: 'closed', pic: 'Arif', photos: ['label.jpg'] });
+    // Phase 15: "foto wajib" sekarang menegakkan file sungguhan (multipart),
+    // bukan lagi cuma array nama file lewat JSON — .attach() mengirim byte
+    // sungguhan lewat FIXTURE_JPEG, persis seperti FormData dari browser.
+    const withPhotoReq = withCsrf(arif.agent.post(`/api/inspections/${id}/corrective-actions`), arif.csrfToken);
+    const withPhoto = await withPhotoReq
+        .field('action', 'Ganti label')
+        .field('status', 'closed')
+        .field('pic', 'Arif')
+        .attach('photos', FIXTURE_JPEG);
     assert.equal(withPhoto.status, 201);
 
     const afterAction = await arif.agent.get(`/api/inspections/${id}`);
@@ -188,7 +199,7 @@ test('alur penuh: buat inspeksi -> approve berjenjang 2/3/4 -> tambah tindakan p
     // per temuan (lihat inspection-service.js) — "Ganti label" di atas
     // adalah tindakan KEDUA, ditambahkan lewat corrective-actions endpoint.
     assert.equal(afterAction.body.perbaikan.length, 2);
-    assert.equal(afterAction.body.perbaikan[1].foto[0], 'label.jpg');
+    assert.equal(afterAction.body.perbaikan[1].foto[0].originalName, 'label.jpg');
 
     // 8. Hanya Safety Officer yang boleh menambah tindakan perbaikan.
     const wrongRoleAction = await withCsrf(admin.agent.post(`/api/inspections/${id}/corrective-actions`), admin.csrfToken)

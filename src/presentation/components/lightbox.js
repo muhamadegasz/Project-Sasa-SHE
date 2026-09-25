@@ -4,21 +4,18 @@
  * sejak semula: hanya menyimpan daftar gambar & indeks aktif, tidak
  * menyentuh state lain di aplikasi. openLightbox() dipanggil lewat
  * data-action="openLightbox" (presentation/controllers/action-dispatcher.js,
- * Phase 9); pemanggilnya memakai jsArg() untuk membawa array nama file dengan
- * aman lewat atribut data-images.
+ * Phase 9); pemanggilnya memakai jsArg() untuk membawa array objek foto
+ * ({id, originalName}) dengan aman lewat atribut data-images.
  *
- * Gambar sungguhan tidak pernah diunggah aplikasi ini (tidak ada backend) —
- * placeholder SVG dipakai sebagai ganti foto asli, memuat nama filenya.
+ * Sejak Phase 15: foto sungguhan tersimpan di server (lihat
+ * docs/DECISIONS.md) — img.src menunjuk ke endpoint API yang butuh sesi
+ * login (photoUrl()), bukan lagi placeholder SVG.
  */
 
-import { svgText } from '../../shared/html.js';
+import { photoUrl } from '../../infrastructure/api-client.js';
 
 let lightboxImages = [];
 let currentLightboxIndex = 0;
-
-function placeholderSvg(filename) {
-    return `data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='400'%3E%3Crect width='600' height='400' fill='%232a2a2a'/%3E%3Ctext x='50%25' y='45%25' text-anchor='middle' fill='%23666' font-size='40' font-family='sans-serif'%3E📷%3C/text%3E%3Ctext x='50%25' y='60%25' text-anchor='middle' fill='%23888' font-size='20' font-family='sans-serif'%3E${svgText(filename)}%3C/text%3E%3C/svg%3E`;
-}
 
 export function openLightbox(images, index = 0) {
     if (!images || images.length === 0) return;
@@ -29,8 +26,8 @@ export function openLightbox(images, index = 0) {
     const info = document.getElementById('lightboxFileName');
     const counter = document.getElementById('lightboxCounter');
 
-    img.src = placeholderSvg(images[index]);
-    info.textContent = images[index];
+    img.src = photoUrl(images[index].id);
+    info.textContent = images[index].originalName;
     counter.textContent = `${index + 1} dari ${images.length}`;
     document.getElementById('lightboxPrev').style.display = images.length > 1 ? 'flex' : 'none';
     document.getElementById('lightboxNext').style.display = images.length > 1 ? 'flex' : 'none';
@@ -50,8 +47,8 @@ function navigateLightbox(direction) {
     const img = document.getElementById('lightboxImage');
     const info = document.getElementById('lightboxFileName');
     const counter = document.getElementById('lightboxCounter');
-    img.src = placeholderSvg(lightboxImages[currentLightboxIndex]);
-    info.textContent = lightboxImages[currentLightboxIndex];
+    img.src = photoUrl(lightboxImages[currentLightboxIndex].id);
+    info.textContent = lightboxImages[currentLightboxIndex].originalName;
     counter.textContent = `${currentLightboxIndex + 1} dari ${lightboxImages.length}`;
 }
 

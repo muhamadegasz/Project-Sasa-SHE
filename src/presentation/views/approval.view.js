@@ -65,8 +65,8 @@ export function renderApprovalStages(item) {
     `;
 }
 
-export function openApprovalModal(inspeksiId) {
-    const item = inspectionRepository.findById(inspeksiId);
+export async function openApprovalModal(inspeksiId) {
+    const item = await inspectionRepository.findById(inspeksiId);
     if (!item) { showToast('⚠️ Data tidak ditemukan'); return; }
 
     const modal = document.getElementById('approvalModal');

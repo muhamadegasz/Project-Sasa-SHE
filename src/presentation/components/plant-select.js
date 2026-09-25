@@ -35,8 +35,8 @@ export function createPlantSelect({ inputId, dropdownId, hiddenInputId, displayI
     const clearBtn = document.getElementById(clearBtnId);
     const wrapper = document.getElementById(wrapperId);
 
-    function renderDropdown(filter = '') {
-        const filtered = plantRepository.search(filter);
+    async function renderDropdown(filter = '') {
+        const filtered = await plantRepository.search(filter);
 
         if (filtered.length === 0) {
             dropdown.innerHTML = `<div class="dropdown-item" style="color:#8a6a6a;">Tidak ada plant ditemukan</div>`;
