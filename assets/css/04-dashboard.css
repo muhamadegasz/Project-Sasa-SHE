@@ -61,18 +61,29 @@
     letter-spacing: 0.3px;
 }
 
+/* U-17.1: seksi dashboard (kalender, chart, inspeksi terbaru) berdiri di atas
+   kanvas halaman, bukan di dalam kartu — dipisah garis tipis antarseksi.
+   .table-wrap juga dipakai panel lain (jadwal, inspeksi, perbaikan), jadi
+   kartunya hanya dilepas di dalam #panel-dashboard; overflow-x-nya tetap,
+   tabel di layar sempit masih bisa digeser. */
+#panel-dashboard > .table-wrap {
+    background: none;
+    border: none;
+    border-radius: 0;
+    padding: 0;
+}
+
+#panel-dashboard > .chart-row,
+#panel-dashboard > .chart-row + .table-wrap {
+    border-top: 1px solid #f0e0e0;
+    padding-top: 1.5rem;
+}
+
 .chart-row {
     display: grid;
     grid-template-columns: 2fr 1fr;
-    gap: 1.5rem;
+    gap: 2.5rem;
     margin-bottom: 1.5rem;
-}
-
-.chart-box {
-    background: white;
-    padding: 1.2rem 1.5rem 1.5rem;
-    border-radius: 1.5rem;
-    border: 1px solid #f0e0e0;
 }
 
 .chart-box h4 {
