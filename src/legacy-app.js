@@ -310,6 +310,11 @@ document.addEventListener('DOMContentLoaded', async function() {
 // ========== SISTEM ==========
 // ========================================================================
 
+// Phase 16.3 (U-05): satu-satunya jalur ganti tab — dipakai tombol .nav-tab
+// (lihat NAVIGASI di bawah) DAN pintasan data-action="switchTab" ("Kelola" di
+// dashboard). Sebelumnya pintasan punya salinan sendiri yang MENGOSONGKAN
+// keempat kotak pencarian, sedangkan navigasi utama mempertahankan isinya dan
+// hanya memfilter ulang panel tujuan; perilaku navigasi utama yang dipakai.
 function switchTab(tabName) {
     document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
@@ -318,10 +323,13 @@ function switchTab(tabName) {
     const panel = document.getElementById(`panel-${tabName}`);
     if (panel) panel.classList.add('active');
     setTimeout(() => {
-        document.querySelectorAll('.search-wrapper input').forEach(inp => {
-            inp.value = '';
-            inp.dispatchEvent(new Event('input'));
-        });
+        const activePanel = document.querySelector('.panel.active');
+        if (activePanel) {
+            const searchInput = activePanel.querySelector('.search-wrapper input');
+            if (searchInput) {
+                searchInput.dispatchEvent(new Event('input'));
+            }
+        }
     }, 100);
 }
 
@@ -671,19 +679,7 @@ async function refreshAll() {
 document.querySelectorAll('.nav-tab').forEach(tab => {
     tab.addEventListener('click', function(e) {
         e.preventDefault();
-        document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
-        this.classList.add('active');
-        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
-        document.getElementById('panel-' + this.dataset.panel).classList.add('active');
-        setTimeout(() => {
-            const activePanel = document.querySelector('.panel.active');
-            if (activePanel) {
-                const searchInput = activePanel.querySelector('.search-wrapper input');
-                if (searchInput) {
-                    searchInput.dispatchEvent(new Event('input'));
-                }
-            }
-        }, 100);
+        switchTab(this.dataset.panel);
     });
 });
 
