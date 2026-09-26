@@ -7,7 +7,7 @@
 import { escapeHtml } from '../../shared/html.js';
 import { formatDate } from '../../shared/date.js';
 import * as scheduleRepository from '../../repositories/schedule-repository.js';
-import { bindModalClose } from '../components/modal.js';
+import { bindModalClose, openModal } from '../components/modal.js';
 import { showToast } from '../components/toast.js';
 
 let currentCalendarMonth = new Date().getMonth();
@@ -186,7 +186,6 @@ export async function showDayEvents(dateKey) {
         return;
     }
 
-    const modal = document.getElementById('calendarModal');
     const content = document.getElementById('calendarModalContent');
 
     let eventHtml = events.map(e => `
@@ -214,7 +213,7 @@ export async function showDayEvents(dateKey) {
         </div>
     `;
 
-    modal.classList.add('show');
+    openModal('calendarModal');
 }
 
 bindModalClose('calendarModal', 'closeCalendarModal');

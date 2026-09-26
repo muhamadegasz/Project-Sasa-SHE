@@ -410,8 +410,8 @@
 
     <!-- MODAL JADWAL -->
     <div class="modal-overlay no-print" id="jadwalModal">
-        <div class="modal-box">
-            <button class="close-modal" id="closeJadwalModal">&times;</button>
+        <div class="modal-box" role="dialog" aria-labelledby="jadwalModalTitle">
+            <button class="close-modal" id="closeJadwalModal" aria-label="Tutup">&times;</button>
             <h3><i class="fas fa-calendar-plus"></i> <span id="jadwalModalTitle">Tambah Jadwal</span></h3>
             <form id="jadwalForm" onsubmit="return false;">
                 <input type="hidden" id="editJadwalId" value="">
@@ -483,36 +483,36 @@
 
     <!-- MODAL DETAIL -->
     <div class="modal-overlay" id="detailModal">
-        <div class="modal-box">
-            <button class="close-modal" id="closeDetailModal">&times;</button>
-            <h3><i class="fas fa-file-alt"></i> Detail Inspeksi</h3>
+        <div class="modal-box" role="dialog" aria-labelledby="detailModalTitle">
+            <button class="close-modal" id="closeDetailModal" aria-label="Tutup">&times;</button>
+            <h3 id="detailModalTitle"><i class="fas fa-file-alt"></i> Detail Inspeksi</h3>
             <div id="detailContent"></div>
         </div>
     </div>
 
     <!-- MODAL PERBAIKAN -->
     <div class="modal-overlay no-print" id="perbaikanModal">
-        <div class="modal-box">
-            <button class="close-modal" id="closePerbaikanModal">&times;</button>
-            <h3><i class="fas fa-tools"></i> Perbaikan & Progres</h3>
+        <div class="modal-box" role="dialog" aria-labelledby="perbaikanModalTitle">
+            <button class="close-modal" id="closePerbaikanModal" aria-label="Tutup">&times;</button>
+            <h3 id="perbaikanModalTitle"><i class="fas fa-tools"></i> Perbaikan & Progres</h3>
             <div id="modalContent"></div>
         </div>
     </div>
 
     <!-- MODAL APPROVAL -->
     <div class="modal-overlay no-print" id="approvalModal">
-        <div class="modal-box">
-            <button class="close-modal" id="closeApprovalModal">&times;</button>
-            <h3><i class="fas fa-stamp"></i> Pengesahan Inspeksi</h3>
+        <div class="modal-box" role="dialog" aria-labelledby="approvalModalTitle">
+            <button class="close-modal" id="closeApprovalModal" aria-label="Tutup">&times;</button>
+            <h3 id="approvalModalTitle"><i class="fas fa-stamp"></i> Pengesahan Inspeksi</h3>
             <div id="approvalContent"></div>
         </div>
     </div>
 
     <!-- MODAL KALENDER -->
     <div class="modal-overlay" id="calendarModal">
-        <div class="modal-box">
-            <button class="close-modal" id="closeCalendarModal">&times;</button>
-            <h3><i class="fas fa-calendar-day"></i> Detail Jadwal</h3>
+        <div class="modal-box" role="dialog" aria-labelledby="calendarModalTitle">
+            <button class="close-modal" id="closeCalendarModal" aria-label="Tutup">&times;</button>
+            <h3 id="calendarModalTitle"><i class="fas fa-calendar-day"></i> Detail Jadwal</h3>
             <div id="calendarModalContent"></div>
         </div>
     </div>

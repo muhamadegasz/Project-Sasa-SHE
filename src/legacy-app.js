@@ -33,7 +33,7 @@ import * as excelExporter from './infrastructure/excel-exporter.js';
 import * as pdfExporter from './infrastructure/pdf-exporter.js';
 
 import { createPlantSelect } from './presentation/components/plant-select.js';
-import { bindModalClose, closeModal } from './presentation/components/modal.js';
+import { bindModalClose, closeModal, openModal } from './presentation/components/modal.js';
 import { openLightbox } from './presentation/components/lightbox.js';
 import { showToast } from './presentation/components/toast.js';
 import { setupSearch } from './presentation/components/search-box.js';
@@ -429,7 +429,6 @@ function setRealisasiHariIni() {
 }
 
 async function openJadwalModal(data = null) {
-    const modal = document.getElementById('jadwalModal');
     document.getElementById('jadwalModalTitle').textContent = data ? 'Edit Jadwal' : 'Tambah Jadwal';
     const currentYear = new Date().getFullYear();
     const todayISO = new Date().toISOString().split('T')[0];
@@ -456,7 +455,7 @@ async function openJadwalModal(data = null) {
         document.getElementById('jadwalRealisasi').value = '';
         document.getElementById('jadwalMinggu').value = '1';
     }
-    modal.classList.add('show');
+    openModal('jadwalModal');
 }
 
 async function editJadwal(id) {

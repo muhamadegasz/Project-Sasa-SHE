@@ -6,14 +6,13 @@
 import { escapeHtml, jsArg } from '../../shared/html.js';
 import { isOverdue } from '../../shared/date.js';
 import * as inspectionRepository from '../../repositories/inspection-repository.js';
-import { bindModalClose } from '../components/modal.js';
+import { bindModalClose, openModal } from '../components/modal.js';
 import { showToast } from '../components/toast.js';
 import { renderApprovalStages } from './approval.view.js';
 
 export async function openDetailModal(id) {
     const item = await inspectionRepository.findById(id);
     if (!item) { showToast('⚠️ Data tidak ditemukan'); return; }
-    const modal = document.getElementById('detailModal');
     const content = document.getElementById('detailContent');
 
     const statusMap = { 'selesai': 'Selesai', 'proses': 'Proses', 'tinjau': 'Tinjau' };
@@ -98,7 +97,7 @@ export async function openDetailModal(id) {
                 </div>
             </div>
         `;
-    modal.classList.add('show');
+    openModal('detailModal');
 }
 
 bindModalClose('detailModal', 'closeDetailModal');

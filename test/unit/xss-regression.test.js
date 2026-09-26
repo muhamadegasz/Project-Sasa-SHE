@@ -55,7 +55,9 @@ function makeGenericElement() {
         set innerHTML(value) { this._html = String(value); },
     };
 }
-globalThis.document = { getElementById: () => makeGenericElement() };
+// addEventListener: modal.js (diimpor approval.view.js) memasang listener
+// Escape di document saat dievaluasi (Phase 16.4).
+globalThis.document = { getElementById: () => makeGenericElement(), addEventListener: () => {} };
 const { renderApprovalStages } = await import('../../src/presentation/views/approval.view.js');
 
 const XSS_TAG = '<img src=x onerror=alert(1)>';

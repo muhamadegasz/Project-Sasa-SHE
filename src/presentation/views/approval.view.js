@@ -9,7 +9,7 @@ import { escapeHtml } from '../../shared/html.js';
 import { APPROVAL_STAGES } from '../../config/constants.js';
 import { canApproveStage } from '../../domain/approval-rules.js';
 import * as inspectionRepository from '../../repositories/inspection-repository.js';
-import { bindModalClose } from '../components/modal.js';
+import { bindModalClose, openModal } from '../components/modal.js';
 import { showToast } from '../components/toast.js';
 
 export function renderApprovalStages(item) {
@@ -69,7 +69,6 @@ export async function openApprovalModal(inspeksiId) {
     const item = await inspectionRepository.findById(inspeksiId);
     if (!item) { showToast('⚠️ Data tidak ditemukan'); return; }
 
-    const modal = document.getElementById('approvalModal');
     const content = document.getElementById('approvalContent');
 
     content.innerHTML = `
@@ -109,7 +108,7 @@ export async function openApprovalModal(inspeksiId) {
         </div>
     `;
 
-    modal.classList.add('show');
+    openModal('approvalModal');
 }
 
 bindModalClose('approvalModal', 'closeApprovalModal');

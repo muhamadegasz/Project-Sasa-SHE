@@ -13,13 +13,12 @@ import { formatApprovalStatus, formatActionStatus, formatRepairStatus } from '..
 import { ACTION_STATUS } from '../../domain/statuses.js';
 import { getRandomOfficer } from '../../data/officers.js';
 import * as inspectionRepository from '../../repositories/inspection-repository.js';
-import { bindModalClose } from '../components/modal.js';
+import { bindModalClose, openModal } from '../components/modal.js';
 import { showToast } from '../components/toast.js';
 
 export async function openPerbaikanModal(id) {
     const item = await inspectionRepository.findById(id);
     if (!item) { showToast('⚠️ Data tidak ditemukan'); return; }
-    const modal = document.getElementById('perbaikanModal');
     const content = document.getElementById('modalContent');
 
     const progress = getProgress(item);
@@ -136,7 +135,7 @@ export async function openPerbaikanModal(id) {
         document.getElementById('newFotoCount').textContent = count > 0 ? `${count} file dipilih` : 'Belum ada file';
     });
 
-    modal.classList.add('show');
+    openModal('perbaikanModal');
 }
 
 bindModalClose('perbaikanModal', 'closePerbaikanModal');
