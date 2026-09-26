@@ -37,6 +37,14 @@
     .stats-grid {
         grid-template-columns: repeat(2, 1fr);
     }
+    /* U-17.0: strip metrik jadi 2x2 — metrik ke-3 membuka baris baru, jadi
+       pemisahnya pindah dari kiri ke atas baris kedua. */
+    .stat-card:nth-child(3) {
+        border-left: none;
+    }
+    .stat-card:nth-child(n+3) {
+        border-top: 1px solid #f0e0e0;
+    }
     .form-group .file-input-group {
         flex-direction: column;
     }
@@ -97,8 +105,23 @@
     .login-header .company-name {
         font-size: 1.1rem;
     }
-    .stats-grid {
+    /* U-17.0: tetap 2x2 (bukan 1 kolom setinggi empat kartu); ikon naik ke
+       atas angka supaya label mendapat lebar penuh kolomnya. */
+    .stat-card {
         grid-template-columns: 1fr;
+        padding: 0.8rem 1rem;
+    }
+    .stat-card .stat-icon {
+        grid-row: auto;
+        font-size: 1.2rem;
+        margin-bottom: 0.3rem;
+    }
+    .stat-card .stat-number,
+    .stat-card .stat-label {
+        grid-column: auto;
+    }
+    .stat-card .stat-number {
+        font-size: 1.6rem;
     }
     .modal-box {
         padding: 1.2rem;

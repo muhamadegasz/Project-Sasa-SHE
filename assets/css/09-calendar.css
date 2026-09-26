@@ -4,11 +4,11 @@
    beberapa selektor sengaja didefinisikan ulang dan bergantung pada urutan ini.
    Lihat docs/DECISIONS.md K-5. */
 
+/* U-17.0: kalender sudah berada di dalam kartu seksinya (.table-wrap di
+   dashboard) — cukup garis pemisah dari judul seksi, bukan kotak kedua. */
 .calendar-container {
-    background: white;
-    border-radius: 1.5rem;
-    padding: 1rem;
-    border: 1px solid #f0e0e0;
+    border-top: 1px solid #f5eaea;
+    padding-top: 1rem;
 }
 
 .calendar-header {

@@ -4,42 +4,57 @@
    beberapa selektor sengaja didefinisikan ulang dan bergantung pada urutan ini.
    Lihat docs/DECISIONS.md K-5. */
 
+/* U-17.0: satu strip metrik, bukan empat kartu berbingkai — pemisah tipis di
+   antara metrik, ikon di samping angka. Warna ikon memakai palet badge status
+   yang sudah ada (05-tables.css): oranye .proses untuk temuan, hijau .selesai
+   untuk perbaikan selesai; dua lainnya warna utama aplikasi. Urutan kartu di
+   index.html: Total Inspeksi, Total Temuan, Jadwal Aktif, Selesai Perbaikan.
+   Tata letak 2 kolom untuk layar kecil ada di 16-responsive.css. */
 .stats-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: 1.2rem;
-    margin-bottom: 2rem;
+    grid-template-columns: repeat(4, 1fr);
+    margin-bottom: 1.5rem;
+    background: #fdf8f8;
+    border-radius: 1.2rem;
 }
 
 .stat-card {
-    background: white;
-    padding: 1.2rem 1.5rem;
-    border-radius: 1.5rem;
-    border: 1px solid #f0e0e0;
-    box-shadow: 0 4px 12px rgba(200, 40, 40, 0.04);
-    transition: 0.2s;
-    cursor: default;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: 0.9rem;
+    align-items: center;
+    padding: 1rem 1.4rem;
 }
 
-.stat-card:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 8px 24px rgba(200, 40, 40, 0.08);
+.stat-card + .stat-card {
+    border-left: 1px solid #f0e0e0;
 }
 
 .stat-card .stat-icon {
-    font-size: 1.8rem;
+    grid-row: span 2;
+    font-size: 1.5rem;
     color: #d42a2a;
-    margin-bottom: 6px;
+}
+
+.stat-card:nth-child(2) .stat-icon {
+    color: #e65100;
+}
+
+.stat-card:nth-child(4) .stat-icon {
+    color: #2e7d32;
 }
 
 .stat-card .stat-number {
-    font-size: 2rem;
+    grid-column: 2;
+    font-size: 1.9rem;
     font-weight: 700;
-    color: #b31b1b;
+    line-height: 1.1;
+    color: #2a1a1a;
 }
 
 .stat-card .stat-label {
-    font-size: 0.75rem;
+    grid-column: 2;
+    font-size: 0.7rem;
     color: #8a6a6a;
     font-weight: 500;
     text-transform: uppercase;
@@ -50,7 +65,7 @@
     display: grid;
     grid-template-columns: 2fr 1fr;
     gap: 1.5rem;
-    margin-bottom: 2rem;
+    margin-bottom: 1.5rem;
 }
 
 .chart-box {
