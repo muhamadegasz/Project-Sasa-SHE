@@ -13,6 +13,8 @@
 import * as plantRepository from '../../repositories/plant-repository.js';
 import * as inspectionRepository from '../../repositories/inspection-repository.js';
 import { allActionsClosed, hasActionInProgress, hasActionOpen } from '../../domain/inspection-rules.js';
+import { ACTION_STATUS } from '../../domain/statuses.js';
+import { formatActionStatus } from '../../shared/labels.js';
 
 // Dipakai dua tempat: saat chart dibuat dan saat di-refresh. Dulu ekspresinya
 // ditulis dua kali dan sempat berbeda formatnya.
@@ -121,7 +123,8 @@ export async function initCharts() {
     perbaikanChart = new Chart(ctx2, {
         type: 'doughnut',
         data: {
-            labels: ['Closed', 'On Progress', 'Open'],
+            // Urutan sama dengan data di bawah: semua closed / ada on-progress / ada open.
+            labels: [ACTION_STATUS.CLOSED, ACTION_STATUS.ON_PROGRESS, ACTION_STATUS.OPEN].map(formatActionStatus),
             datasets: [{ data: [counts.selesai, counts.perbaikan, counts.tinjau],
                 backgroundColor: ['#2e7d32', '#f57f17', '#c62828'], borderColor: 'white', borderWidth: 2 }]
         },

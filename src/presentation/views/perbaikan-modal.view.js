@@ -9,7 +9,8 @@ import { escapeHtml, jsArg } from '../../shared/html.js';
 import { isOverdue } from '../../shared/date.js';
 import { getProgress, getRepairStatus } from '../../domain/inspection-rules.js';
 import { isFullyApproved } from '../../domain/approval-rules.js';
-import { formatApprovalStatus } from '../../shared/labels.js';
+import { formatApprovalStatus, formatActionStatus, formatRepairStatus } from '../../shared/labels.js';
+import { ACTION_STATUS } from '../../domain/statuses.js';
 import { getRandomOfficer } from '../../data/officers.js';
 import * as inspectionRepository from '../../repositories/inspection-repository.js';
 import { bindModalClose } from '../components/modal.js';
@@ -23,12 +24,6 @@ export async function openPerbaikanModal(id) {
 
     const progress = getProgress(item);
     const statusPerbaikan = getRepairStatus(item);
-
-    const statusMap = {
-        'closed': '✅ Closed',
-        'on-progress': '🔄 On Progress',
-        'open': '⏳ Open'
-    };
 
     let timelineHtml = '';
     if (item.perbaikan && item.perbaikan.length > 0) {
@@ -45,7 +40,7 @@ export async function openPerbaikanModal(id) {
                     <div class="perbaikan-item">
                         <span class="date">${escapeHtml(p.tgl)}</span>
                         <span class="action">${escapeHtml(p.action)}</span>
-                        <span class="status-mini ${escapeHtml(p.status)}">${escapeHtml(statusMap[p.status] || p.status)}</span>
+                        <span class="status-mini ${escapeHtml(p.status)}">${escapeHtml(formatActionStatus(p.status))}</span>
                         <span class="pic-name">- ${escapeHtml(p.pic)}</span>
                         <div class="foto-thumbs">${galleryHtml}</div>
                     </div>
@@ -54,12 +49,6 @@ export async function openPerbaikanModal(id) {
     } else {
         timelineHtml = '<div style="padding:0.8rem;color:#8a6a6a;text-align:center;">Belum ada tindakan perbaikan</div>';
     }
-
-    const statusPerbaikanMap = {
-        'selesai_perbaikan': 'Closed',
-        'perbaikan': 'On Progress',
-        'tinjau': 'Open'
-    };
 
     const allApproved = isFullyApproved(item);
 
@@ -98,7 +87,7 @@ export async function openPerbaikanModal(id) {
                                 <div class="progress-fill ${statusPerbaikan}" style="width:${progress}%"></div>
                             </div>
                             <span class="progress-text">${progress}%</span>
-                            <span class="status-badge ${statusPerbaikan}" style="font-size:0.6rem;">${statusPerbaikanMap[statusPerbaikan] || statusPerbaikan}</span>
+                            <span class="status-badge ${statusPerbaikan}" style="font-size:0.6rem;">${formatRepairStatus(statusPerbaikan)}</span>
                         </div>
                     </span>
                 </div>
@@ -119,9 +108,9 @@ export async function openPerbaikanModal(id) {
                     <div class="form-group">
                         <label>Status <span style="color:#c62828;">*</span></label>
                         <select id="newStatus">
-                            <option value="on-progress">🔄 On Progress</option>
-                            <option value="closed">✅ Closed</option>
-                            <option value="open">⏳ Open</option>
+                            <option value="${ACTION_STATUS.ON_PROGRESS}">${formatActionStatus(ACTION_STATUS.ON_PROGRESS)}</option>
+                            <option value="${ACTION_STATUS.CLOSED}">${formatActionStatus(ACTION_STATUS.CLOSED)}</option>
+                            <option value="${ACTION_STATUS.OPEN}">${formatActionStatus(ACTION_STATUS.OPEN)}</option>
                         </select>
                     </div>
                     <div class="form-group">

@@ -7,6 +7,7 @@
 
 import { escapeHtml } from '../../shared/html.js';
 import { APPROVAL_STAGES } from '../../config/constants.js';
+import { formatActionStatus } from '../../shared/labels.js';
 
 function buildGalleryHtml(item) {
     const allPhotos = [...(item.fotoDekat || []), ...(item.fotoJauh || [])];
@@ -26,12 +27,7 @@ function buildTemuanRows(item) {
 function buildPerbaikanRows(item) {
     return item.perbaikan && item.perbaikan.length > 0 ?
         item.perbaikan.map(p => {
-            const statusMap = {
-                'closed': '✅ Selesai',
-                'on-progress': '🔄 Progres',
-                'open': '⏳ Pending'
-            };
-            return `<tr><td>${escapeHtml(p.tgl)}</td><td>${escapeHtml(p.action)}</td><td>${escapeHtml(p.pic)}</td><td><span style="background:${p.status === 'closed' ? '#e8f5e9' : p.status === 'on-progress' ? '#fff3e0' : '#fce4ec'};padding:0.1rem 0.5rem;border-radius:4px;font-size:0.7rem;">${escapeHtml(statusMap[p.status] || p.status)}</span></td></tr>`;
+            return `<tr><td>${escapeHtml(p.tgl)}</td><td>${escapeHtml(p.action)}</td><td>${escapeHtml(p.pic)}</td><td><span style="background:${p.status === 'closed' ? '#e8f5e9' : p.status === 'on-progress' ? '#fff3e0' : '#fce4ec'};padding:0.1rem 0.5rem;border-radius:4px;font-size:0.7rem;">${escapeHtml(formatActionStatus(p.status))}</span></td></tr>`;
         }).join('') :
         '<tr><td colspan="4" style="text-align:center;color:#888;">Belum ada tindakan perbaikan</td></tr>';
 }

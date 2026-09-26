@@ -14,17 +14,31 @@
  * Phase 15: alasan yang sama berlaku untuk tombol detail (ikon mata) di
  * tabel Dashboard — diberi data-testid="row-detail-btn", dipakai test upload
  * foto sungguhan untuk membuka modal detail lalu lightbox.
+ *
+ * Phase 16.2 (U-03/U-06): label status perbaikan dan ringkasan pengesahan
+ * diambil dari shared/labels.js — sebelumnya ditulis ulang di sini dengan
+ * kosakata yang berbeda antartabel (dan berbeda dari modal/PDF/Excel).
  */
 
 import { escapeHtml, highlight } from '../../shared/html.js';
 import { formatDate, isOverdue } from '../../shared/date.js';
 import { PERIODE_LIST } from '../../config/constants.js';
 import { getProgress, getRepairStatus } from '../../domain/inspection-rules.js';
-import { isFullyApproved, countApproved, totalStages } from '../../domain/approval-rules.js';
+import { isFullyApproved, countApproved } from '../../domain/approval-rules.js';
+import { formatApprovalStatus, formatRepairStatus } from '../../shared/labels.js';
 import * as scheduleRules from '../../domain/schedule-rules.js';
 import * as scheduleRepository from '../../repositories/schedule-repository.js';
 import * as inspectionRepository from '../../repositories/inspection-repository.js';
 import * as plantRepository from '../../repositories/plant-repository.js';
+
+// Dipakai ketiga tabel di berkas ini (inspeksi, jadwal, perbaikan).
+const OVERDUE_BADGE = '<span class="overdue-badge"><i class="fas fa-exclamation-circle"></i> OVERDUE</span>';
+
+/** Badge status inspeksi (selesai/proses/tinjau) — dipakai kedua varian tabel inspeksi. */
+function inspectionStatusBadge(item) {
+    const label = item.status.charAt(0).toUpperCase() + item.status.slice(1);
+    return `<span class="status-badge ${escapeHtml(item.status)}">${escapeHtml(label)}</span>`;
+}
 
 function updateNotifBadge(count) {
     const countEl = document.getElementById('notifCount');
@@ -51,8 +65,7 @@ function renderInspeksiTable(data, tbodyId, isFull, highlightQuery = '') {
     tbody.innerHTML = data.map(item => {
         const progress = getProgress(item);
         const statusPerbaikan = getRepairStatus(item);
-        const statusLabel = statusPerbaikan === 'selesai_perbaikan' ? '✅ Selesai' :
-            statusPerbaikan === 'perbaikan' ? '🔄 Perbaikan' : '⏳ Tinjau';
+        const statusLabel = formatRepairStatus(statusPerbaikan);
         const overdue = isOverdue(item.dueDate);
         const jmlTemuan = item.temuan ? item.temuan.length : 0;
         const temuanPreview = item.temuan && item.temuan.length > 0 ? item.temuan[0].deskripsi : '-';
@@ -71,9 +84,7 @@ function renderInspeksiTable(data, tbodyId, isFull, highlightQuery = '') {
                 </div>
             `;
 
-        const overdueBadge = overdue ?
-            `<span class="overdue-badge"><i class="fas fa-exclamation-circle"></i> OVERDUE</span>` :
-            '';
+        const overdueBadge = overdue ? OVERDUE_BADGE : '';
 
         const exportBtn = item.temuan && item.temuan.length > 0 ?
             `<button class="btn-export-temuan" data-action="exportTemuanPerItem" data-id="${escapeHtml(item.id)}" title="Export temuan ke Excel"><i class="fas fa-file-excel"></i></button>` :
@@ -84,18 +95,8 @@ function renderInspeksiTable(data, tbodyId, isFull, highlightQuery = '') {
             `<button class="btn-pdf" data-action="cetakPDF" data-id="${escapeHtml(item.id)}" title="Cetak PDF Laporan"><i class="fas fa-file-pdf"></i></button>` :
             `<button class="btn-pdf" disabled title="Harus disetujui semua tahap terlebih dahulu"><i class="fas fa-file-pdf"></i></button>`;
 
-        let approvalStatus = 'Belum';
-        let approvalColor = 'menunggu';
-        if (allApproved) {
-            approvalStatus = '✅ Lengkap';
-            approvalColor = 'selesai';
-        } else {
-            const approvedCount = countApproved(item);
-            if (approvedCount > 0) {
-                approvalStatus = `${approvedCount}/${totalStages()}`;
-                approvalColor = 'proses';
-            }
-        }
+        const approvalStatus = formatApprovalStatus(item);
+        const approvalColor = allApproved ? 'selesai' : countApproved(item) > 0 ? 'proses' : 'menunggu';
 
         if (isFull) {
             return `
@@ -106,7 +107,7 @@ function renderInspeksiTable(data, tbodyId, isFull, highlightQuery = '') {
                         <td>${escapeHtml(item.tanggal)}</td>
                         <td>${escapeHtml(item.petugas)}</td>
                         <td>${jmlTemuan}</td>
-                        <td><span class="status-badge ${escapeHtml(item.status)}">${escapeHtml(item.status.charAt(0).toUpperCase() + item.status.slice(1))}</span></td>
+                        <td>${inspectionStatusBadge(item)}</td>
                         <td>
                             <span class="status-badge ${approvalColor}">${approvalStatus}</span>
                             <button class="btn-sm info" data-action="openApprovalModal" data-id="${escapeHtml(item.id)}" data-testid="row-approve-btn" style="margin-top:0.2rem;"><i class="fas fa-stamp"></i></button>
@@ -121,7 +122,7 @@ function renderInspeksiTable(data, tbodyId, isFull, highlightQuery = '') {
                         <td>${lokasiDisplay}</td>
                         <td>${temuanDisplay}${moreTemuan}</td>
                         <td>${escapeHtml(item.dueDate || '-')} ${overdueBadge}</td>
-                        <td><span class="status-badge ${escapeHtml(item.status)}">${escapeHtml(item.status.charAt(0).toUpperCase() + item.status.slice(1))}</span></td>
+                        <td>${inspectionStatusBadge(item)}</td>
                         <td>${progressBar}</td>
                         <td>
                             <button class="btn-sm info" data-action="openDetailModal" data-id="${escapeHtml(item.id)}" data-testid="row-detail-btn"><i class="fas fa-eye"></i></button>
@@ -179,7 +180,7 @@ export async function renderJadwalTable(data = null, highlightQuery = '') {
                     <td>${plantDisplay} ${plant ? '<span style="font-size:0.6rem;color:#8a6a6a;">(' + escapeHtml(plant.code) + ')</span>' : ''}</td>
                     <td>${periodeDisplay}</td>
                     <td>${escapeHtml(mingguDisplay)}</td>
-                    <td>${escapeHtml(tanggalJadwalDisplay)} ${isOverdueSchedule ? '<span class="overdue-badge"><i class="fas fa-exclamation-circle"></i> OVERDUE</span>' : ''}</td>
+                    <td>${escapeHtml(tanggalJadwalDisplay)} ${isOverdueSchedule ? OVERDUE_BADGE : ''}</td>
                     <td>${escapeHtml(tanggalRealisasiDisplay)}</td>
                     <td>${officerDisplay}</td>
                     <td><span class="status-badge ${statusClass}">${statusText}</span></td>
@@ -222,9 +223,7 @@ async function renderPerbaikanTable(data = null, highlightQuery = '') {
         const actionDisplay = highlight(lastAction ? lastAction.action : '-', highlightQuery);
         const picDisplay = highlight(lastAction ? lastAction.pic : '-', highlightQuery);
 
-        const overdueBadge = overdue ?
-            `<span class="overdue-badge"><i class="fas fa-exclamation-circle"></i> OVERDUE</span>` :
-            '';
+        const overdueBadge = overdue ? OVERDUE_BADGE : '';
 
         const progressBar = `
                 <div class="progress-wrapper">
@@ -235,12 +234,6 @@ async function renderPerbaikanTable(data = null, highlightQuery = '') {
                 </div>
             `;
 
-        const statusMap = {
-            'selesai_perbaikan': 'Closed',
-            'perbaikan': 'On Progress',
-            'tinjau': 'Open'
-        };
-
         return `
                 <tr>
                     <td><strong>${escapeHtml(item.id)}</strong></td>
@@ -250,7 +243,7 @@ async function renderPerbaikanTable(data = null, highlightQuery = '') {
                     <td>${actionDisplay}</td>
                     <td>${picDisplay}</td>
                     <td>${progressBar}</td>
-                    <td><span class="status-badge ${statusPerbaikan}">${statusMap[statusPerbaikan] || statusPerbaikan}</span></td>
+                    <td><span class="status-badge ${statusPerbaikan}" style="white-space:nowrap;">${formatRepairStatus(statusPerbaikan)}</span></td>
                     <td>
                         <button class="btn-sm primary" data-action="openPerbaikanModal" data-id="${escapeHtml(item.id)}"><i class="fas fa-edit"></i></button>
                         <button class="btn-sm info" data-action="openDetailModal" data-id="${escapeHtml(item.id)}"><i class="fas fa-eye"></i></button>
