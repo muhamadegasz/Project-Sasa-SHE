@@ -57,10 +57,20 @@ test('koordinator K3L bisa menolak dengan alasan — inspeksi perlu revisi, taha
     await loginViaUi(page, 'dewi');
     await openApprovalModalFor(page, inspection.id);
 
-    // Alasan wajib (Phase 17.2) — sementara diminta lewat prompt() sampai form penolakan Phase 17.3.
-    page.once('dialog', (dialog) => dialog.accept('Foto area kurang jelas'));
+    // Phase 17.3B: alasan wajib diisi lewat modal penolakan (menggantikan prompt()).
     await page.locator('#approvalContent').getByRole('button', { name: /Tolak/ }).click();
+    const rejectModal = page.locator('#rejectModal');
+    await expect(rejectModal).toHaveClass(/show/);
+
+    // Alasan kosong ditolak di form, tanpa mengirim apa pun.
+    await rejectModal.getByRole('button', { name: 'Tolak Inspeksi' }).click();
+    await expect(page.locator('#toastMessage')).toContainText('Alasan penolakan wajib diisi');
+    await expect(rejectModal).toHaveClass(/show/);
+
+    await rejectModal.getByLabel(/Alasan penolakan/).fill('Foto area kurang jelas');
+    await rejectModal.getByRole('button', { name: 'Tolak Inspeksi' }).click();
     await expect(page.locator('#toastMessage')).toContainText('menolak inspeksi');
+    await expect(rejectModal).not.toHaveClass(/show/);
 
     const body = await fetchInspection(arif.context, inspection.id);
     expect(body.status).toBe('revision_required');

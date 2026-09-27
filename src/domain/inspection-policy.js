@@ -93,25 +93,48 @@ export function canView(user, inspection) {
     return visibilityScope(user).some((criterion) => matchesCriterion(criterion, inspection));
 }
 
-/** Mengubah isi draft: hanya Safety Officer pemiliknya, hanya selama DRAFT. */
-export function canEdit(user, inspection) {
+/**
+ * KEPEMILIKAN (Phase 17.3B), terpisah dari visibilitas: apakah pengguna ini
+ * Safety Officer yang bertanggung jawab atas inspeksi (petugas_user_id dari
+ * sesi saat dibuat, tidak pernah dari body permintaan). Dasar semua izin
+ * mengubah di bawah; service juga memakainya untuk membedakan "bukan
+ * pemilik" (FORBIDDEN) dari "pemilik, tapi statusnya tidak mengizinkan".
+ */
+export function isOwningOfficer(user, inspection) {
     return Boolean(user && inspection)
         && user.role === ROLE.SAFETY_OFFICER
-        && isOwner(user, inspection)
-        && inspection.status === DRAFT;
+        && isOwner(user, inspection);
+}
+
+/** Mengubah isi draft: hanya Safety Officer pemiliknya, hanya selama DRAFT. */
+export function canEdit(user, inspection) {
+    return isOwningOfficer(user, inspection) && inspection.status === DRAFT;
 }
 
 /** Merevisi setelah ditolak: hanya Safety Officer pemiliknya, hanya selama REVISION_REQUIRED. */
 export function canRevise(user, inspection) {
-    return Boolean(user && inspection)
-        && user.role === ROLE.SAFETY_OFFICER
-        && isOwner(user, inspection)
-        && inspection.status === REVISION_REQUIRED;
+    return isOwningOfficer(user, inspection) && inspection.status === REVISION_REQUIRED;
 }
 
 /** Mengajukan (draft) atau mengajukan ulang (revisi): hanya Safety Officer pemiliknya. */
 export function canSubmit(user, inspection) {
     return canEdit(user, inspection) || canRevise(user, inspection);
+}
+
+/** Menghapus draft (Phase 17.3B): hanya Safety Officer pemiliknya, hanya selama DRAFT. */
+export function canDeleteDraft(user, inspection) {
+    return canEdit(user, inspection);
+}
+
+/**
+ * Menambah tindakan perbaikan (Phase 17.3B, aturan terkunci): HANYA Safety
+ * Officer pemilik inspeksi. Bisa melihat inspeksi (canView) tidak cukup —
+ * Safety Officer lain tetap hanya-lihat. Batas status sengaja TIDAK
+ * ditambahkan: aplikasi sebelumnya tidak pernah membatasinya, dan batas baru
+ * adalah keputusan bisnis yang belum dikunci.
+ */
+export function canEditCorrectiveAction(user, inspection) {
+    return isOwningOfficer(user, inspection);
 }
 
 /**

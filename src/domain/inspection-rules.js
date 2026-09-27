@@ -63,6 +63,21 @@ export function hasActionOpen(inspection) {
         && inspection.perbaikan.some((action) => action.status === ACTION_STATUS.OPEN);
 }
 
+/**
+ * Tindakan perbaikan awal untuk satu temuan: "Temuan N: <deskripsi>",
+ * status open. Sejak Phase 17.3B dibuat saat temuan MASUK ke inspeksi yang
+ * sudah diajukan (pengajuan pertama, atau temuan baru saat revisi) — bukan
+ * saat draft dibuat, supaya mengubah temuan draft tidak meninggalkan tindakan
+ * basi. `position` dimulai dari 1.
+ */
+export function buildInitialAction(finding, position, pic) {
+    return {
+        action: `Temuan ${position}: ${finding.deskripsi}`,
+        status: ACTION_STATUS.OPEN,
+        pic,
+    };
+}
+
 /** Jumlah temuan pada sebuah inspeksi. */
 export function countFindings(inspection) {
     return inspection && inspection.temuan ? inspection.temuan.length : 0;

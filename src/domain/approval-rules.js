@@ -16,6 +16,24 @@
 import { APPROVAL_STAGES } from '../config/constants.js';
 import { APPROVAL_DECISION, INSPECTION_STATUS } from './statuses.js';
 
+/** Panjang maksimum alasan penolakan (Phase 17.3B) — jauh di bawah batas kolom TEXT. */
+export const REJECTION_REASON_MAX_LENGTH = 1000;
+
+/**
+ * Memeriksa alasan penolakan dari isian pengguna. Mengembalikan
+ * `{ value }` (sudah di-trim) atau `{ error: 'REQUIRED' | 'INVALID' | 'TOO_LONG' }`.
+ * Bukan string (objek, array, angka) ditolak INVALID — tidak pernah diubah
+ * paksa jadi teks seperti "[object Object]".
+ */
+export function checkRejectionReason(reason) {
+    if (reason === undefined || reason === null) return { error: 'REQUIRED' };
+    if (typeof reason !== 'string') return { error: 'INVALID' };
+    const value = reason.trim();
+    if (!value) return { error: 'REQUIRED' };
+    if (value.length > REJECTION_REASON_MAX_LENGTH) return { error: 'TOO_LONG' };
+    return { value };
+}
+
 /** Satu tahap berdasarkan kode, atau undefined. */
 export function findStage(stageId) {
     return APPROVAL_STAGES.find((stage) => stage.id === stageId);

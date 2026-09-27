@@ -16,30 +16,44 @@
  */
 
 import * as inspectionRepository from '#repositories/inspection-repository.js';
-import { buildDecisionRecord, findStage } from '../domain/approval-rules.js';
+import { buildDecisionRecord, checkRejectionReason, findStage } from '../domain/approval-rules.js';
 import { approvedState, rejectedState } from '../domain/workflow-rules.js';
-import { canApprove, canReject } from '../domain/inspection-policy.js';
+import { canApprove, canReject, canView } from '../domain/inspection-policy.js';
 import { APPROVAL_DECISION, INSPECTION_STATUS } from '../domain/statuses.js';
-import { fail, ok } from './result.js';
+import { ACCESS_ERROR, fail, ok } from './result.js';
 
 export const APPROVAL_ERROR = {
-    INSPECTION_NOT_FOUND: 'INSPECTION_NOT_FOUND',
+    // NOT_FOUND (404) / FORBIDDEN (403): lihat ACCESS_ERROR di result.js.
+    ...ACCESS_ERROR,
     STAGE_NOT_FOUND: 'STAGE_NOT_FOUND',
     NOT_IN_REVIEW: 'NOT_IN_REVIEW',
     STAGE_NOT_CURRENT: 'STAGE_NOT_CURRENT',
     REJECTION_REASON_REQUIRED: 'REJECTION_REASON_REQUIRED',
-    // Dipetakan ke HTTP 403 oleh server/middleware/to-http.js.
-    FORBIDDEN: 'FORBIDDEN',
+    REJECTION_REASON_INVALID: 'REJECTION_REASON_INVALID',
+    REJECTION_REASON_TOO_LONG: 'REJECTION_REASON_TOO_LONG',
+};
+
+const REASON_ERROR = {
+    REQUIRED: APPROVAL_ERROR.REJECTION_REASON_REQUIRED,
+    INVALID: APPROVAL_ERROR.REJECTION_REASON_INVALID,
+    TOO_LONG: APPROVAL_ERROR.REJECTION_REASON_TOO_LONG,
 };
 
 /**
- * Pemeriksaan bersama approve/reject: inspeksi ada, tahap dikenal, inspeksi
- * sedang direview di tahap itu, dan pengguna berwenang memutuskannya.
- * Mengembalikan { inspection, stage } atau sebuah fail().
+ * Pemeriksaan bersama approve/reject: inspeksi ada DAN terlihat oleh
+ * pengguna, tahap dikenal, inspeksi sedang direview di tahap itu, dan
+ * pengguna berwenang memutuskannya. Mengembalikan { inspection, stage } atau
+ * sebuah fail().
+ *
+ * Phase 17.3B: inspeksi yang tidak boleh DILIHAT dijawab NOT_FOUND SEBELUM
+ * pemeriksaan lain — sama persis dengan id yang tidak ada, sehingga status,
+ * tahap, pemilik, dan plant-nya tidak bocor lewat NOT_IN_REVIEW/STAGE_NOT_CURRENT/
+ * FORBIDDEN. Pengguna yang BISA melihat tapi tidak berwenang tetap mendapat
+ * FORBIDDEN.
  */
 async function loadDecidable(inspectionId, stageId, reviewer, isAllowed) {
     const inspection = await inspectionRepository.findById(inspectionId);
-    if (!inspection) return { failure: fail(APPROVAL_ERROR.INSPECTION_NOT_FOUND) };
+    if (!inspection || !canView(reviewer, inspection)) return { failure: fail(APPROVAL_ERROR.NOT_FOUND) };
 
     const stage = findStage(stageId);
     if (!stage) return { failure: fail(APPROVAL_ERROR.STAGE_NOT_FOUND) };
@@ -100,11 +114,11 @@ export async function reject(inspectionId, stageId, reviewer, reason) {
     const { inspection, stage, failure } = await loadDecidable(inspectionId, stageId, reviewer, canReject);
     if (failure) return failure;
 
-    const trimmedReason = String(reason ?? '').trim();
-    if (!trimmedReason) return fail(APPROVAL_ERROR.REJECTION_REASON_REQUIRED, { stage });
+    const checked = checkRejectionReason(reason);
+    if (checked.error) return fail(REASON_ERROR[checked.error], { stage });
 
     const nextState = rejectedState(inspection);
-    const decision = buildDecisionRecord(inspection, stage, APPROVAL_DECISION.REJECTED, reviewer, trimmedReason);
+    const decision = buildDecisionRecord(inspection, stage, APPROVAL_DECISION.REJECTED, reviewer, checked.value);
     const updated = await commit(inspection, decision, nextState);
     if (!updated) return fail(APPROVAL_ERROR.STAGE_NOT_CURRENT, { stage });
 

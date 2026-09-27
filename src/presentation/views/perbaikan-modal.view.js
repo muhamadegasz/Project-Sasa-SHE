@@ -14,6 +14,8 @@ import { ACTION_STATUS } from '../../domain/statuses.js';
 import { getRandomOfficer } from '../../data/officers.js';
 import * as inspectionRepository from '../../repositories/inspection-repository.js';
 import { bindModalClose, openModal } from '../components/modal.js';
+import { canEditCorrectiveAction } from '../../domain/inspection-policy.js';
+import { getCurrentUser } from '../../infrastructure/session.js';
 import { showToast } from '../components/toast.js';
 
 export async function openPerbaikanModal(id) {
@@ -50,6 +52,10 @@ export async function openPerbaikanModal(id) {
     }
 
     const allApproved = isFullyApproved(item);
+
+    // Phase 17.3B: form tambah progres hanya untuk Safety Officer PEMILIK
+    // inspeksi; pengguna lain hanya melihat timeline (server tetap menolak 403).
+    const canAddAction = canEditCorrectiveAction(getCurrentUser(), item);
 
     content.innerHTML = `
             <div class="perbaikan-info-box">
@@ -97,7 +103,7 @@ export async function openPerbaikanModal(id) {
                 ${timelineHtml}
             </div>
 
-            <div class="perbaikan-form-section">
+            ${canAddAction ? `<div class="perbaikan-form-section">
                 <h5><i class="fas fa-camera"></i> Tambah Progres</h5>
                 <div class="form-group">
                     <label>Tindakan <span style="color:#c62828;">*</span></label>
@@ -127,10 +133,13 @@ export async function openPerbaikanModal(id) {
                 <button class="btn-sm primary" data-action="tambahPerbaikanCustom" data-id="${escapeHtml(item.id)}" style="margin-top:0.5rem;padding:0.5rem 1.5rem;">
                     <i class="fas fa-plus"></i> Tambah Progres
                 </button>
-            </div>
+            </div>` : `<div class="perbaikan-form-section" data-testid="perbaikan-view-only" style="font-size:0.8rem;color:#8a6a6a;">
+                <i class="fas fa-lock"></i> Hanya Safety Officer pemilik inspeksi ini yang dapat menambah progres perbaikan.
+            </div>`}
         `;
 
-    document.getElementById('newFoto').addEventListener('change', function() {
+    const fotoInput = document.getElementById('newFoto');
+    if (fotoInput) fotoInput.addEventListener('change', function() {
         const count = this.files.length;
         document.getElementById('newFotoCount').textContent = count > 0 ? `${count} file dipilih` : 'Belum ada file';
     });

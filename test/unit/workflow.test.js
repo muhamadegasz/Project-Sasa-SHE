@@ -13,7 +13,8 @@ import {
 } from '../../src/domain/workflow-rules.js';
 import { isStageApproved, latestDecision, nextAttempt, totalStages } from '../../src/domain/approval-rules.js';
 import {
-    canApprove, canDelete, canEdit, canReject, canRevise, canSubmit, canView,
+    canApprove, canDelete, canDeleteDraft, canEdit, canEditCorrectiveAction, canReject, canRevise, canSubmit, canView,
+    isOwningOfficer,
 } from '../../src/domain/inspection-policy.js';
 
 const { DRAFT, IN_REVIEW, REVISION_REQUIRED, COMPLETED } = INSPECTION_STATUS;
@@ -243,4 +244,35 @@ test('Admin: melihat semua non-draft, boleh menghapus termasuk yang IN_REVIEW, b
     assert.ok(canDelete(admin, inspection({ status: COMPLETED, currentApprovalStage: null })));
     assert.equal(canDelete(admin, inspection({ status: DRAFT, currentApprovalStage: null })), false);
     assert.equal(canDelete(officer, inspection({ status: IN_REVIEW })), false, 'Safety Officer tidak menghapus setelah submit');
+});
+
+// =========================================================================
+// Kepemilikan vs visibilitas (Phase 17.3B)
+// =========================================================================
+
+test('kepemilikan: tindakan perbaikan hanya pemilik — SO lain yang BISA melihat tetap tidak boleh', () => {
+    const inReview = inspection({ status: IN_REVIEW });
+    assert.ok(canView(otherOfficer, inReview), 'SO lain melihat IN_REVIEW');
+    assert.equal(canEditCorrectiveAction(otherOfficer, inReview), false, '...tapi tidak boleh menambah tindakan');
+    assert.equal(isOwningOfficer(otherOfficer, inReview), false);
+    for (const status of [DRAFT, IN_REVIEW, REVISION_REQUIRED, COMPLETED]) {
+        assert.ok(canEditCorrectiveAction(officer, inspection({ status })), `pemilik, ${status}`);
+    }
+    for (const user of [koordinatorPlant1, manajer, ketua, admin]) {
+        assert.equal(canEditCorrectiveAction(user, inReview), false, user.role);
+    }
+});
+
+test('kepemilikan: Safety Officer dengan id sama tapi role lain bukan pemilik', () => {
+    const impostor = { id: officer.id, role: ROLE.ADMIN };
+    assert.equal(isOwningOfficer(impostor, inspection()), false);
+    assert.equal(canEditCorrectiveAction(impostor, inspection()), false);
+});
+
+test('hapus draft: hanya pemilik & hanya DRAFT; Admin tidak (penghapusan Admin fase lain)', () => {
+    const draft = inspection({ status: DRAFT, currentApprovalStage: null });
+    assert.ok(canDeleteDraft(officer, draft));
+    assert.equal(canDeleteDraft(otherOfficer, draft), false);
+    assert.equal(canDeleteDraft(admin, draft), false);
+    assert.equal(canDeleteDraft(officer, inspection({ status: IN_REVIEW })), false);
 });

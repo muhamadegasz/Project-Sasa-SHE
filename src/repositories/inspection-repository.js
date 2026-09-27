@@ -20,8 +20,9 @@
  * docs/DECISIONS.md entri Phase 14.
  */
 
-import { apiGet, apiPost } from '../infrastructure/api-client.js';
+import { apiDelete, apiGet, apiPost, apiPut } from '../infrastructure/api-client.js';
 import { APPROVAL_DECISION } from '../domain/statuses.js';
+import { localDateToIso } from '../shared/date.js';
 
 /**
  * "D/M/YYYY" (format lokal — inspection-service.js `create()` sudah memanggil
@@ -34,12 +35,7 @@ import { APPROVAL_DECISION } from '../domain/statuses.js';
  * Ditemukan lewat pengujian browser sungguhan (Playwright), bukan test
  * otomatis — lihat docs/DECISIONS.md entri Phase 14.
  */
-function toIsoDate(localDate) {
-    if (!localDate || localDate === '-') return undefined;
-    const [day, month, year] = String(localDate).split('/');
-    if (!day || !month || !year) return undefined;
-    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
-}
+const toIsoDate = localDateToIso;
 
 /** Seluruh inspeksi, urutan terbaru di depan (backend mengurutkan ORDER BY id DESC). */
 export async function getAll() {
@@ -73,17 +69,46 @@ export async function findById(id) {
  * dikirim sebagai string JSON dan di-parse balik oleh route handler backend.
  */
 export async function add(inspection) {
-    const formData = new FormData();
-    formData.append('plantId', inspection.plantId);
-    formData.append('keteranganLokasi', inspection.keteranganLokasi ?? '');
-    formData.append('tanggal', toIsoDate(inspection.tanggal) || '');
-    formData.append('dueDate', toIsoDate(inspection.dueDate) || '');
-    formData.append('temuan', JSON.stringify(inspection.temuan || []));
-    for (const file of inspection.fotoDekat || []) formData.append('fotoDekat', file);
-    for (const file of inspection.fotoJauh || []) formData.append('fotoJauh', file);
-
-    const { inspection: created } = await apiPost('/inspections', formData);
+    const { inspection: created } = await apiPost('/inspections', contentFormData(inspection));
     return created;
+}
+
+/** Isi inspeksi sebagai FormData — dipakai add() dan update(). Hanya field konten. */
+function contentFormData(content) {
+    const formData = new FormData();
+    formData.append('plantId', content.plantId);
+    formData.append('keteranganLokasi', content.keteranganLokasi ?? '');
+    formData.append('tanggal', toIsoDate(content.tanggal) || '');
+    formData.append('dueDate', toIsoDate(content.dueDate) || '');
+    formData.append('temuan', JSON.stringify(content.temuan || []));
+    for (const file of content.fotoDekat || []) formData.append('fotoDekat', file);
+    for (const file of content.fotoJauh || []) formData.append('fotoJauh', file);
+    return formData;
+}
+
+/**
+ * Phase 17.3B — tiga fungsi di bawah memicu endpoint aksi bisnis penuh
+ * (inspection-service dijalankan LAGI di server, dengan data server dan
+ * identitas dari sesi). Argumen status/pemilik yang dipakai versi MySQL
+ * sengaja tidak dikirim. Penolakan server (4xx) dilempar sebagai ApiError.
+ */
+
+/** Menyimpan isi draft/revisi (PUT). @returns {Promise<boolean>} */
+export async function update(inspectionId, fields, _options) {
+    await apiPut(`/inspections/${encodeURIComponent(inspectionId)}`, contentFormData(fields));
+    return true;
+}
+
+/** Mengajukan / mengajukan ulang. @returns {Promise<boolean>} */
+export async function submit(inspectionId, _expectedStatus, _nextState, _initialActions) {
+    await apiPost(`/inspections/${encodeURIComponent(inspectionId)}/submit`);
+    return true;
+}
+
+/** Menghapus draft milik sendiri. @returns {Promise<boolean>} */
+export async function removeDraft(inspectionId) {
+    await apiDelete(`/inspections/${encodeURIComponent(inspectionId)}`);
+    return true;
 }
 
 /**

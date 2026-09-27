@@ -316,7 +316,9 @@
             <!-- PANEL FORM -->
             <div id="panel-form" class="panel no-print">
                 <div class="form-section">
-                    <h4><i class="fas fa-plus-circle"></i> Buat Inspeksi Baru</h4>
+                    <h4><i class="fas fa-plus-circle"></i> <span id="inspeksiFormTitle">Buat Inspeksi Baru</span></h4>
+                    <!-- Phase 17.3B: tampil saat merevisi inspeksi yang ditolak — alasan penolakan terakhir. -->
+                    <div id="revisionNotice" class="demo-badge" style="display:none;margin-bottom:0.8rem;padding:0.6rem 0.9rem;border-radius:12px;font-size:0.8rem;"></div>
                     <form id="inspeksiForm" onsubmit="return false;">
                         <div class="form-row">
                             <div class="form-group">
@@ -354,7 +356,7 @@
                         </div>
 
                         <div class="form-group full">
-                            <label>Dokumentasi Foto Lokasi</label>
+                            <label>Dokumentasi Foto Lokasi <span id="existingPhotoNote" style="font-weight:400;color:#8a6a6a;"></span></label>
                             <div class="file-input-group">
                                 <div class="file-item">
                                     <label><i class="fas fa-camera"></i> Foto Jarak Dekat</label>
@@ -394,7 +396,14 @@
                             <input type="hidden" id="temuanData" value="">
                         </div>
 
-                        <button type="submit" class="btn-submit" id="submitInspeksi"><i class="fas fa-save"></i> Simpan Inspeksi</button>
+                        <!-- Phase 17.3B: menyimpan tidak lagi otomatis mengajukan. "Simpan Draft"
+                             menyimpan (draft / revisi) tanpa mengubah status; "Simpan & Ajukan"
+                             menyimpan lalu mengajukan ke tahap pengesahan. -->
+                        <div style="display:flex;gap:0.6rem;flex-wrap:wrap;">
+                            <button type="submit" class="btn-submit" id="submitInspeksi"><i class="fas fa-save"></i> Simpan Draft</button>
+                            <button type="button" class="btn-submit" id="submitAjukanInspeksi"><i class="fas fa-paper-plane"></i> Simpan &amp; Ajukan</button>
+                            <button type="button" class="btn-sm" id="batalEditInspeksi" style="display:none;"><i class="fas fa-times"></i> Batal Edit</button>
+                        </div>
                     </form>
                 </div>
             </div>
@@ -499,6 +508,21 @@
             <button class="close-modal" id="closeApprovalModal" aria-label="Tutup">&times;</button>
             <h3 id="approvalModalTitle"><i class="fas fa-stamp"></i> Pengesahan Inspeksi</h3>
             <div id="approvalContent"></div>
+        </div>
+    </div>
+
+    <!-- MODAL PENOLAKAN (Phase 17.3B) — menggantikan prompt(); alasan wajib, divalidasi ulang server. -->
+    <div class="modal-overlay no-print" id="rejectModal">
+        <div class="modal-box" role="dialog" aria-labelledby="rejectModalTitle">
+            <button class="close-modal" id="closeRejectModal" aria-label="Tutup">&times;</button>
+            <h3 id="rejectModalTitle"><i class="fas fa-times-circle"></i> Tolak Inspeksi</h3>
+            <p id="rejectModalInfo" style="font-size:0.85rem;color:#7a3a3a;margin-bottom:0.8rem;"></p>
+            <div class="form-group">
+                <label for="rejectReason">Alasan penolakan <span style="color:#c62828;">*</span></label>
+                <textarea id="rejectReason" rows="4" maxlength="1000" placeholder="Jelaskan apa yang perlu direvisi Safety Officer"></textarea>
+                <div id="rejectReasonCount" style="font-size:0.7rem;color:#8a6a6a;text-align:right;">0/1000</div>
+            </div>
+            <button type="button" class="btn-sm danger" data-action="confirmReject" style="padding:0.5rem 1.4rem;"><i class="fas fa-times"></i> Tolak Inspeksi</button>
         </div>
     </div>
 

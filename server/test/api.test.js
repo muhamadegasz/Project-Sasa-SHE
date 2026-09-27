@@ -124,7 +124,12 @@ test('GET /api/users hanya boleh admin', async () => {
     assert.equal(asAdmin.body.length, 9);
 });
 
-async function createInspection(officer, overrides = {}) {
+/**
+ * Membuat inspeksi (Phase 17.3B: selalu DRAFT) lalu — kecuali { submit: false } —
+ * mengajukannya lewat endpoint submit, karena kebanyakan test butuh inspeksi
+ * yang sudah IN_REVIEW.
+ */
+async function createInspection(officer, overrides = {}, { submit = true } = {}) {
     const res = await withCsrf(officer.agent.post('/api/inspections'), officer.csrfToken).send({
         plantId: 1,
         keteranganLokasi: 'Gudang B',
@@ -134,6 +139,13 @@ async function createInspection(officer, overrides = {}) {
         ...overrides,
     });
     assert.equal(res.status, 201, JSON.stringify(res.body));
+    if (!submit) return res.body.inspection;
+    return submitInspection(officer, res.body.inspection.id);
+}
+
+async function submitInspection(officer, id) {
+    const res = await withCsrf(officer.agent.post(`/api/inspections/${id}/submit`), officer.csrfToken);
+    assert.equal(res.status, 200, JSON.stringify(res.body));
     return res.body.inspection;
 }
 
@@ -150,10 +162,12 @@ test('alur penuh (Phase 17.2): ajukan -> Koordinator -> Manajer -> Ketua -> COMP
     const admin = await loginAs('admin');
 
     // 1. Safety Officer membuat inspeksi — petugas dipaksa dari sesi; status dari
-    //    body DIABAIKAN; langsung diajukan ke tahap Koordinator (interim 17.2).
-    const inspection = await createInspection(arif, { status: 'completed', petugas: 'Bukan Arif' });
-    assert.equal(inspection.petugas, 'Arif', 'petugas dipaksa dari req.user, bukan body');
-    assert.equal(inspection.status, 'in_review', 'status dari body diabaikan');
+    //    body DIABAIKAN; hasilnya DRAFT (Phase 17.3B), lalu diajukan eksplisit.
+    const draft = await createInspection(arif, { status: 'completed', petugas: 'Bukan Arif' }, { submit: false });
+    assert.equal(draft.petugas, 'Arif', 'petugas dipaksa dari req.user, bukan body');
+    assert.equal(draft.status, 'draft', 'status dari body diabaikan — inspeksi baru selalu DRAFT');
+    const inspection = await submitInspection(arif, draft.id);
+    assert.equal(inspection.status, 'in_review');
     assert.equal(inspection.currentApprovalStage, 'koordinator_k3l');
     assert.deepEqual(inspection.approvalHistory, [], 'Safety Officer bukan tahap pengesahan');
     const id = inspection.id;
@@ -163,24 +177,28 @@ test('alur penuh (Phase 17.2): ajukan -> Koordinator -> Manajer -> Ketua -> COMP
     assert.equal(asAdmin.status, 403);
     assert.equal(asAdmin.body.error, 'FORBIDDEN');
 
-    // 3. Koordinator plant LAIN -> 403, walau tahu id inspeksinya.
+    // 3. Koordinator plant LAIN tidak melihat inspeksi ini -> 404 (Phase 17.3B:
+    //    tidak membocorkan keberadaannya), walau tahu id-nya.
     const otherPlant = await decide(rina, id, 'approve', { stageId: 'koordinator_k3l' });
-    assert.equal(otherPlant.status, 403);
+    assert.equal(otherPlant.status, 404);
 
-    // 4. Melompat ke tahap Ketua sebelum Koordinator/Manajer -> 400 STAGE_NOT_CURRENT.
+    // 4. Ketua belum melihat inspeksi di tahap Koordinator -> 404; Koordinator
+    //    (yang melihatnya) mengirim tahap yang salah -> 400 STAGE_NOT_CURRENT.
     const skipAhead = await decide(hadi, id, 'approve', { stageId: 'ketua_p2k3' });
-    assert.equal(skipAhead.status, 400);
-    assert.equal(skipAhead.body.error, 'STAGE_NOT_CURRENT');
+    assert.equal(skipAhead.status, 404);
+    const wrongStage = await decide(dewi, id, 'approve', { stageId: 'manajer' });
+    assert.equal(wrongStage.status, 400);
+    assert.equal(wrongStage.body.error, 'STAGE_NOT_CURRENT');
 
     // 5. Koordinator plant-nya sendiri menyetujui — identitas sungguhan tersimpan (S-07).
     const approveKoordinator = await decide(dewi, id, 'approve', { stageId: 'koordinator_k3l' });
     assert.equal(approveKoordinator.status, 200);
     assert.equal(approveKoordinator.body.fullyApproved, false);
 
-    // 5b. Approve ulang tahap yang sudah lewat -> ditolak, bukan menimpa keputusan.
+    // 5b. Approve ulang tahap yang sudah lewat -> ditolak, bukan menimpa keputusan
+    //     (Koordinator tidak lagi melihat inspeksi setelah tahapnya lewat -> 404).
     const doubleApprove = await decide(dewi, id, 'approve', { stageId: 'koordinator_k3l' });
-    assert.equal(doubleApprove.status, 400);
-    assert.equal(doubleApprove.body.error, 'STAGE_NOT_CURRENT');
+    assert.equal(doubleApprove.status, 404);
 
     const afterKoordinator = (await arif.agent.get(`/api/inspections/${id}`)).body;
     assert.equal(afterKoordinator.currentApprovalStage, 'manajer');
@@ -250,10 +268,10 @@ test('penolakan (Phase 17.2): alasan wajib, -> REVISION_REQUIRED di tahap yang m
     assert.equal(body.approvalHistory[1].rejectionReason, 'Foto area kurang jelas');
     assert.equal(body.approvalHistory[1].reviewerUserId, andi.user.id, 'identitas penolak tersimpan (dulu tidak pernah)');
 
-    // Selama revisi, tahap itu tidak bisa diputuskan lagi.
+    // Selama revisi, tahap itu tidak bisa diputuskan lagi — Manajer bahkan
+    // tidak melihat inspeksi yang sedang direvisi (Phase 17.3B) -> 404.
     const whileRevising = await decide(andi, id, 'approve', { stageId: 'manajer' });
-    assert.equal(whileRevising.status, 400);
-    assert.equal(whileRevising.body.error, 'NOT_IN_REVIEW');
+    assert.equal(whileRevising.status, 404);
 });
 
 test('login mengembalikan plantId Koordinator (cakupan satu plant)', async () => {
@@ -325,7 +343,7 @@ async function createInspectionWithPhoto(officer, plantId) {
         .field('temuan', JSON.stringify([{ deskripsi: `Temuan plant ${plantId}`, kategori: 'Lainnya' }]))
         .attach('fotoDekat', FIXTURE_JPEG);
     assert.equal(res.status, 201, JSON.stringify(res.body));
-    return res.body.inspection;
+    return submitInspection(officer, res.body.inspection.id);
 }
 
 async function listedIds(session) {
@@ -340,18 +358,6 @@ async function detailStatus(session, id) {
 
 async function photoStatus(session, photoId) {
     return (await session.agent.get(`/api/inspections/photos/${photoId}/file`)).status;
-}
-
-/**
- * Belum ada endpoint pembuatan draft (Phase 17.3B), jadi state DRAFT untuk
- * uji visibilitas disiapkan langsung di database — HANYA di test ini.
- */
-async function forceDraft(inspectionId) {
-    const numericId = Number(String(inspectionId).replace(/\D/g, ''));
-    await pool.query(
-        "UPDATE inspections SET status = 'draft', current_approval_stage = NULL, submitted_at = NULL WHERE id = ?",
-        [numericId],
-    );
 }
 
 async function assertHidden(session, id, label) {
@@ -400,11 +406,11 @@ test('visibilitas Safety Officer: miliknya di semua status; milik orang lain han
     await assertHidden(arif, 'INS-003', 'REVISION_REQUIRED milik SO lain (seed)');
 
     // DRAFT: pemilik melihat, siapa pun yang lain tidak — termasuk Admin.
-    await forceDraft(others.id);
-    await assertVisible(tulus, others.id, 'DRAFT milik sendiri');
-    await assertHidden(arif, others.id, 'DRAFT milik SO lain');
+    const othersDraft = await createInspection(tulus, { plantId: 1 }, { submit: false });
+    await assertVisible(tulus, othersDraft.id, 'DRAFT milik sendiri');
+    await assertHidden(arif, othersDraft.id, 'DRAFT milik SO lain');
     for (const username of ['dewi', 'andi', 'hadi', 'admin']) {
-        await assertHidden(await loginAs(username), others.id, `DRAFT dilihat ${username}`);
+        await assertHidden(await loginAs(username), othersDraft.id, `DRAFT dilihat ${username}`);
     }
 });
 
@@ -504,8 +510,7 @@ test('visibilitas Admin: IN_REVIEW, REVISION_REQUIRED, COMPLETED terlihat; DRAFT
     await assertVisible(admin, 'INS-003', 'REVISION_REQUIRED');
     await assertVisible(admin, 'INS-001', 'COMPLETED');
 
-    const draft = await createInspection(arif, { plantId: 3 });
-    await forceDraft(draft.id);
+    const draft = await createInspection(arif, { plantId: 3 }, { submit: false });
     await assertHidden(admin, draft.id, 'DRAFT');
 });
 
@@ -526,8 +531,7 @@ test('visibilitas tindakan perbaikan: draft/revisi SO lain tidak bisa dibaca ata
         return total;
     };
 
-    const draft = await createInspection(arif, { plantId: 1, keteranganLokasi: 'RAHASIA-DRAFT' });
-    await forceDraft(draft.id);
+    const draft = await createInspection(arif, { plantId: 1, keteranganLokasi: 'RAHASIA-DRAFT' }, { submit: false });
     const revision = await createInspection(arif, { plantId: 1 });
     assert.equal((await decide(dewi, revision.id, 'reject', { stageId: 'koordinator_k3l', reason: 'Lengkapi' })).status, 200);
 
@@ -543,9 +547,286 @@ test('visibilitas tindakan perbaikan: draft/revisi SO lain tidak bisa dibaca ata
         assert.equal(readdirSync(UPLOAD_DIR).length, filesBefore, `${label}: foto yang terlanjur diunggah dibersihkan`);
     }
 
-    // Tidak terlalu ketat: pemilik tetap bisa menambah tindakan ke revisinya,
-    // dan SO lain tetap bisa ke inspeksi yang memang terlihat olehnya (IN_REVIEW).
+    // Pemilik tetap bisa menambah tindakan ke revisinya. SO lain yang BISA
+    // melihat inspeksinya (IN_REVIEW) tetap ditolak 403 — sejak Phase 17.3B
+    // hanya pemilik yang boleh (sebelumnya 201).
     assert.equal((await postAction(arif, revision.id)).status, 201, 'pemilik, REVISION_REQUIRED');
     const visibleToTulus = await createInspection(arif, { plantId: 1 });
-    assert.equal((await postAction(tulus, visibleToTulus.id)).status, 201, 'SO lain, IN_REVIEW');
+    assert.equal((await postAction(tulus, visibleToTulus.id)).status, 403, 'SO lain, IN_REVIEW: hanya-lihat');
+});
+
+// =========================================================================
+// Phase 17.3B — siklus hidup draft, kepemilikan, dan keterbukaan informasi
+// approve/reject. Setiap aksi juga diuji lewat akses LANGSUNG by id (IDOR).
+// =========================================================================
+
+function putDraft(session, id, body) {
+    return withCsrf(session.agent.put(`/api/inspections/${id}`), session.csrfToken).send(body);
+}
+
+const DRAFT_CONTENT = {
+    plantId: 1,
+    keteranganLokasi: 'Draft awal',
+    tanggal: '2026-09-21',
+    dueDate: '2026-10-05',
+    temuan: [{ deskripsi: 'Temuan draft A', kategori: 'Kelistrikan' }, { deskripsi: 'Temuan draft B', kategori: 'Lainnya' }],
+};
+
+test('draft: dibuat sebagai DRAFT milik pengguna login — tanpa tahap/pengajuan/riwayat/tindakan; privat; isian status & pemilik diabaikan', async () => {
+    const arif = await loginAs('arif');
+    const tulus = await loginAs('tulus');
+    const draft = await createInspection(arif, {
+        ...DRAFT_CONTENT, status: 'in_review', currentApprovalStage: 'manajer', petugasUserId: tulus.user.id, submittedAt: '2026-01-01',
+    }, { submit: false });
+
+    assert.equal(draft.status, 'draft');
+    assert.equal(draft.currentApprovalStage, null);
+    assert.equal(draft.submittedAt, null);
+    assert.deepEqual(draft.approvalHistory, []);
+    assert.deepEqual(draft.perbaikan, [], 'tindakan awal baru dibuat saat pengajuan pertama');
+    assert.equal(draft.petugasUserId, arif.user.id, 'pemilik dari sesi, bukan body');
+
+    await assertVisible(arif, draft.id, 'pemilik');
+    for (const username of ['tulus', 'dewi', 'andi', 'hadi', 'admin']) {
+        await assertHidden(await loginAs(username), draft.id, `draft dilihat ${username}`);
+    }
+});
+
+test('ubah draft: hanya pemilik; status tetap DRAFT; temuan diperbarui/ditambah/dihapus; status/tahap/pemilik dari body diabaikan; foto baru ditambahkan', async () => {
+    const arif = await loginAs('arif');
+    const tulus = await loginAs('tulus');
+    const admin = await loginAs('admin');
+    const dewi = await loginAs('dewi');
+    const draft = await createInspection(arif, DRAFT_CONTENT, { submit: false });
+    const [findingA] = draft.temuan;
+
+    const edited = {
+        ...DRAFT_CONTENT,
+        keteranganLokasi: 'Draft diubah',
+        temuan: [{ id: findingA.id, deskripsi: 'Temuan draft A (diperbarui)', kategori: 'Kebakaran' }, { deskripsi: 'Temuan draft C', kategori: 'Kebocoran' }],
+        status: 'completed', currentApprovalStage: 'ketua_p2k3', petugasUserId: tulus.user.id,
+    };
+
+    // Bukan pemilik: SO lain tidak melihat draft -> 404 (sama dengan id tidak ada); non-SO -> 403 (role).
+    assert.equal((await putDraft(tulus, draft.id, edited)).status, 404);
+    assert.equal((await putDraft(admin, draft.id, edited)).status, 403);
+    assert.equal((await putDraft(dewi, draft.id, edited)).status, 403);
+    assert.equal((await putDraft(arif, 'INS-99999', edited)).status, 404);
+
+    const res = await putDraft(arif, draft.id, edited);
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    const saved = res.body.inspection;
+    assert.equal(saved.status, 'draft');
+    assert.equal(saved.currentApprovalStage, null);
+    assert.equal(saved.petugasUserId, arif.user.id);
+    assert.equal(saved.keteranganLokasi, 'Draft diubah');
+    assert.deepEqual(saved.temuan.map((finding) => [finding.deskripsi, finding.kategori]),
+        [['Temuan draft A (diperbarui)', 'Kebakaran'], ['Temuan draft C', 'Kebocoran']], 'B dihapus, A diperbarui, C ditambahkan');
+    assert.equal(saved.temuan[0].id, findingA.id, 'temuan A diperbarui di tempat, bukan diganti');
+
+    // Id temuan milik inspeksi LAIN tidak bisa dipakai untuk menyentuhnya — diperlakukan sebagai temuan baru.
+    const other = await createInspection(tulus, DRAFT_CONTENT, { submit: false });
+    const foreignId = other.temuan[0].id;
+    const withForeign = await putDraft(arif, draft.id, { ...DRAFT_CONTENT, temuan: [{ id: foreignId, deskripsi: 'Mencoba menimpa', kategori: 'Lainnya' }] });
+    assert.equal(withForeign.status, 200);
+    const [[foreignRow]] = await pool.query('SELECT deskripsi, inspection_id FROM findings WHERE id = ?', [foreignId]);
+    assert.equal(foreignRow.deskripsi, 'Temuan draft A', 'temuan milik inspeksi lain tidak berubah');
+
+    // Validasi isi tetap berlaku saat mengubah.
+    const invalid = await putDraft(arif, draft.id, { ...DRAFT_CONTENT, temuan: [] });
+    assert.equal(invalid.status, 400);
+    assert.equal(invalid.body.error, 'FINDINGS_REQUIRED');
+
+    // Foto baru lewat multipart ditambahkan ke draft.
+    const withPhoto = await withCsrf(arif.agent.put(`/api/inspections/${draft.id}`), arif.csrfToken)
+        .field('plantId', '1').field('tanggal', '2026-09-21').field('dueDate', '2026-10-05')
+        .field('temuan', JSON.stringify(DRAFT_CONTENT.temuan))
+        .attach('fotoDekat', FIXTURE_JPEG);
+    assert.equal(withPhoto.status, 200, JSON.stringify(withPhoto.body));
+    assert.equal(withPhoto.body.inspection.fotoDekat.length, 1);
+    assert.equal(await photoStatus(arif, withPhoto.body.inspection.fotoDekat[0].id), 200);
+});
+
+test('ajukan: DRAFT -> IN_REVIEW di Koordinator, submittedAt terisi, tanpa entri pengesahan, tindakan awal per temuan; hanya pemilik; tidak dua kali', async () => {
+    const arif = await loginAs('arif');
+    const tulus = await loginAs('tulus');
+    const admin = await loginAs('admin');
+    const draft = await createInspection(arif, DRAFT_CONTENT, { submit: false });
+    const submitAs = (session, id) => withCsrf(session.agent.post(`/api/inspections/${id}/submit`), session.csrfToken);
+
+    assert.equal((await submitAs(tulus, draft.id)).status, 404, 'SO lain tidak melihat draft');
+    assert.equal((await submitAs(admin, draft.id)).status, 403, 'non-SO');
+    assert.equal((await submitAs(arif, 'INS-99999')).status, 404);
+
+    const res = await submitAs(arif, draft.id);
+    assert.equal(res.status, 200, JSON.stringify(res.body));
+    const submitted = res.body.inspection;
+    assert.equal(submitted.status, 'in_review');
+    assert.equal(submitted.currentApprovalStage, 'koordinator_k3l');
+    assert.ok(submitted.submittedAt, 'submittedAt terisi');
+    assert.deepEqual(submitted.approvalHistory, [], 'pengajuan bukan keputusan pengesahan');
+    assert.deepEqual(submitted.perbaikan.map((action) => [action.action, action.status]),
+        [['Temuan 1: Temuan draft A', 'open'], ['Temuan 2: Temuan draft B', 'open']]);
+    const [[{ total: approvalRows }]] = await pool.query('SELECT COUNT(*) AS total FROM approvals WHERE inspection_id = ?', [Number(draft.id.replace(/\D/g, ''))]);
+    assert.equal(approvalRows, 0, 'tidak ada baris approvals palsu untuk pengajuan');
+
+    const again = await submitAs(arif, draft.id);
+    assert.equal(again.status, 400);
+    assert.equal(again.body.error, 'NOT_SUBMITTABLE');
+
+    // Setelah diajukan, draft tidak bisa lagi diubah.
+    const editAfter = await putDraft(arif, draft.id, DRAFT_CONTENT);
+    assert.equal(editAfter.status, 400);
+    assert.equal(editAfter.body.error, 'NOT_EDITABLE');
+
+    // Dua pengajuan bersamaan: tepat satu berhasil, tindakan awal tidak terduplikasi.
+    const race = await createInspection(arif, DRAFT_CONTENT, { submit: false });
+    const results = await Promise.all([submitAs(arif, race.id), submitAs(arif, race.id)]);
+    assert.deepEqual(results.map((r) => r.status).sort(), [200, 400]);
+    const [[{ total: actionRows }]] = await pool.query('SELECT COUNT(*) AS total FROM corrective_actions WHERE inspection_id = ?', [Number(race.id.replace(/\D/g, ''))]);
+    assert.equal(actionRows, 2);
+});
+
+test('revisi: tolak -> REVISION_REQUIRED (tahap tetap) -> pemilik merevisi -> ajukan ulang ke tahap YANG SAMA -> attempt baru; riwayat utuh', async () => {
+    const arif = await loginAs('arif');
+    const tulus = await loginAs('tulus');
+    const dewi = await loginAs('dewi');
+    const andi = await loginAs('andi');
+    const hadi = await loginAs('hadi');
+    const inspection = await createInspection(arif, DRAFT_CONTENT);
+
+    assert.equal((await decide(dewi, inspection.id, 'approve', { stageId: 'koordinator_k3l' })).status, 200);
+    assert.equal((await decide(andi, inspection.id, 'reject', { stageId: 'manajer', reason: 'Tambahkan temuan jalur evakuasi' })).status, 200);
+
+    const rejected = (await arif.agent.get(`/api/inspections/${inspection.id}`)).body;
+    assert.equal(rejected.status, 'revision_required');
+    assert.equal(rejected.currentApprovalStage, 'manajer', 'tidak kembali ke Koordinator');
+
+    // Hanya pemilik yang boleh merevisi.
+    const revisedContent = { ...DRAFT_CONTENT, temuan: [...rejected.temuan, { deskripsi: 'Jalur evakuasi terhalang', kategori: 'Kecelakaan' }] };
+    assert.equal((await putDraft(tulus, inspection.id, revisedContent)).status, 404, 'SO lain tidak melihat revisi');
+    assert.equal((await putDraft(andi, inspection.id, revisedContent)).status, 403, 'peninjau bukan SO');
+
+    const revised = await putDraft(arif, inspection.id, revisedContent);
+    assert.equal(revised.status, 200, JSON.stringify(revised.body));
+    assert.equal(revised.body.inspection.status, 'revision_required', 'menyimpan revisi bukan mengajukan ulang');
+    assert.equal(revised.body.inspection.perbaikan.at(-1).action, 'Temuan 3: Jalur evakuasi terhalang', 'temuan baru pada revisi mendapat tindakan awal');
+
+    const resubmitRes = await withCsrf(tulus.agent.post(`/api/inspections/${inspection.id}/submit`), tulus.csrfToken);
+    assert.equal(resubmitRes.status, 404, 'SO lain tidak bisa mengajukan ulang');
+    const resubmitted = await submitInspection(arif, inspection.id);
+    assert.equal(resubmitted.status, 'in_review');
+    assert.equal(resubmitted.currentApprovalStage, 'manajer', 'kembali ke tahap yang menolak');
+    assert.deepEqual(resubmitted.approvalHistory.map((entry) => [entry.stage, entry.attempt, entry.decision]),
+        [['koordinator_k3l', 1, 'approved'], ['manajer', 1, 'rejected']], 'tidak ada keputusan baru sampai peninjau memutuskan');
+
+    assert.equal((await decide(andi, inspection.id, 'approve', { stageId: 'manajer' })).status, 200);
+    assert.equal((await decide(hadi, inspection.id, 'approve', { stageId: 'ketua_p2k3' })).status, 200);
+    const completed = (await arif.agent.get(`/api/inspections/${inspection.id}`)).body;
+    assert.equal(completed.status, 'completed');
+    assert.deepEqual(completed.approvalHistory.map((entry) => [entry.stage, entry.attempt, entry.decision]), [
+        ['koordinator_k3l', 1, 'approved'], ['manajer', 1, 'rejected'], ['manajer', 2, 'approved'], ['ketua_p2k3', 1, 'approved'],
+    ], 'attempt 1 tidak ditimpa');
+});
+
+test('hapus draft: hanya pemilik & hanya DRAFT; file fotonya ikut dihapus dari disk', async () => {
+    const arif = await loginAs('arif');
+    const tulus = await loginAs('tulus');
+    const admin = await loginAs('admin');
+    const { readdirSync } = await import('node:fs');
+    const { UPLOAD_DIR } = await import('../config/upload.js');
+    const deleteAs = (session, id) => withCsrf(session.agent.delete(`/api/inspections/${id}`), session.csrfToken);
+
+    const created = await withCsrf(arif.agent.post('/api/inspections'), arif.csrfToken)
+        .field('plantId', '1').field('tanggal', '2026-09-21')
+        .field('temuan', JSON.stringify(DRAFT_CONTENT.temuan))
+        .attach('fotoDekat', FIXTURE_JPEG);
+    assert.equal(created.status, 201);
+    const draft = created.body.inspection;
+    const filesWithDraft = readdirSync(UPLOAD_DIR).length;
+
+    assert.equal((await deleteAs(tulus, draft.id)).status, 404, 'SO lain');
+    assert.equal((await deleteAs(admin, draft.id)).status, 403, 'Admin (penghapusan Admin fase lain)');
+    const submitted = await createInspection(arif, DRAFT_CONTENT);
+    const notDraft = await deleteAs(arif, submitted.id);
+    assert.equal(notDraft.status, 400);
+    assert.equal(notDraft.body.error, 'NOT_DELETABLE');
+
+    assert.equal((await deleteAs(arif, draft.id)).status, 200);
+    assert.equal(await detailStatus(arif, draft.id), 404);
+    assert.equal(readdirSync(UPLOAD_DIR).length, filesWithDraft - 1, 'file foto draft terhapus');
+});
+
+test('approve/reject: inspeksi yang tidak terlihat -> 404 identik dengan id tidak ada (status/tahap tidak bocor); terlihat tapi tidak berwenang -> 403', async () => {
+    const arif = await loginAs('arif');
+    const rina = await loginAs('rina');
+    const admin = await loginAs('admin');
+    const draft = await createInspection(arif, DRAFT_CONTENT, { submit: false });
+    const inReview = await createInspection(arif, DRAFT_CONTENT);
+
+    const missingApprove = await decide(rina, 'INS-99999', 'approve', { stageId: 'koordinator_k3l' });
+    assert.equal(missingApprove.status, 404);
+    for (const [label, id, action, body] of [
+        ['approve, plant lain (IN_REVIEW)', inReview.id, 'approve', { stageId: 'koordinator_k3l' }],
+        ['reject, plant lain (IN_REVIEW)', inReview.id, 'reject', { stageId: 'koordinator_k3l', reason: 'x' }],
+        ['approve, draft', draft.id, 'approve', { stageId: 'koordinator_k3l' }],
+        ['approve, tahap salah & tidak terlihat', inReview.id, 'approve', { stageId: 'manajer' }],
+    ]) {
+        const res = await decide(rina, id, action, body);
+        assert.deepEqual({ status: res.status, body: res.body }, { status: missingApprove.status, body: missingApprove.body }, label);
+    }
+    // Admin melihat draft? Tidak -> juga 404.
+    assert.equal((await decide(admin, draft.id, 'approve', { stageId: 'koordinator_k3l' })).status, 404);
+
+    // Terlihat tapi tidak berwenang: aturan wewenang yang ada tetap berlaku.
+    const ownerApprove = await decide(arif, inReview.id, 'approve', { stageId: 'koordinator_k3l' });
+    assert.equal(ownerApprove.status, 403);
+    assert.equal(ownerApprove.body.error, 'FORBIDDEN');
+    assert.equal((await decide(admin, inReview.id, 'reject', { stageId: 'koordinator_k3l', reason: 'x' })).status, 403);
+});
+
+test('alasan penolakan divalidasi server: kosong, spasi, bukan string, terlalu panjang -> 400; valid -> diterima', async () => {
+    const arif = await loginAs('arif');
+    const dewi = await loginAs('dewi');
+    const inspection = await createInspection(arif, DRAFT_CONTENT);
+    const rejectWith = (reason) => decide(dewi, inspection.id, 'reject', { stageId: 'koordinator_k3l', reason });
+
+    for (const [reason, error] of [
+        ['', 'REJECTION_REASON_REQUIRED'],
+        ['   ', 'REJECTION_REASON_REQUIRED'],
+        [undefined, 'REJECTION_REASON_REQUIRED'],
+        [{ injected: '<script>' }, 'REJECTION_REASON_INVALID'],
+        [['a', 'b'], 'REJECTION_REASON_INVALID'],
+        [12345, 'REJECTION_REASON_INVALID'],
+        ['x'.repeat(1001), 'REJECTION_REASON_TOO_LONG'],
+    ]) {
+        const res = await rejectWith(reason);
+        assert.equal(res.status, 400, JSON.stringify(reason));
+        assert.equal(res.body.error, error, JSON.stringify(reason));
+    }
+    const [[{ total }]] = await pool.query('SELECT COUNT(*) AS total FROM approvals WHERE inspection_id = ?', [Number(inspection.id.replace(/\D/g, ''))]);
+    assert.equal(total, 0, 'tidak ada keputusan tersimpan dari alasan yang ditolak');
+
+    const valid = await rejectWith('  Foto kurang jelas  ');
+    assert.equal(valid.status, 200);
+    const body = (await arif.agent.get(`/api/inspections/${inspection.id}`)).body;
+    assert.equal(body.approvalHistory[0].rejectionReason, 'Foto kurang jelas', 'disimpan setelah di-trim');
+});
+
+test('tindakan perbaikan: HANYA SO pemilik — SO lain yang melihat, peninjau, Manajer, Admin ditolak; id yang diketahui tidak cukup', async () => {
+    const arif = await loginAs('arif');
+    const tulus = await loginAs('tulus');
+    const inspection = await createInspection(arif, DRAFT_CONTENT);
+    const postAction = (session, id) => withCsrf(session.agent.post(`/api/inspections/${id}/corrective-actions`), session.csrfToken)
+        .field('action', 'Tindakan uji kepemilikan').field('status', 'open').field('pic', 'X')
+        .attach('photos', FIXTURE_JPEG);
+
+    assert.equal(await detailStatus(tulus, inspection.id), 200, 'SO lain MELIHAT inspeksi IN_REVIEW...');
+    const byOther = await postAction(tulus, inspection.id);
+    assert.equal(byOther.status, 403, '...tapi tidak boleh menambah tindakan');
+    assert.equal(byOther.body.error, 'FORBIDDEN');
+    for (const username of ['dewi', 'andi', 'hadi', 'admin']) {
+        assert.equal((await postAction(await loginAs(username), inspection.id)).status, 403, username);
+    }
+    assert.equal((await postAction(arif, inspection.id)).status, 201, 'pemilik');
 });

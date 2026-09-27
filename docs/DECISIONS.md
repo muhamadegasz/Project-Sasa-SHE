@@ -1370,3 +1370,46 @@ end-to-end: byte tersimpan di disk, tersaji kembali sebagai gambar sungguhan.
 - Visibilitas (`canView`) sudah ada di domain dan teruji, tapi **belum** diterapkan pada
   `GET /api/inspections` dan endpoint file foto — keduanya masih mengembalikan semua data ke setiap
   pengguna login. Tombol setujui/tolak masih tampil untuk semua role (server tetap menolak).
+
+
+## K-25: Phase 17.3A–17.3B — Visibilitas di server, siklus hidup draft, kepemilikan
+
+### 17.3A — visibilitas baca ditegakkan server
+
+- `visibilityScope(user)` (`src/domain/inspection-policy.js`) menjabarkan cakupan lihat sebagai
+  kriteria; `canView()` dibangun di atasnya dan repository menerjemahkannya menjadi `WHERE`
+  (`getAllVisibleTo`, `findByIdVisibleTo`, `findPhotoFile(photoId, user)`) — aturan hanya di domain.
+- Di luar cakupan dijawab `404 {error:'NOT_FOUND'}` yang identik dengan id yang tidak ada.
+
+### 17.3B — siklus hidup milik Safety Officer
+
+- **Membuat = DRAFT** (penghubung "buat = ajukan" 17.2 dihapus). Endpoint eksplisit, tanpa "ubah
+  status" generik: `PUT /api/inspections/:id` (ubah draft/revisi), `POST /:id/submit` (ajukan /
+  ajukan ulang — server menentukan tahap), `DELETE /:id` (hapus draft sendiri). Status, tahap, dan
+  pemilik di body selalu diabaikan.
+- **Kepemilikan terpisah dari visibilitas:** `isOwningOfficer()` menjadi dasar `canEdit`,
+  `canRevise`, `canSubmit`, `canDeleteDraft`, dan `canEditCorrectiveAction`. Tidak terlihat ->
+  `NOT_FOUND` (404); terlihat tapi bukan pemilik -> `FORBIDDEN` (403); pemilik tapi status salah
+  -> `NOT_EDITABLE` / `NOT_SUBMITTABLE` / `NOT_DELETABLE` (400).
+- **Tindakan perbaikan hanya pemilik** (aturan terkunci). Batas STATUS tidak ditambahkan: aplikasi
+  tidak pernah membatasinya dan belum ada keputusan bisnis — terbuka untuk diputuskan.
+- **Approve/reject:** inspeksi yang tidak terlihat dijawab `NOT_FOUND` SEBELUM `NOT_IN_REVIEW`/
+  `STAGE_NOT_CURRENT`/`FORBIDDEN`, sehingga status/tahap tidak bocor.
+- **Alasan penolakan:** harus string, di-trim, tidak kosong, maks. 1000 karakter
+  (`checkRejectionReason`); objek/array ditolak `REJECTION_REASON_INVALID`, bukan jadi
+  "[object Object]". Form `prompt()` diganti modal `#rejectModal` di sistem modal yang ada.
+- **Aturan isi tidak berubah:** simpan draft, simpan revisi, dan pengajuan memakai aturan yang
+  sama dengan sebelumnya (plant ada, ≥1 temuan, tanggal) — tidak ada field wajib baru, tidak ada
+  "draft tidak lengkap".
+- **Tindakan awal per temuan** ("Temuan N: …", open) dipindah dari saat draft dibuat ke
+  **pengajuan pertama** — supaya mengubah temuan draft tidak meninggalkan tindakan basi. Temuan
+  baru saat revisi ikut mendapat tindakan awal; temuan yang dihapus saat revisi TIDAK menghapus
+  tindakannya (bukti tidak pernah dihapus; `finding_id` jadi NULL lewat FK).
+- **Temuan saat mengubah** dikirim utuh: `id` miliknya diperbarui, tanpa/asing ditambahkan (id milik
+  inspeksi lain tidak pernah bisa menyentuhnya), tidak disebut dihapus. Foto hanya bisa ditambah.
+- **`submitted_at`** mencatat pengajuan pertama; pengajuan ulang tidak mengubahnya.
+- **Konkurensi:** `update`/`removeDraft` mengunci baris (`SELECT … FOR UPDATE`) dengan status &
+  pemilik yang diharapkan; `submit` memakai `UPDATE … WHERE status = <status awal>` — dua pengajuan
+  bersamaan menghasilkan tepat satu (diuji). Service menetapkan status awal sebelum `await` lain.
+- **Hapus draft** didukung aturan 17.0 ("CRUD selama DRAFT"): pemilik saja, DRAFT saja; file foto
+  di disk ikut dihapus (dibatasi di dalam `UPLOAD_DIR`). Penghapusan oleh Admin tetap fase lain.

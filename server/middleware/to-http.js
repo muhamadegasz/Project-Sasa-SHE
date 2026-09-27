@@ -8,13 +8,18 @@
  * isian tidak valid. Alasan lain tetap 400.
  */
 
-const FORBIDDEN_REASON = 'FORBIDDEN';
+import { ACCESS_ERROR } from '../../src/services/result.js';
 
 export function sendResult(res, result, successStatus = 200) {
     if (result.ok) {
         res.status(successStatus).json(result.data);
+    } else if (result.reason === ACCESS_ERROR.NOT_FOUND) {
+        // Phase 17.3B: badan respons IDENTIK dengan GET /api/inspections/:id
+        // untuk id yang tidak ada / di luar cakupan — tanpa `data`, supaya
+        // tidak ada perbedaan apa pun yang bisa dipakai untuk enumerasi.
+        res.status(404).json({ error: ACCESS_ERROR.NOT_FOUND });
     } else {
-        const status = result.reason === FORBIDDEN_REASON ? 403 : 400;
+        const status = result.reason === ACCESS_ERROR.FORBIDDEN ? 403 : 400;
         res.status(status).json({ error: result.reason, data: result.data || null });
     }
 }

@@ -29,6 +29,35 @@ function filesToPhotoMeta(files) {
     }));
 }
 
+/**
+ * `temuan` datang sebagai string JSON lewat multipart (FormData), atau array
+ * lewat JSON biasa. JSON rusak / bukan array -> [] (service menolaknya
+ * FINDINGS_REQUIRED, 400), bukan exception yang berakhir 500.
+ */
+function parseTemuan(value) {
+    if (Array.isArray(value)) return value;
+    if (typeof value !== 'string') return [];
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [];
+    } catch {
+        return [];
+    }
+}
+
+/** Isian konten inspeksi dari body — HANYA field konten; status/tahap/pemilik tidak pernah diambil dari sini. */
+function contentFromRequest(req) {
+    return {
+        plantId: req.body.plantId,
+        keteranganLokasi: req.body.keteranganLokasi,
+        tanggal: req.body.tanggal,
+        dueDate: req.body.dueDate,
+        temuan: parseTemuan(req.body.temuan),
+        fotoDekat: filesToPhotoMeta(req.files?.fotoDekat),
+        fotoJauh: filesToPhotoMeta(req.files?.fotoJauh),
+    };
+}
+
 // Phase 17.3A: daftar dan detail hanya berisi inspeksi yang boleh dilihat
 // pengguna login (domain/inspection-policy.js visibilityScope, diterapkan di
 // query). Inspeksi di luar cakupan dijawab 404 yang SAMA PERSIS dengan id yang
@@ -50,14 +79,11 @@ inspectionsRouter.post(
     asyncHandler(verifyImageContent),
     asyncHandler(async (req, res) => {
         try {
-            const temuan = typeof req.body.temuan === 'string' ? JSON.parse(req.body.temuan) : req.body.temuan;
+            // Phase 17.3B: menghasilkan DRAFT milik pengguna login.
             const result = await inspectionService.create({
-                ...req.body,
-                temuan,
+                ...contentFromRequest(req),
                 petugas: req.user.displayName,
                 petugasUserId: req.user.id,
-                fotoDekat: filesToPhotoMeta(req.files?.fotoDekat),
-                fotoJauh: filesToPhotoMeta(req.files?.fotoJauh),
             });
             // F-04: validasi bisnis gagal (mis. PLANT_NOT_FOUND) SETELAH multer
             // sudah menulis file ke disk -> file itu tidak akan pernah tersimpan
@@ -71,6 +97,39 @@ inspectionsRouter.post(
         }
     }),
 );
+
+// Phase 17.3B: siklus hidup milik Safety Officer. Kepemilikan, status yang
+// diizinkan, dan transisinya diputuskan inspection-service + domain; route
+// hanya meneruskan identitas sesi. Tidak ada endpoint "ubah status" generik.
+
+// Mengubah isi draft (DRAFT) atau revisi (REVISION_REQUIRED) milik sendiri.
+// Status/tahap/pemilik di body diabaikan.
+inspectionsRouter.put(
+    '/:id',
+    requireRole('safety_officer'),
+    upload.fields([{ name: 'fotoDekat' }, { name: 'fotoJauh' }]),
+    asyncHandler(verifyImageContent),
+    asyncHandler(async (req, res) => {
+        try {
+            const result = await inspectionService.update(req.params.id, contentFromRequest(req), req.user);
+            if (!result.ok) await cleanupUploadedFiles(req);
+            sendResult(res, result);
+        } catch (error) {
+            await cleanupUploadedFiles(req);
+            throw error;
+        }
+    }),
+);
+
+// Mengajukan draft, atau mengajukan ulang revisi ke tahap yang menolaknya.
+inspectionsRouter.post('/:id/submit', requireRole('safety_officer'), asyncHandler(async (req, res) => {
+    sendResult(res, await inspectionService.submit(req.params.id, req.user));
+}));
+
+// Menghapus draft milik sendiri — BUKAN penghapusan inspeksi oleh Admin.
+inspectionsRouter.delete('/:id', requireRole('safety_officer'), asyncHandler(async (req, res) => {
+    sendResult(res, await inspectionService.removeDraft(req.params.id, req.user));
+}));
 
 // Phase 17.2: wewenang (role + status + tahap berjalan + cakupan plant
 // Koordinator) diputuskan domain/inspection-policy.js lewat approval-service,
@@ -92,20 +151,16 @@ inspectionsRouter.post(
     asyncHandler(verifyImageContent),
     asyncHandler(async (req, res) => {
         try {
-            // Phase 17.3A: inspeksi yang tidak boleh DILIHAT juga tidak boleh
-            // ditindaklanjuti — tanpa ini, Safety Officer lain bisa membaca
-            // (respons berisi inspeksi lengkap) dan menulis ke draft/revisi
-            // privat hanya dengan menebak id. 404 identik dengan id yang tidak
-            // ada; foto yang sudah ditulis multer dibersihkan.
-            if (!(await inspectionRepository.findByIdVisibleTo(req.params.id, req.user))) {
-                await cleanupUploadedFiles(req);
-                return res.status(404).json({ error: 'NOT_FOUND' });
-            }
+            // Phase 17.3B: hanya Safety Officer PEMILIK inspeksi (domain/
+            // inspection-policy.js canEditCorrectiveAction, lewat service).
+            // Tidak terlihat -> 404 identik dengan id yang tidak ada; terlihat
+            // tapi bukan pemilik -> 403. Foto yang sudah ditulis multer dibersihkan.
             const result = await correctiveActionService.addAction(req.params.id, {
-                ...req.body,
+                action: req.body.action,
+                status: req.body.status,
+                pic: req.body.pic,
                 photos: filesToPhotoMeta(req.files),
-                uploadedBy: req.user.id,
-            });
+            }, req.user);
             if (!result.ok) await cleanupUploadedFiles(req);
             sendResult(res, result, 201);
         } catch (error) {

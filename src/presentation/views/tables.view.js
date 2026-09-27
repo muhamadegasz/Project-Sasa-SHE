@@ -30,9 +30,35 @@ import * as scheduleRules from '../../domain/schedule-rules.js';
 import * as scheduleRepository from '../../repositories/schedule-repository.js';
 import * as inspectionRepository from '../../repositories/inspection-repository.js';
 import * as plantRepository from '../../repositories/plant-repository.js';
+import { canDeleteDraft, canEdit, canRevise, canSubmit } from '../../domain/inspection-policy.js';
+import { getCurrentUser } from '../../infrastructure/session.js';
 
 // Dipakai ketiga tabel di berkas ini (inspeksi, jadwal, perbaikan).
 const OVERDUE_BADGE = '<span class="overdue-badge"><i class="fas fa-exclamation-circle"></i> OVERDUE</span>';
+
+/**
+ * Tombol siklus hidup untuk Safety Officer PEMILIK (Phase 17.3B): Edit/Revisi,
+ * Ajukan, Hapus draft — hanya dirender bila domain/inspection-policy.js
+ * mengizinkannya untuk pengguna login. Pengguna lain hanya melihat. Server
+ * tetap otoritatif walau tombol ini dimanipulasi.
+ */
+function ownerLifecycleButtons(item) {
+    const user = getCurrentUser();
+    const id = escapeHtml(item.id);
+    const buttons = [];
+    if (canEdit(user, item) || canRevise(user, item)) {
+        const label = canRevise(user, item) ? 'Revisi' : 'Edit';
+        buttons.push(`<button class="btn-sm primary" data-action="editInspeksi" data-id="${id}" data-testid="row-edit-btn" title="${label}"><i class="fas fa-pen"></i> ${label}</button>`);
+    }
+    if (canSubmit(user, item)) {
+        const label = canRevise(user, item) ? 'Ajukan Ulang' : 'Ajukan';
+        buttons.push(`<button class="btn-sm info" data-action="ajukanInspeksi" data-id="${id}" data-testid="row-submit-btn" title="${label}"><i class="fas fa-paper-plane"></i> ${label}</button>`);
+    }
+    if (canDeleteDraft(user, item)) {
+        buttons.push(`<button class="btn-sm danger" data-action="hapusDraftInspeksi" data-id="${id}" data-testid="row-delete-draft-btn" title="Hapus draft"><i class="fas fa-trash"></i></button>`);
+    }
+    return buttons.join(' ');
+}
 
 /** Badge status alur kerja inspeksi — dipakai kedua varian tabel inspeksi. */
 function inspectionStatusBadge(item) {
@@ -111,7 +137,7 @@ function renderInspeksiTable(data, tbodyId, isFull, highlightQuery = '') {
                             <span class="status-badge ${approvalColor}">${approvalStatus}</span>
                             <button class="btn-sm info" data-action="openApprovalModal" data-id="${escapeHtml(item.id)}" data-testid="row-approve-btn" style="margin-top:0.2rem;"><i class="fas fa-stamp"></i></button>
                         </td>
-                        <td>${exportBtn} ${pdfBtn}</td>
+                        <td>${ownerLifecycleButtons(item)} ${exportBtn} ${pdfBtn}</td>
                     </tr>
                 `;
         } else {

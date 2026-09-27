@@ -22,7 +22,10 @@ import { apiPost, apiGet, ApiError } from './infrastructure/api-client.js';
 import { setSession, clearSession, getCurrentUser, onSessionExpired } from './infrastructure/session.js';
 
 import { allActionsClosed, countAllFindings } from './domain/inspection-rules.js';
-import { findStage, isFullyApproved } from './domain/approval-rules.js';
+import { findStage, isFullyApproved, latestDecision } from './domain/approval-rules.js';
+import { canEdit, canRevise } from './domain/inspection-policy.js';
+import { INSPECTION_STATUS } from './domain/statuses.js';
+import { localDateToIso } from './shared/date.js';
 import * as scheduleRules from './domain/schedule-rules.js';
 
 import * as approvalService from './services/approval-service.js';
@@ -125,13 +128,19 @@ import { registerAction, initActionDispatcher } from './presentation/controllers
 // tampilan. Teksnya sama persis dengan sebelum refactoring.
 
 const PESAN_GAGAL = {
-    INSPECTION_NOT_FOUND: '⚠️ Data tidak ditemukan',
+    NOT_FOUND: '⚠️ Data tidak ditemukan',
     PLANT_NOT_FOUND: '⚠️ Plant tidak ditemukan, coba pilih ulang',
     STAGE_NOT_FOUND: '⚠️ Tahap tidak ditemukan',
     NOT_IN_REVIEW: '⚠️ Inspeksi ini tidak sedang menunggu pengesahan',
     STAGE_NOT_CURRENT: '⚠️ Tahap ini sudah tidak menunggu keputusan — muat ulang data',
     REJECTION_REASON_REQUIRED: '⚠️ Alasan penolakan wajib diisi',
-    FORBIDDEN: '⛔ Anda tidak berwenang memutuskan tahap ini',
+    REJECTION_REASON_INVALID: '⚠️ Alasan penolakan harus berupa teks',
+    REJECTION_REASON_TOO_LONG: '⚠️ Alasan penolakan maksimal 1000 karakter',
+    FORBIDDEN: '⛔ Anda tidak berwenang untuk aksi ini',
+    NOT_EDITABLE: '⚠️ Inspeksi ini tidak bisa diubah pada status sekarang',
+    NOT_SUBMITTABLE: '⚠️ Inspeksi ini tidak bisa diajukan pada status sekarang',
+    NOT_DELETABLE: '⚠️ Hanya draft yang bisa dihapus',
+    STATE_CHANGED: '⚠️ Status inspeksi baru saja berubah — muat ulang data',
     ACTION_REQUIRED: '⚠️ Masukkan deskripsi tindakan',
     PHOTO_REQUIRED: '⚠️ Wajib upload foto sebagai bukti progres!',
     PLANT_REQUIRED: '⚠️ Silakan pilih Plant terlebih dahulu!',
@@ -357,23 +366,48 @@ async function approveStage(inspeksiId, stageId) {
     await refreshAll();
 }
 
-async function rejectStage(inspeksiId, stageId) {
+// Phase 17.3B: penolakan lewat modal (#rejectModal) dengan alasan wajib —
+// menggantikan prompt() Phase 17.2. Server tetap memvalidasi ulang alasannya.
+let pendingReject = null;
+
+function updateRejectReasonCount() {
+    const input = document.getElementById('rejectReason');
+    document.getElementById('rejectReasonCount').textContent = `${input.value.length}/${input.maxLength}`;
+}
+
+function rejectStage(inspeksiId, stageId) {
     const stage = findStage(stageId);
     if (!stage) { showToast(pesanGagal('STAGE_NOT_FOUND')); return; }
-    // Phase 17.2: alasan penolakan wajib. prompt() adalah penghubung sementara
-    // sampai form penolakan sungguhan di Phase 17.3; null = dibatalkan pengguna.
-    const reason = prompt(`Alasan penolakan inspeksi ${inspeksiId} oleh ${stage.title}:`);
-    if (reason === null) return;
+    pendingReject = { inspeksiId, stageId };
+    document.getElementById('rejectModalInfo').textContent =
+        `${stage.title} menolak inspeksi ${inspeksiId}. Inspeksi kembali ke Safety Officer untuk direvisi, lalu diajukan ulang ke tahap ini.`;
+    const input = document.getElementById('rejectReason');
+    input.value = '';
+    updateRejectReasonCount();
+    openModal('rejectModal');
+    input.focus();
+}
 
+async function confirmReject() {
+    if (!pendingReject) return;
+    const reason = document.getElementById('rejectReason').value;
+    if (!reason.trim()) { showToast(pesanGagal('REJECTION_REASON_REQUIRED')); return; }
+
+    const { inspeksiId, stageId } = pendingReject;
     const result = await approvalService.reject(inspeksiId, stageId, getCurrentUser(), reason);
     if (!result.ok) { showToast(pesanGagal(result.reason)); return; }
 
+    pendingReject = null;
     showToast(`❌ ${result.data.stage.title} menolak inspeksi ${inspeksiId}`);
-    // Phase 17.3A: sama seperti approveStage — setelah ditolak, inspeksi
-    // menunggu revisi dan tidak lagi terlihat oleh penolaknya.
+    // Phase 17.3A: setelah ditolak, inspeksi menunggu revisi dan tidak lagi
+    // terlihat oleh penolaknya — kedua modal ditutup, bukan dibuka ulang.
+    closeModal('rejectModal');
     closeModal('approvalModal');
     await refreshAll();
 }
+
+document.getElementById('rejectReason').addEventListener('input', updateRejectReasonCount);
+bindModalClose('rejectModal', 'closeRejectModal');
 
 // ========================================================================
 // ========== PDF GENERATOR ==========
@@ -530,7 +564,7 @@ async function tambahPerbaikanCustom(id) {
         status: document.getElementById('newStatus').value,
         pic: document.getElementById('newPIC').value.trim() || getRandomOfficer(),
         photos: fotoFiles,
-    });
+    }, getCurrentUser());
     if (!result.ok) { showToast(pesanGagal(result.reason)); return; }
 
     await refreshAll();
@@ -589,64 +623,190 @@ document.getElementById('temuanInput').addEventListener('keypress', function(e) 
 // ========================================================================
 // ========== SUBMIT FORM ==========
 // ========================================================================
+//
+// Phase 17.3B: form yang sama dipakai untuk membuat DRAFT baru dan untuk
+// mengubah draft / revisi milik sendiri. "Simpan Draft" hanya menyimpan
+// (status tidak berubah); "Simpan & Ajukan" menyimpan lalu mengajukan lewat
+// endpoint submit — server yang menentukan status dan tahapnya.
 
-document.getElementById('submitInspeksi').addEventListener('click', async function(e) {
-    e.preventDefault();
+/** Inspeksi yang sedang diubah lewat form ({ id }), atau null saat membuat baru. */
+let editingInspection = null;
+let savingInspeksi = false;
 
-    const temuanData = document.getElementById('temuanData').value;
-    // petugas TIDAK lagi dibaca dari input bebas sejak Phase 14 — server
-    // selalu memaksanya dari identitas login (lihat inspections.routes.js);
-    // mengirim nilai lain di sini tidak berpengaruh, field formPetugas kini
-    // hanya tampilan (lihat showMainApp()).
+function formContent() {
+    return {
+        plantId: document.getElementById('selectedPlant').value,
+        keteranganLokasi: document.getElementById('formKeteranganLokasi').value.trim(),
+        tanggal: document.getElementById('formTanggal').value,
+        dueDate: document.getElementById('formDueDate').value,
+        fotoDekat: Array.from(document.getElementById('fotoDekat').files),
+        fotoJauh: Array.from(document.getElementById('fotoJauh').files),
+        // Temuan yang dimuat dari inspeksi membawa `id` — server memperbaruinya di tempat.
+        temuan: temuanList.map((item) => ({ ...item })),
+    };
+}
+
+function showFormValidation(reason) {
+    const { INSPECTION_ERROR } = inspectionService;
+    if (reason === INSPECTION_ERROR.PLANT_REQUIRED) {
+        showToast('⚠️ Silakan pilih Lokasi / Plant terlebih dahulu!');
+        plantSelectForm.markInvalid();
+    } else if (reason === INSPECTION_ERROR.PLANT_NOT_FOUND) {
+        showToast(pesanGagal('PLANT_NOT_FOUND'));
+        plantSelectForm.markInvalid();
+    } else if (reason === INSPECTION_ERROR.FINDINGS_REQUIRED) {
+        showToast('⚠️ Tambahkan minimal 1 temuan!');
+    } else if (reason === INSPECTION_ERROR.DATE_REQUIRED) {
+        showToast('⚠️ Tanggal inspeksi wajib diisi!');
+    } else {
+        showToast(pesanGagal(reason));
+    }
+}
+
+function submittedMessage(id, submitResult) {
+    if (!submitResult.resubmitted) return `✅ Inspeksi ${id} berhasil disimpan dan diajukan ke Koordinator K3L.`;
+    const stage = findStage(submitResult.inspection.currentApprovalStage);
+    return `✅ Inspeksi ${id} berhasil disimpan dan diajukan ulang ke ${stage ? stage.title : 'tahap yang menolak'}.`;
+}
+
+async function saveInspeksi({ submit }) {
+    if (savingInspeksi) return;
+    savingInspeksi = true;
     const user = getCurrentUser();
-
     try {
-        const result = await inspectionService.create({
-            plantId: document.getElementById('selectedPlant').value,
-            keteranganLokasi: document.getElementById('formKeteranganLokasi').value.trim(),
-            tanggal: document.getElementById('formTanggal').value,
-            petugas: user ? user.displayName : getRandomOfficer(),
-            dueDate: document.getElementById('formDueDate').value,
-            fotoDekat: Array.from(document.getElementById('fotoDekat').files),
-            fotoJauh: Array.from(document.getElementById('fotoJauh').files),
-            temuan: temuanData ? JSON.parse(temuanData) : [],
-        });
+        const content = formContent();
+        // petugas TIDAK dibaca dari input bebas — server selalu memaksanya dari
+        // identitas login (lihat inspections.routes.js); field formPetugas hanya tampilan.
+        const saved = editingInspection
+            ? await inspectionService.update(editingInspection.id, content, user)
+            : await inspectionService.create({ ...content, petugas: user ? user.displayName : getRandomOfficer() });
+        if (!saved.ok) { showFormValidation(saved.reason); return; }
 
-        if (!result.ok) {
-            if (result.reason === inspectionService.INSPECTION_ERROR.PLANT_REQUIRED) {
-                showToast('⚠️ Silakan pilih Lokasi / Plant terlebih dahulu!');
-                plantSelectForm.markInvalid();
-            } else if (result.reason === inspectionService.INSPECTION_ERROR.PLANT_NOT_FOUND) {
-                showToast(pesanGagal('PLANT_NOT_FOUND'));
-                plantSelectForm.markInvalid();
-            } else if (result.reason === inspectionService.INSPECTION_ERROR.FINDINGS_REQUIRED) {
-                showToast('⚠️ Tambahkan minimal 1 temuan!');
-            } else {
-                showToast('⚠️ Tanggal inspeksi wajib diisi!');
+        const id = saved.data.inspection.id;
+        let message = editingInspection ? `✅ ${id} berhasil disimpan.` : `✅ Draft ${id} berhasil disimpan.`;
+        if (submit) {
+            const submitted = await inspectionService.submit(id, user);
+            if (!submitted.ok) {
+                resetInspeksiForm();
+                await refreshAll();
+                showToast(`⚠️ ${id} tersimpan, tapi belum diajukan: ${pesanGagal(submitted.reason)}`);
+                return;
             }
-            return;
+            message = submittedMessage(id, submitted.data);
         }
 
-        const newId = result.data.inspection.id;
-
-        temuanList = [];
-        renderTemuanList();
-        document.getElementById('temuanInput').value = '';
-        document.getElementById('fotoDekat').value = '';
-        document.getElementById('fotoJauh').value = '';
-
-        plantSelectForm.clear();
-
+        resetInspeksiForm();
         await refreshAll();
-        showToast(`✅ Inspeksi ${newId} berhasil disimpan! Tahap 1 (Safety Officer) sudah disetujui.`);
-        this.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Menyimpan...';
-        setTimeout(() => { this.innerHTML = '<i class="fas fa-save"></i> Simpan Inspeksi'; }, 1000);
+        showToast(message);
     } catch (error) {
         if (!(error instanceof ApiError) || error.status !== 401) {
             showToast(reportError('simpan inspeksi', error, '⚠️ Gagal menyimpan inspeksi. Coba ulangi beberapa saat lagi.'));
         }
+    } finally {
+        savingInspeksi = false;
     }
+}
+
+/** Menyesuaikan judul, catatan revisi, dan tombol form dengan mode buat/ubah. */
+function setFormMode(inspection) {
+    const notice = document.getElementById('revisionNotice');
+    const photoNote = document.getElementById('existingPhotoNote');
+    const cancelBtn = document.getElementById('batalEditInspeksi');
+    const submitBtn = document.getElementById('submitAjukanInspeksi');
+
+    notice.style.display = 'none';
+    notice.textContent = '';
+    photoNote.textContent = '';
+    if (!inspection) {
+        document.getElementById('inspeksiFormTitle').textContent = 'Buat Inspeksi Baru';
+        cancelBtn.style.display = 'none';
+        submitBtn.innerHTML = '<i class="fas fa-paper-plane"></i> Simpan &amp; Ajukan';
+        return;
+    }
+
+    const revising = inspection.status === INSPECTION_STATUS.REVISION_REQUIRED;
+    document.getElementById('inspeksiFormTitle').textContent = revising ? `Revisi ${inspection.id}` : `Edit Draft ${inspection.id}`;
+    cancelBtn.style.display = '';
+    submitBtn.innerHTML = revising
+        ? '<i class="fas fa-paper-plane"></i> Simpan &amp; Ajukan Ulang'
+        : '<i class="fas fa-paper-plane"></i> Simpan &amp; Ajukan';
+
+    if (revising) {
+        const stage = findStage(inspection.currentApprovalStage);
+        const rejection = latestDecision(inspection, inspection.currentApprovalStage);
+        // textContent, bukan innerHTML: alasan penolakan adalah isian bebas peninjau.
+        notice.textContent = `Ditolak oleh ${stage ? stage.title : 'peninjau'}${rejection && rejection.reviewerName ? ` (${rejection.reviewerName})` : ''}: `
+            + `"${rejection && rejection.rejectionReason ? rejection.rejectionReason : '-'}". `
+            + `Setelah direvisi, inspeksi diajukan ulang ke tahap ${stage ? stage.title : 'yang sama'}.`;
+        notice.style.display = 'block';
+    }
+    const photoCount = (inspection.fotoDekat || []).length + (inspection.fotoJauh || []).length;
+    if (photoCount > 0) photoNote.textContent = `(${photoCount} foto sudah tersimpan — foto yang dipilih akan ditambahkan)`;
+}
+
+function resetInspeksiForm() {
+    editingInspection = null;
+    temuanList = [];
+    renderTemuanList();
+    document.getElementById('temuanInput').value = '';
+    document.getElementById('fotoDekat').value = '';
+    document.getElementById('fotoJauh').value = '';
+    document.getElementById('formKeteranganLokasi').value = '';
+    document.getElementById('formTanggal').value = '';
+    document.getElementById('formDueDate').value = '';
+    plantSelectForm.clear();
+    setFormMode(null);
+}
+
+/** Membuka draft / revisi milik sendiri di form (tombol "Edit" di tabel inspeksi). */
+async function editInspeksi(id) {
+    const item = await inspectionRepository.findById(id);
+    if (!item) { showToast(pesanGagal('NOT_FOUND')); return; }
+    const user = getCurrentUser();
+    if (!canEdit(user, item) && !canRevise(user, item)) { showToast(pesanGagal('NOT_EDITABLE')); return; }
+
+    resetInspeksiForm();
+    editingInspection = { id: item.id };
+    const plant = await plantRepository.findById(item.plantId);
+    if (plant) plantSelectForm.select(plant.id, plant.name, plant.code);
+    document.getElementById('formKeteranganLokasi').value = item.keteranganLokasi === '-' ? '' : (item.keteranganLokasi || '');
+    document.getElementById('formTanggal').value = localDateToIso(item.tanggal) || '';
+    document.getElementById('formDueDate').value = localDateToIso(item.dueDate) || '';
+    temuanList = (item.temuan || []).map((finding) => ({ id: finding.id, deskripsi: finding.deskripsi, kategori: finding.kategori }));
+    renderTemuanList();
+    setFormMode(item);
+    switchTab('form');
+}
+
+/** Mengajukan / mengajukan ulang langsung dari tabel (tanpa membuka form). */
+async function ajukanInspeksi(id) {
+    if (!confirm(`Ajukan inspeksi ${id} untuk pengesahan? Setelah diajukan, isinya tidak bisa diubah kecuali ditolak peninjau.`)) return;
+    const result = await inspectionService.submit(id, getCurrentUser());
+    if (!result.ok) { showToast(pesanGagal(result.reason)); return; }
+    if (editingInspection && editingInspection.id === id) resetInspeksiForm();
+    await refreshAll();
+    showToast(submittedMessage(id, result.data).replace(' berhasil disimpan dan', ''));
+}
+
+/** Menghapus draft milik sendiri (bukan penghapusan inspeksi oleh Admin). */
+async function hapusDraftInspeksi(id) {
+    if (!confirm(`Hapus draft ${id}? Tindakan ini tidak bisa dibatalkan.`)) return;
+    const result = await inspectionService.removeDraft(id, getCurrentUser());
+    if (!result.ok) { showToast(pesanGagal(result.reason)); return; }
+    if (editingInspection && editingInspection.id === id) resetInspeksiForm();
+    await refreshAll();
+    showToast(`🗑️ Draft ${id} dihapus`);
+}
+
+document.getElementById('submitInspeksi').addEventListener('click', (e) => {
+    e.preventDefault();
+    saveInspeksi({ submit: false });
 });
+document.getElementById('submitAjukanInspeksi').addEventListener('click', (e) => {
+    e.preventDefault();
+    saveInspeksi({ submit: true });
+});
+document.getElementById('batalEditInspeksi').addEventListener('click', () => resetInspeksiForm());
 
 // ========================================================================
 // ========== STATS & REFRESH ==========
@@ -853,6 +1013,10 @@ registerAction('editJadwal', (el) => editJadwal(el.dataset.id));
 registerAction('hapusJadwal', (el) => hapusJadwal(el.dataset.id));
 registerAction('tambahPerbaikanCustom', (el) => tambahPerbaikanCustom(el.dataset.id));
 registerAction('hapusTemuan', (el) => hapusTemuan(Number(el.dataset.index)));
+registerAction('editInspeksi', (el) => editInspeksi(el.dataset.id));
+registerAction('ajukanInspeksi', (el) => ajukanInspeksi(el.dataset.id));
+registerAction('hapusDraftInspeksi', (el) => hapusDraftInspeksi(el.dataset.id));
+registerAction('confirmReject', () => confirmReject());
 initActionDispatcher();
 
 /* Ekspor murni untuk pengujian (lihat scratchpad test-*.mjs) — BUKAN untuk
@@ -860,12 +1024,16 @@ initActionDispatcher();
    fungsi-fungsi ini lewat pendaftaran aksi di atas atau lewat pemanggilan
    langsung antar fungsi, bukan lewat ekspor ini. */
 export {
+    ajukanInspeksi,
     approveStage,
     cetakPDF,
     changeCalendarMonth,
+    confirmReject,
+    editInspeksi,
     editJadwal,
     exportTemuanPerItem,
     handleLogin,
+    hapusDraftInspeksi,
     hapusJadwal,
     hapusTemuan,
     logout,

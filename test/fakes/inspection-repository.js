@@ -3,7 +3,8 @@
  * Test double untuk #repositories/inspection-repository.js. Mengimplementasikan
  * HANYA method yang benar-benar dipanggil src/services/{inspection,approval,
  * corrective-action}-service.js: getAll, count, findById, add, recordDecision,
- * addCorrectiveAction. Bukan salinan server/repositories/ atau
+ * addCorrectiveAction, dan (Phase 17.3B) update, submit, removeDraft — ketiganya
+ * meniru penjaga status/pemilik versi MySQL. Bukan salinan server/repositories/ atau
  * src/repositories/ — tidak ada transaksi, tidak ada foto/DB, tidak ada fetch.
  *
  * findById() mengembalikan REFERENSI HIDUP ke objek di dalam array (persis
@@ -17,6 +18,7 @@
 
 let inspections = [];
 let nextNumericId = 1;
+let nextFindingId = 1000;
 
 function toDisplayId(numericId) {
     return `INS-${String(numericId).padStart(3, '0')}`;
@@ -52,9 +54,50 @@ export async function findById(id) {
 }
 
 export async function add(inspection) {
-    const created = { id: toDisplayId(nextNumericId++), ...inspection };
+    const created = {
+        id: toDisplayId(nextNumericId++),
+        ...inspection,
+        temuan: (inspection.temuan || []).map((finding) => ({ ...finding, id: nextFindingId++ })),
+    };
     inspections.unshift(created);
     return created;
+}
+
+export async function update(inspectionId, fields, options) {
+    const inspection = inspections.find((row) => row.id === inspectionId);
+    if (!inspection || inspection.status !== options.expectedStatus || inspection.petugasUserId !== options.ownerId) return false;
+    const existingIds = new Set((inspection.temuan || []).map((finding) => finding.id));
+    const temuan = fields.temuan.map((finding, index) => {
+        if (existingIds.has(finding.id)) return { ...finding };
+        const created = { deskripsi: finding.deskripsi, kategori: finding.kategori, id: nextFindingId++ };
+        if (options.initialActionsForNewFindings) {
+            inspection.perbaikan.push({ findingId: created.id, action: `Temuan ${index + 1}: ${finding.deskripsi}`, status: 'open', pic: options.pic, foto: [] });
+        }
+        return created;
+    });
+    Object.assign(inspection, {
+        plantId: fields.plantId, keteranganLokasi: fields.keteranganLokasi, tanggal: fields.tanggal, dueDate: fields.dueDate, temuan,
+        fotoDekat: [...(inspection.fotoDekat || []), ...fields.fotoDekat],
+        fotoJauh: [...(inspection.fotoJauh || []), ...fields.fotoJauh],
+    });
+    return true;
+}
+
+export async function submit(inspectionId, expectedStatus, nextState, initialActions) {
+    const inspection = inspections.find((row) => row.id === inspectionId);
+    if (!inspection || inspection.status !== expectedStatus) return false;
+    inspection.status = nextState.status;
+    inspection.currentApprovalStage = nextState.currentApprovalStage;
+    inspection.submittedAt = inspection.submittedAt || new Date().toISOString();
+    inspection.perbaikan = [...(inspection.perbaikan || []), ...initialActions.map((action) => ({ ...action, foto: [] }))];
+    return true;
+}
+
+export async function removeDraft(inspectionId) {
+    const index = inspections.findIndex((row) => row.id === inspectionId && row.status === 'draft');
+    if (index === -1) return false;
+    inspections.splice(index, 1);
+    return true;
 }
 
 export async function recordDecision(inspectionId, decision, nextState) {

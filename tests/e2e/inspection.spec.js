@@ -19,7 +19,7 @@ import { loginViaUi, goToTab, selectPlant } from './support/ui.js';
 const PLANT_SEARCH_PLACEHOLDER = 'Cari plant... (ketik nama plant)';
 const FIXTURE_JPEG = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'e2e-foto-bukti.jpg');
 
-test('safety officer bisa membuat inspeksi baru lewat form (pilih plant, tambah temuan, submit)', async ({ page }) => {
+test('safety officer bisa membuat inspeksi baru lewat form sebagai DRAFT (pilih plant, tambah temuan, simpan)', async ({ page }) => {
     await loginViaUi(page, 'arif');
     await goToTab(page, 'Buat Inspeksi');
 
@@ -30,12 +30,18 @@ test('safety officer bisa membuat inspeksi baru lewat form (pilih plant, tambah 
     await expect(page.locator('#temuanListContainer')).toContainText('E2E: kabel terkelupas di panel utama');
 
     await page.getByTestId('inspection-date').fill(new Date().toISOString().slice(0, 10));
-    await page.getByRole('button', { name: 'Simpan Inspeksi' }).click();
+    await page.getByRole('button', { name: 'Simpan Draft' }).click();
 
     await expect(page.locator('#toastMessage')).toContainText('berhasil disimpan', { timeout: 15_000 });
     const toastText = await page.locator('#toastText').textContent();
     const newId = toastText.match(/INS-\d+/)?.[0];
     expect(newId, `toast tidak memuat id inspeksi baru: "${toastText}"`).toBeTruthy();
+
+    // Phase 17.3B: menyimpan tidak lagi otomatis mengajukan.
+    const res = await page.request.get(`http://project-sasa-she.test:3001/api/inspections/${newId}`);
+    const saved = await res.json();
+    expect(saved.status).toBe('draft');
+    expect(saved.currentApprovalStage).toBeNull();
 });
 
 test('identitas petugas yang dipakai adalah user yang sedang login, bukan input bebas', async ({ page }) => {
@@ -50,7 +56,7 @@ test('identitas petugas yang dipakai adalah user yang sedang login, bukan input 
     await page.getByPlaceholder('Contoh: Kabel terbuka').fill('E2E: verifikasi identitas petugas');
     await page.locator('#panel-form').getByRole('button', { name: 'Tambah' }).click();
     await page.getByTestId('inspection-date').fill(new Date().toISOString().slice(0, 10));
-    await page.getByRole('button', { name: 'Simpan Inspeksi' }).click();
+    await page.getByRole('button', { name: 'Simpan Draft' }).click();
 
     await expect(page.locator('#toastMessage')).toContainText('berhasil disimpan', { timeout: 15_000 });
     const toastText = await page.locator('#toastText').textContent();
@@ -74,7 +80,7 @@ test('inspeksi tanpa plant dipilih ditolak dengan pesan validasi, tidak tersimpa
     await page.locator('#panel-form').getByRole('button', { name: 'Tambah' }).click();
     await page.getByTestId('inspection-date').fill(new Date().toISOString().slice(0, 10));
 
-    await page.getByRole('button', { name: 'Simpan Inspeksi' }).click();
+    await page.getByRole('button', { name: 'Simpan Draft' }).click();
 
     await expect(page.locator('#toastMessage')).toContainText('pilih Lokasi / Plant');
     // Tidak berpindah ke dashboard/tab lain, dan tidak ada toast sukses menyusul.
@@ -91,7 +97,7 @@ test('foto sungguhan yang diunggah bisa dilihat kembali lewat lightbox (bukan pl
     await page.getByTestId('inspection-date').fill(new Date().toISOString().slice(0, 10));
     await page.locator('#fotoDekat').setInputFiles(FIXTURE_JPEG);
 
-    await page.getByRole('button', { name: 'Simpan Inspeksi' }).click();
+    await page.getByRole('button', { name: 'Simpan Draft' }).click();
     await expect(page.locator('#toastMessage')).toContainText('berhasil disimpan', { timeout: 15_000 });
     const toastText = await page.locator('#toastText').textContent();
     const newId = toastText.match(/INS-\d+/)?.[0];
@@ -134,7 +140,7 @@ test('kegagalan API (500) saat submit menampilkan pesan aman, bukan detail error
     await page.getByPlaceholder('Contoh: Kabel terbuka').fill('E2E: simulasi kegagalan backend');
     await page.locator('#panel-form').getByRole('button', { name: 'Tambah' }).click();
     await page.getByTestId('inspection-date').fill(new Date().toISOString().slice(0, 10));
-    await page.getByRole('button', { name: 'Simpan Inspeksi' }).click();
+    await page.getByRole('button', { name: 'Simpan Draft' }).click();
 
     const toast = page.locator('#toastMessage');
     await expect(toast).toContainText('Gagal menyimpan inspeksi');

@@ -25,9 +25,13 @@
  * internal berkas ini.
  */
 
+import path from 'node:path';
+import { unlink } from 'node:fs/promises';
 import { pool } from '../db/pool.js';
+import { UPLOAD_DIR } from '../config/upload.js';
 import { formatDate } from '../../src/shared/date.js';
 import { visibilityScope } from '../../src/domain/inspection-policy.js';
+import { buildInitialAction } from '../../src/domain/inspection-rules.js';
 
 function toDisplayId(numericId) {
     return `INS-${String(numericId).padStart(3, '0')}`;
@@ -330,6 +334,192 @@ export async function recordDecision(inspectionId, decision, nextState) {
     } finally {
         connection.release();
     }
+}
+
+async function insertInspectionPhotos(connection, numericId, slot, photos, uploadedBy) {
+    for (const photo of photos || []) {
+        await connection.query(
+            `INSERT INTO photos (inspection_id, slot, file_path, original_name, mime_type, size_bytes, uploaded_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            [numericId, slot, photo.path, photo.originalName, photo.mimeType, photo.size, uploadedBy],
+        );
+    }
+}
+
+/**
+ * Mengunci baris inspeksi bila masih dalam status yang diharapkan dan milik
+ * `ownerId` — penjaga untuk update/removeDraft (Phase 17.3B). FOR UPDATE,
+ * bukan affectedRows dari UPDATE, karena UPDATE dengan nilai yang sama
+ * persis tidak dihitung sebagai baris yang berubah.
+ */
+async function lockOwnedInState(connection, numericId, expectedStatus, ownerId) {
+    const [rows] = await connection.query(
+        'SELECT id FROM inspections WHERE id = ? AND status = ? AND petugas_user_id = ? FOR UPDATE',
+        [numericId, expectedStatus, ownerId],
+    );
+    return rows.length > 0;
+}
+
+/**
+ * Menyimpan isi inspeksi milik sendiri (draft atau revisi) — Phase 17.3B.
+ * Status/tahap/pemilik tidak disentuh. Satu transaksi; false bila status
+ * atau pemiliknya sudah tidak sesuai `options` (mis. terlanjur diajukan).
+ *
+ * Temuan: `id` milik inspeksi ini -> diperbarui; tanpa/asing -> ditambahkan
+ * (id asing tidak pernah bisa menyentuh temuan inspeksi lain); tidak
+ * disebut -> dihapus (tindakan perbaikannya tetap, finding_id jadi NULL
+ * lewat FK). `options.initialActionsForNewFindings`: temuan baru ikut
+ * mendapat tindakan awal (revisi — inspeksi yang sudah pernah diajukan).
+ * Foto baru ditambahkan; foto lama tidak dihapus.
+ *
+ * @returns {Promise<boolean>}
+ */
+export async function update(inspectionId, fields, options) {
+    const numericId = toNumericId(inspectionId);
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+        if (!(await lockOwnedInState(connection, numericId, options.expectedStatus, options.ownerId))) {
+            await connection.rollback();
+            return false;
+        }
+
+        await connection.query(
+            'UPDATE inspections SET plant_id = ?, keterangan_lokasi = ?, tanggal = ?, due_date = ? WHERE id = ?',
+            [fields.plantId, fields.keteranganLokasi, toSqlDate(fields.tanggal), toSqlDate(fields.dueDate), numericId],
+        );
+
+        const [existingRows] = await connection.query('SELECT id FROM findings WHERE inspection_id = ?', [numericId]);
+        const existingIds = new Set(existingRows.map((row) => row.id));
+        const keptIds = new Set();
+        for (let index = 0; index < fields.temuan.length; index++) {
+            const finding = fields.temuan[index];
+            const findingId = Number(finding.id);
+            if (existingIds.has(findingId) && !keptIds.has(findingId)) {
+                await connection.query(
+                    'UPDATE findings SET deskripsi = ?, kategori = ? WHERE id = ? AND inspection_id = ?',
+                    [finding.deskripsi, finding.kategori, findingId, numericId],
+                );
+                keptIds.add(findingId);
+                continue;
+            }
+            const [inserted] = await connection.query(
+                'INSERT INTO findings (inspection_id, deskripsi, kategori) VALUES (?, ?, ?)',
+                [numericId, finding.deskripsi, finding.kategori],
+            );
+            keptIds.add(inserted.insertId);
+            if (options.initialActionsForNewFindings) {
+                const initial = buildInitialAction(finding, index + 1, options.pic);
+                await connection.query(
+                    `INSERT INTO corrective_actions (inspection_id, finding_id, tgl, action, status, pic)
+                     VALUES (?, ?, CURDATE(), ?, ?, ?)`,
+                    [numericId, inserted.insertId, initial.action, initial.status, initial.pic],
+                );
+            }
+        }
+        const removedIds = [...existingIds].filter((id) => !keptIds.has(id));
+        if (removedIds.length > 0) {
+            await connection.query('DELETE FROM findings WHERE inspection_id = ? AND id IN (?)', [numericId, removedIds]);
+        }
+
+        await insertInspectionPhotos(connection, numericId, 'dekat', fields.fotoDekat, options.ownerId);
+        await insertInspectionPhotos(connection, numericId, 'jauh', fields.fotoJauh, options.ownerId);
+
+        await connection.commit();
+        return true;
+    } catch (error) {
+        await connection.rollback();
+        throw error;
+    } finally {
+        connection.release();
+    }
+}
+
+/**
+ * Mengajukan (pertama/ulang) — Phase 17.3B. Satu transaksi: status & tahap
+ * berikutnya disimpan HANYA bila status masih `expectedStatus` (dua
+ * pengajuan bersamaan -> tepat satu berhasil), submitted_at diisi hanya pada
+ * pengajuan pertama, lalu tindakan awal per temuan (pengajuan pertama saja,
+ * disiapkan service). Tidak ada baris pengesahan yang dibuat.
+ *
+ * @returns {Promise<boolean>}
+ */
+export async function submit(inspectionId, expectedStatus, nextState, initialActions) {
+    const numericId = toNumericId(inspectionId);
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
+        const [update] = await connection.query(
+            `UPDATE inspections
+             SET status = ?, current_approval_stage = ?, submitted_at = COALESCE(submitted_at, NOW())
+             WHERE id = ? AND status = ?`,
+            [nextState.status, nextState.currentApprovalStage, numericId, expectedStatus],
+        );
+        if (update.affectedRows === 0) {
+            await connection.rollback();
+            return false;
+        }
+        for (const action of initialActions) {
+            await connection.query(
+                `INSERT INTO corrective_actions (inspection_id, finding_id, tgl, action, status, pic)
+                 VALUES (?, ?, CURDATE(), ?, ?, ?)`,
+                [numericId, action.findingId ?? null, action.action, action.status, action.pic],
+            );
+        }
+        await connection.commit();
+        return true;
+    } catch (error) {
+        await connection.rollback();
+        throw error;
+    } finally {
+        connection.release();
+    }
+}
+
+/**
+ * Menghapus draft (Phase 17.3B) — hanya bila masih DRAFT. Temuan, tindakan,
+ * dan baris foto ikut terhapus lewat FK CASCADE; file fotonya di disk
+ * dihapus SETELAH commit (best-effort, dibatasi di dalam UPLOAD_DIR) supaya
+ * tidak menjadi file yatim.
+ *
+ * @returns {Promise<boolean>}
+ */
+export async function removeDraft(inspectionId) {
+    const numericId = toNumericId(inspectionId);
+    const connection = await pool.getConnection();
+    let filePaths = [];
+    try {
+        await connection.beginTransaction();
+        const [locked] = await connection.query(
+            "SELECT id FROM inspections WHERE id = ? AND status = 'draft' FOR UPDATE",
+            [numericId],
+        );
+        if (locked.length === 0) {
+            await connection.rollback();
+            return false;
+        }
+        const [photoRows] = await connection.query(
+            `SELECT ph.file_path FROM photos ph
+             LEFT JOIN corrective_actions ca ON ca.id = ph.corrective_action_id
+             WHERE ph.inspection_id = ? OR ca.inspection_id = ?`,
+            [numericId, numericId],
+        );
+        filePaths = photoRows.map((row) => row.file_path);
+        await connection.query('DELETE FROM inspections WHERE id = ?', [numericId]);
+        await connection.commit();
+    } catch (error) {
+        await connection.rollback();
+        throw error;
+    } finally {
+        connection.release();
+    }
+
+    const root = path.resolve(UPLOAD_DIR);
+    for (const filePath of filePaths) {
+        const target = path.resolve(root, filePath);
+        if (target.startsWith(root + path.sep)) await unlink(target).catch(() => {});
+    }
+    return true;
 }
 
 /** Menyimpan satu tindakan perbaikan baru (+ fotonya) — jalur yang benar-benar menyimpan ke MySQL. */

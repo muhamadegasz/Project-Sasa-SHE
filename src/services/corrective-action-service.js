@@ -4,10 +4,12 @@
  */
 
 import * as inspectionRepository from '#repositories/inspection-repository.js';
-import { fail, ok } from './result.js';
+import { canEditCorrectiveAction, canView } from '../domain/inspection-policy.js';
+import { ACCESS_ERROR, fail, ok } from './result.js';
 
 export const CORRECTIVE_ACTION_ERROR = {
-    INSPECTION_NOT_FOUND: 'INSPECTION_NOT_FOUND',
+    // NOT_FOUND (404) / FORBIDDEN (403): lihat ACCESS_ERROR di result.js.
+    ...ACCESS_ERROR,
     ACTION_REQUIRED: 'ACTION_REQUIRED',
     PHOTO_REQUIRED: 'PHOTO_REQUIRED',
 };
@@ -24,21 +26,27 @@ export const CORRECTIVE_ACTION_ERROR = {
  * mencampur progres perbaikan dengan hasil pengesahan. Tindakan perbaikan
  * punya siklus hidupnya sendiri (open/on-progress/closed).
  *
+ * Phase 17.3B (aturan terkunci): HANYA Safety Officer pemilik inspeksi yang
+ * boleh menambah tindakan. Inspeksi yang tidak boleh dilihat -> NOT_FOUND
+ * (identik dengan id yang tidak ada); terlihat tapi bukan pemilik -> FORBIDDEN.
+ *
  * Sejak Phase 12: async (repository backend adalah MySQL sungguhan).
  * addCorrectiveAction() adalah jalur yang benar-benar menyimpan tindakan ke
  * backend (INSERT ke tabel corrective_actions + photos) — lihat catatan di
  * src/repositories/inspection-repository.js.
  *
  * @param {string} inspectionId
- * @param {{action: string, status: string, pic: string, photos: Array, uploadedBy?: number}} input
+ * @param {{action: string, status: string, pic: string, photos: Array}} input
  *   `photos`: `File[]` di browser (sebelum dikirim lewat FormData), objek metadata
  *   `{path, originalName, mimeType, size}[]` di server (dari multer, lihat
  *   inspections.routes.js) — service ini tidak menyentuh isinya, cuma memeriksa `.length`.
+ * @param {{id: number, role: string}} actor pengguna login — di server dari sesi (req.user)
  * @returns ok({ inspection, action }) atau fail(CORRECTIVE_ACTION_ERROR.*)
  */
-export async function addAction(inspectionId, input) {
+export async function addAction(inspectionId, input, actor) {
     const inspection = await inspectionRepository.findById(inspectionId);
-    if (!inspection) return fail(CORRECTIVE_ACTION_ERROR.INSPECTION_NOT_FOUND);
+    if (!inspection || !canView(actor, inspection)) return fail(CORRECTIVE_ACTION_ERROR.NOT_FOUND);
+    if (!canEditCorrectiveAction(actor, inspection)) return fail(CORRECTIVE_ACTION_ERROR.FORBIDDEN);
 
     const description = String(input.action || '').trim();
     if (!description) return fail(CORRECTIVE_ACTION_ERROR.ACTION_REQUIRED);
@@ -52,10 +60,8 @@ export async function addAction(inspectionId, input) {
         status: input.status,
         pic: input.pic,
         foto: photos,
-        // Diisi route handler backend dari req.user.id (bukan dari body permintaan) —
-        // sama seperti petugasUserId di inspection-service.js. undefined di browser,
-        // diabaikan repository in-memory di sana.
-        uploadedBy: input.uploadedBy,
+        // Identitas pengunggah selalu dari pengguna login, bukan body permintaan.
+        uploadedBy: actor.id,
     };
 
     inspection.perbaikan = inspection.perbaikan || [];

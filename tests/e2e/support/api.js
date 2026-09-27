@@ -38,8 +38,11 @@ export async function apiLogin(username, password = username) {
  * Membuat inspeksi lewat API sebagai fixture. Kegagalan MELEMPAR ERROR
  * (bukan mengembalikan null/undefined) — sesuai Phase 14.1-H: kegagalan
  * prasyarat harus menggagalkan test, bukan diam-diam di-skip.
+ *
+ * Phase 17.3B: membuat inspeksi menghasilkan DRAFT; fixture ini lalu
+ * mengajukannya (IN_REVIEW di tahap Koordinator) kecuali { submit: false }.
  */
-export async function createInspectionFixture(session, overrides = {}) {
+export async function createInspectionFixture(session, overrides = {}, { submit = true } = {}) {
     const tag = uniqueTag();
     const today = new Date().toISOString().slice(0, 10);
     const res = await session.context.post('/api/inspections', {
@@ -57,7 +60,15 @@ export async function createInspectionFixture(session, overrides = {}) {
         throw new Error(`createInspectionFixture gagal: HTTP ${res.status()} ${await res.text()}`);
     }
     const body = await res.json();
-    return { ...body.inspection, tag };
+    if (!submit) return { ...body.inspection, tag };
+
+    const submitted = await session.context.post(`/api/inspections/${body.inspection.id}/submit`, {
+        headers: { 'X-CSRF-Token': session.csrfToken },
+    });
+    if (!submitted.ok()) {
+        throw new Error(`createInspectionFixture (submit) gagal: HTTP ${submitted.status()} ${await submitted.text()}`);
+    }
+    return { ...(await submitted.json()).inspection, tag };
 }
 
 /** Menyetujui tahap yang sedang berjalan lewat API — dipakai untuk MENYIAPKAN state, bukan menguji approve itu sendiri. `stageId` adalah kode tahap (Phase 17.2), mis. 'koordinator_k3l'. */
