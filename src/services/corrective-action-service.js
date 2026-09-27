@@ -4,7 +4,7 @@
  */
 
 import * as inspectionRepository from '#repositories/inspection-repository.js';
-import { canEditCorrectiveAction, canView } from '../domain/inspection-policy.js';
+import { canEditCorrectiveAction, canView, isOwningOfficer } from '../domain/inspection-policy.js';
 import { ACCESS_ERROR, fail, ok } from './result.js';
 
 export const CORRECTIVE_ACTION_ERROR = {
@@ -12,6 +12,8 @@ export const CORRECTIVE_ACTION_ERROR = {
     ...ACCESS_ERROR,
     ACTION_REQUIRED: 'ACTION_REQUIRED',
     PHOTO_REQUIRED: 'PHOTO_REQUIRED',
+    // Pemilik, tapi inspeksi sudah COMPLETED — final, tindakan perbaikan hanya-baca.
+    INSPECTION_COMPLETED: 'INSPECTION_COMPLETED',
 };
 
 /**
@@ -27,8 +29,10 @@ export const CORRECTIVE_ACTION_ERROR = {
  * punya siklus hidupnya sendiri (open/on-progress/closed).
  *
  * Phase 17.3B (aturan terkunci): HANYA Safety Officer pemilik inspeksi yang
- * boleh menambah tindakan. Inspeksi yang tidak boleh dilihat -> NOT_FOUND
- * (identik dengan id yang tidak ada); terlihat tapi bukan pemilik -> FORBIDDEN.
+ * boleh menambah tindakan, dan hanya selama DRAFT / IN_REVIEW /
+ * REVISION_REQUIRED. Inspeksi yang tidak boleh dilihat -> NOT_FOUND (identik
+ * dengan id yang tidak ada); terlihat tapi bukan pemilik -> FORBIDDEN;
+ * pemilik tapi inspeksi sudah COMPLETED -> INSPECTION_COMPLETED (final).
  *
  * Sejak Phase 12: async (repository backend adalah MySQL sungguhan).
  * addCorrectiveAction() adalah jalur yang benar-benar menyimpan tindakan ke
@@ -46,7 +50,8 @@ export const CORRECTIVE_ACTION_ERROR = {
 export async function addAction(inspectionId, input, actor) {
     const inspection = await inspectionRepository.findById(inspectionId);
     if (!inspection || !canView(actor, inspection)) return fail(CORRECTIVE_ACTION_ERROR.NOT_FOUND);
-    if (!canEditCorrectiveAction(actor, inspection)) return fail(CORRECTIVE_ACTION_ERROR.FORBIDDEN);
+    if (!isOwningOfficer(actor, inspection)) return fail(CORRECTIVE_ACTION_ERROR.FORBIDDEN);
+    if (!canEditCorrectiveAction(actor, inspection)) return fail(CORRECTIVE_ACTION_ERROR.INSPECTION_COMPLETED);
 
     const description = String(input.action || '').trim();
     if (!description) return fail(CORRECTIVE_ACTION_ERROR.ACTION_REQUIRED);

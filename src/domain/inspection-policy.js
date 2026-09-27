@@ -126,15 +126,20 @@ export function canDeleteDraft(user, inspection) {
     return canEdit(user, inspection);
 }
 
+/** Status di mana tindakan perbaikan masih boleh diubah pemiliknya. COMPLETED bersifat final. */
+const CORRECTIVE_ACTION_EDITABLE_STATUSES = [DRAFT, IN_REVIEW, REVISION_REQUIRED];
+
 /**
- * Menambah tindakan perbaikan (Phase 17.3B, aturan terkunci): HANYA Safety
- * Officer pemilik inspeksi. Bisa melihat inspeksi (canView) tidak cukup —
- * Safety Officer lain tetap hanya-lihat. Batas status sengaja TIDAK
- * ditambahkan: aplikasi sebelumnya tidak pernah membatasinya, dan batas baru
- * adalah keputusan bisnis yang belum dikunci.
+ * Menambah/mengubah tindakan perbaikan (Phase 17.3B, aturan terkunci):
+ * HANYA Safety Officer pemilik inspeksi, dan hanya selama DRAFT, IN_REVIEW,
+ * atau REVISION_REQUIRED. Setelah COMPLETED, tindakan perbaikan hanya-baca —
+ * inspeksi yang selesai bersifat final di aplikasi ini (tidak ada alur
+ * membuka kembali). Bisa melihat inspeksi (canView) tidak cukup: Safety
+ * Officer lain tetap hanya-lihat.
  */
 export function canEditCorrectiveAction(user, inspection) {
-    return isOwningOfficer(user, inspection);
+    return isOwningOfficer(user, inspection)
+        && CORRECTIVE_ACTION_EDITABLE_STATUSES.includes(inspection.status);
 }
 
 /**

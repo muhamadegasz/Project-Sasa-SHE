@@ -1391,8 +1391,11 @@ end-to-end: byte tersimpan di disk, tersaji kembali sebagai gambar sungguhan.
   `canRevise`, `canSubmit`, `canDeleteDraft`, dan `canEditCorrectiveAction`. Tidak terlihat ->
   `NOT_FOUND` (404); terlihat tapi bukan pemilik -> `FORBIDDEN` (403); pemilik tapi status salah
   -> `NOT_EDITABLE` / `NOT_SUBMITTABLE` / `NOT_DELETABLE` (400).
-- **Tindakan perbaikan hanya pemilik** (aturan terkunci). Batas STATUS tidak ditambahkan: aplikasi
-  tidak pernah membatasinya dan belum ada keputusan bisnis — terbuka untuk diputuskan.
+- **Tindakan perbaikan hanya pemilik, hanya selama DRAFT / IN_REVIEW / REVISION_REQUIRED**
+  (aturan terkunci). COMPLETED bersifat final: tindakan perbaikan hanya-baca bahkan untuk
+  pemiliknya (`INSPECTION_COMPLETED`, 400); Safety Officer lain tetap `FORBIDDEN` di status apa
+  pun. Tidak ada alur membuka kembali inspeksi yang sudah selesai, dan penyuntingan dokumen setelah
+  diunduh berada di luar cakupan proyek.
 - **Approve/reject:** inspeksi yang tidak terlihat dijawab `NOT_FOUND` SEBELUM `NOT_IN_REVIEW`/
   `STAGE_NOT_CURRENT`/`FORBIDDEN`, sehingga status/tahap tidak bocor.
 - **Alasan penolakan:** harus string, di-trim, tidak kosong, maks. 1000 karakter

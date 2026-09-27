@@ -206,7 +206,34 @@ test('alur penuh (Phase 17.2): ajukan -> Koordinator -> Manajer -> Ketua -> COMP
     assert.equal(afterKoordinator.approvalHistory[0].reviewerName, 'Dewi');
     assert.equal(afterKoordinator.approvalHistory[0].reviewerUserId, dewi.user.id);
 
-    // 6. Manajer lalu Ketua -> COMPLETED.
+    // 6. Tindakan perbaikan oleh pemilik selagi IN_REVIEW (butuh foto — PHOTO_REQUIRED bila kosong).
+    const noPhoto = await withCsrf(arif.agent.post(`/api/inspections/${id}/corrective-actions`), arif.csrfToken)
+        .send({ action: 'Tanpa foto', status: 'open', pic: 'Arif', photos: [] });
+    assert.equal(noPhoto.status, 400);
+    assert.equal(noPhoto.body.error, 'PHOTO_REQUIRED');
+
+    // Phase 15: "foto wajib" menegakkan file sungguhan (multipart), bukan
+    // cuma array nama file lewat JSON — .attach() mengirim byte sungguhan.
+    const withPhoto = await withCsrf(arif.agent.post(`/api/inspections/${id}/corrective-actions`), arif.csrfToken)
+        .field('action', 'Ganti label')
+        .field('status', 'closed')
+        .field('pic', 'Arif')
+        .attach('photos', FIXTURE_JPEG);
+    assert.equal(withPhoto.status, 201);
+
+    const afterAction = (await arif.agent.get(`/api/inspections/${id}`)).body;
+    // 2 bukan 1: pengajuan pertama sudah membuat 1 tindakan awal per temuan.
+    assert.equal(afterAction.perbaikan.length, 2);
+    assert.equal(afterAction.perbaikan[1].foto[0].originalName, 'label.jpg');
+    assert.equal(afterAction.status, 'in_review', 'tindakan perbaikan (closed) tidak mengubah status alur kerja (Phase 17.2)');
+    assert.equal(afterAction.currentApprovalStage, 'manajer');
+
+    // 7. Hanya Safety Officer yang boleh menambah tindakan perbaikan.
+    const wrongRoleAction = await withCsrf(admin.agent.post(`/api/inspections/${id}/corrective-actions`), admin.csrfToken)
+        .send({ action: 'X', status: 'open', pic: 'Y', photos: ['a.jpg'] });
+    assert.equal(wrongRoleAction.status, 403);
+
+    // 8. Manajer lalu Ketua -> COMPLETED.
     assert.equal((await decide(andi, id, 'approve', { stageId: 'manajer' })).status, 200);
     const approveKetua = await decide(hadi, id, 'approve', { stageId: 'ketua_p2k3' });
     assert.equal(approveKetua.status, 200);
@@ -218,31 +245,15 @@ test('alur penuh (Phase 17.2): ajukan -> Koordinator -> Manajer -> Ketua -> COMP
     assert.deepEqual(completed.approvalHistory.map((entry) => [entry.stage, entry.decision]),
         [['koordinator_k3l', 'approved'], ['manajer', 'approved'], ['ketua_p2k3', 'approved']]);
 
-    // 7. Tambah tindakan perbaikan (butuh foto — PHOTO_REQUIRED bila kosong).
-    const noPhoto = await withCsrf(arif.agent.post(`/api/inspections/${id}/corrective-actions`), arif.csrfToken)
-        .send({ action: 'Tanpa foto', status: 'open', pic: 'Arif', photos: [] });
-    assert.equal(noPhoto.status, 400);
-    assert.equal(noPhoto.body.error, 'PHOTO_REQUIRED');
-
-    // Phase 15: "foto wajib" menegakkan file sungguhan (multipart), bukan
-    // cuma array nama file lewat JSON — .attach() mengirim byte sungguhan.
-    const withPhoto = await withCsrf(arif.agent.post(`/api/inspections/${id}/corrective-actions`), arif.csrfToken)
-        .field('action', 'Ganti label')
+    // 9. COMPLETED bersifat final: pemilik pun tidak bisa lagi menambah tindakan perbaikan.
+    const afterCompleted = await withCsrf(arif.agent.post(`/api/inspections/${id}/corrective-actions`), arif.csrfToken)
+        .field('action', 'Setelah selesai')
         .field('status', 'open')
         .field('pic', 'Arif')
         .attach('photos', FIXTURE_JPEG);
-    assert.equal(withPhoto.status, 201);
-
-    const afterAction = (await arif.agent.get(`/api/inspections/${id}`)).body;
-    // 2 bukan 1: create() sudah otomatis membuat 1 tindakan per temuan.
-    assert.equal(afterAction.perbaikan.length, 2);
-    assert.equal(afterAction.perbaikan[1].foto[0].originalName, 'label.jpg');
-    assert.equal(afterAction.status, 'completed', 'tindakan perbaikan (open) tidak mengubah status alur kerja (Phase 17.2)');
-
-    // 8. Hanya Safety Officer yang boleh menambah tindakan perbaikan.
-    const wrongRoleAction = await withCsrf(admin.agent.post(`/api/inspections/${id}/corrective-actions`), admin.csrfToken)
-        .send({ action: 'X', status: 'open', pic: 'Y', photos: ['a.jpg'] });
-    assert.equal(wrongRoleAction.status, 403);
+    assert.equal(afterCompleted.status, 400);
+    assert.equal(afterCompleted.body.error, 'INSPECTION_COMPLETED');
+    assert.equal((await arif.agent.get(`/api/inspections/${id}`)).body.perbaikan.length, 2, 'tidak ada tindakan tersimpan');
 });
 
 test('penolakan (Phase 17.2): alasan wajib, -> REVISION_REQUIRED di tahap yang menolak, persetujuan lama tetap', async () => {

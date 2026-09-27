@@ -255,7 +255,7 @@ test('kepemilikan: tindakan perbaikan hanya pemilik — SO lain yang BISA meliha
     assert.ok(canView(otherOfficer, inReview), 'SO lain melihat IN_REVIEW');
     assert.equal(canEditCorrectiveAction(otherOfficer, inReview), false, '...tapi tidak boleh menambah tindakan');
     assert.equal(isOwningOfficer(otherOfficer, inReview), false);
-    for (const status of [DRAFT, IN_REVIEW, REVISION_REQUIRED, COMPLETED]) {
+    for (const status of [DRAFT, IN_REVIEW, REVISION_REQUIRED]) {
         assert.ok(canEditCorrectiveAction(officer, inspection({ status })), `pemilik, ${status}`);
     }
     for (const user of [koordinatorPlant1, manajer, ketua, admin]) {
@@ -275,4 +275,14 @@ test('hapus draft: hanya pemilik & hanya DRAFT; Admin tidak (penghapusan Admin f
     assert.equal(canDeleteDraft(otherOfficer, draft), false);
     assert.equal(canDeleteDraft(admin, draft), false);
     assert.equal(canDeleteDraft(officer, inspection({ status: IN_REVIEW })), false);
+});
+
+test('tindakan perbaikan: COMPLETED final — pemilik pun hanya-baca; SO lain tetap hanya-lihat di setiap status', () => {
+    const completed = inspection({ status: COMPLETED, currentApprovalStage: null });
+    assert.ok(canView(officer, completed));
+    assert.equal(canEditCorrectiveAction(officer, completed), false, 'pemilik, COMPLETED');
+    assert.ok(isOwningOfficer(officer, completed), 'tetap pemilik — hanya statusnya yang final');
+    for (const status of [DRAFT, IN_REVIEW, REVISION_REQUIRED, COMPLETED]) {
+        assert.equal(canEditCorrectiveAction(otherOfficer, inspection({ status })), false, `SO lain, ${status}`);
+    }
 });

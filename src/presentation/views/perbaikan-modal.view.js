@@ -14,7 +14,7 @@ import { ACTION_STATUS } from '../../domain/statuses.js';
 import { getRandomOfficer } from '../../data/officers.js';
 import * as inspectionRepository from '../../repositories/inspection-repository.js';
 import { bindModalClose, openModal } from '../components/modal.js';
-import { canEditCorrectiveAction } from '../../domain/inspection-policy.js';
+import { canEditCorrectiveAction, isOwningOfficer } from '../../domain/inspection-policy.js';
 import { getCurrentUser } from '../../infrastructure/session.js';
 import { showToast } from '../components/toast.js';
 
@@ -56,6 +56,10 @@ export async function openPerbaikanModal(id) {
     // Phase 17.3B: form tambah progres hanya untuk Safety Officer PEMILIK
     // inspeksi; pengguna lain hanya melihat timeline (server tetap menolak 403).
     const canAddAction = canEditCorrectiveAction(getCurrentUser(), item);
+    // Pemilik yang tidak boleh lagi menambah = inspeksi sudah COMPLETED (final).
+    const viewOnlyNote = isOwningOfficer(getCurrentUser(), item)
+        ? 'Inspeksi sudah selesai (final) — tindakan perbaikan hanya dapat dilihat.'
+        : 'Hanya Safety Officer pemilik inspeksi ini yang dapat menambah progres perbaikan.';
 
     content.innerHTML = `
             <div class="perbaikan-info-box">
@@ -134,7 +138,7 @@ export async function openPerbaikanModal(id) {
                     <i class="fas fa-plus"></i> Tambah Progres
                 </button>
             </div>` : `<div class="perbaikan-form-section" data-testid="perbaikan-view-only" style="font-size:0.8rem;color:#8a6a6a;">
-                <i class="fas fa-lock"></i> Hanya Safety Officer pemilik inspeksi ini yang dapat menambah progres perbaikan.
+                <i class="fas fa-lock"></i> ${viewOnlyNote}
             </div>`}
         `;
 

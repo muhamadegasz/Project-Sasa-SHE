@@ -143,6 +143,7 @@ const PESAN_GAGAL = {
     STATE_CHANGED: '⚠️ Status inspeksi baru saja berubah — muat ulang data',
     ACTION_REQUIRED: '⚠️ Masukkan deskripsi tindakan',
     PHOTO_REQUIRED: '⚠️ Wajib upload foto sebagai bukti progres!',
+    INSPECTION_COMPLETED: '🔒 Inspeksi sudah selesai — tindakan perbaikan tidak bisa diubah lagi',
     PLANT_REQUIRED: '⚠️ Silakan pilih Plant terlebih dahulu!',
     OFFICER_REQUIRED: '⚠️ Safety Officer wajib diisi!',
     YEAR_REQUIRED: '⚠️ Tahun wajib diisi!',

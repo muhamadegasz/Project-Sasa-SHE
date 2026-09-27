@@ -413,6 +413,25 @@ test('revisi & ajukan ulang: kembali ke tahap YANG MENOLAK, riwayat utuh, temuan
     assert.equal(afterApprove.currentApprovalStage, 'ketua_p2k3');
 });
 
+test('addAction: pemilik boleh di DRAFT, IN_REVIEW, REVISION_REQUIRED; COMPLETED final -> INSPECTION_COMPLETED, tidak tersimpan', async () => {
+    const input = { action: 'Perbaiki', status: 'open', pic: 'Arif', photos: ['f.jpg'] };
+    const draft = await createDraft();
+    assert.equal((await correctiveActionService.addAction(draft.id, input, owner)).ok, true, 'DRAFT');
+    assert.equal((await correctiveActionService.addAction('INS-001', input, owner)).ok, true, 'IN_REVIEW');
+
+    const stored = await inspectionFake.findById('INS-001');
+    stored.status = 'revision_required';
+    assert.equal((await correctiveActionService.addAction('INS-001', input, owner)).ok, true, 'REVISION_REQUIRED');
+
+    stored.status = 'completed';
+    stored.currentApprovalStage = null;
+    const before = stored.perbaikan.length;
+    const result = await correctiveActionService.addAction('INS-001', input, owner);
+    assert.equal(result.reason, CA.INSPECTION_COMPLETED);
+    assert.equal(stored.perbaikan.length, before, 'tidak ada tindakan tersimpan');
+    assert.equal((await correctiveActionService.addAction('INS-001', input, otherOfficer)).reason, CA.FORBIDDEN, 'SO lain tetap FORBIDDEN');
+});
+
 test('removeDraft: hanya pemilik, hanya DRAFT', async () => {
     const draft = await createDraft();
     assert.equal((await inspectionService.removeDraft(draft.id, otherOfficer)).reason, IE.NOT_FOUND);
