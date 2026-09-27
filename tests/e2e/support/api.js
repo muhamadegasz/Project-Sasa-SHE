@@ -48,7 +48,6 @@ export async function createInspectionFixture(session, overrides = {}) {
             plantId: 1,
             keteranganLokasi: tag,
             tanggal: today,
-            status: 'proses',
             dueDate: today,
             temuan: [{ deskripsi: `Temuan fixture ${tag}`, kategori: 'Lainnya' }],
             ...overrides,
@@ -61,7 +60,7 @@ export async function createInspectionFixture(session, overrides = {}) {
     return { ...body.inspection, tag };
 }
 
-/** Menyetujui satu tahap lewat API — dipakai untuk MENYIAPKAN state (mis. "tahap 2 sudah disetujui" sebelum menguji tahap 3), bukan untuk menguji approve itu sendiri. */
+/** Menyetujui tahap yang sedang berjalan lewat API — dipakai untuk MENYIAPKAN state, bukan menguji approve itu sendiri. `stageId` adalah kode tahap (Phase 17.2), mis. 'koordinator_k3l'. */
 export async function approveViaApi(session, inspectionId, stageId) {
     const res = await session.context.post(`/api/inspections/${inspectionId}/approve`, {
         headers: { 'X-CSRF-Token': session.csrfToken },

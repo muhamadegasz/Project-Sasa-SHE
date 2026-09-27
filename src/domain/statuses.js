@@ -13,14 +13,38 @@
  * Berkas ini tidak mengenal DOM dan tidak punya dependency.
  */
 
-/** Status sebuah inspeksi secara keseluruhan. */
+/**
+ * Status alur kerja sebuah inspeksi (Phase 17.2) — sama dengan ENUM
+ * inspections.status. Tidak ada status SUBMITTED: mengajukan langsung
+ * menjadi IN_REVIEW. Transisinya ada di domain/workflow-rules.js.
+ *
+ * Status lama (proses/selesai/tinjau) tidak lagi dipakai kode; datanya
+ * tetap tersimpan di kolom inspections.legacy_status (migrasi 003).
+ */
 export const INSPECTION_STATUS = {
-    SELESAI: 'selesai',
-    PROSES: 'proses',
-    TINJAU: 'tinjau',
+    DRAFT: 'draft',
+    IN_REVIEW: 'in_review',
+    REVISION_REQUIRED: 'revision_required',
+    COMPLETED: 'completed',
 };
 
-/** Status satu tindakan perbaikan di dalam timeline. */
+/** Keputusan satu attempt pengesahan — sama dengan ENUM approvals.decision. */
+export const APPROVAL_DECISION = {
+    APPROVED: 'approved',
+    REJECTED: 'rejected',
+};
+
+/** Cara tanda tangan dibuat; keduanya disimpan sebagai gambar — sama dengan ENUM approvals.signature_method. */
+export const SIGNATURE_METHOD = {
+    UPLOAD: 'upload',
+    CANVAS: 'canvas',
+};
+
+/**
+ * Status satu tindakan perbaikan di dalam timeline — siklus hidupnya SENDIRI.
+ * Tidak pernah menentukan INSPECTION_STATUS (Phase 17.2 memutus keterkaitan
+ * itu; sebelumnya corrective-action-service menimpa status inspeksi).
+ */
 export const ACTION_STATUS = {
     CLOSED: 'closed',
     ON_PROGRESS: 'on-progress',

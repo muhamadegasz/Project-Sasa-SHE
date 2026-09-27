@@ -23,7 +23,7 @@
  */
 
 import { getProgress, getRepairStatus, countFindings } from '../domain/inspection-rules.js';
-import { formatApprovalStatus } from '../shared/labels.js';
+import { formatApprovalStatus, formatInspectionStatus } from '../shared/labels.js';
 
 /** Karakter pembuka yang membuat Excel memperlakukan sel sebagai formula. */
 const FORMULA_TRIGGERS = ['=', '+', '-', '@'];
@@ -81,7 +81,7 @@ function toFindingRow(inspection, finding, number) {
         'Safety Officer': inspection.petugas,
         'Deskripsi Temuan': finding.deskripsi,
         'Kategori': finding.kategori,
-        'Status Inspeksi': inspection.status,
+        'Status Inspeksi': formatInspectionStatus(inspection.status),
         'Due Date Plant': inspection.dueDate || '-',
         'Status Pengesahan': formatApprovalStatus(inspection),
     };
@@ -100,7 +100,7 @@ function toInspectionRow(inspection) {
             ? inspection.temuan.map((t) => `${t.deskripsi} (${t.kategori})`).join('; ')
             : '-',
         'Due Date Plant': inspection.dueDate || '-',
-        'Status': inspection.status,
+        'Status': formatInspectionStatus(inspection.status),
         'Progres Perbaikan': `${getProgress(inspection)}%`,
         'Status Perbaikan': getRepairStatus(inspection),
         'Status Pengesahan': formatApprovalStatus(inspection),

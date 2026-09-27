@@ -8,12 +8,12 @@
  * "#repositories/inspection-repository.js" (lihat docs/ROADMAP-PHASE12.md,
  * docs/DECISIONS.md K-18).
  *
- * saveApproval()/setStatus()/addCorrectiveAction() TIDAK menyimpan data
+ * recordDecision()/addCorrectiveAction() TIDAK menyimpan data
  * mentah seperti versi MySQL — endpoint backend yang dipanggil di sini
  * (POST .../approve, .../reject, .../corrective-actions) adalah AKSI BISNIS
  * lengkap (approval-service.js/corrective-action-service.js dijalankan LAGI,
  * penuh, di server, dengan data yang sungguh terbaru), bukan operasi tulis
- * baris-per-baris. Parameter `record`/`status` yang dikirim pemanggil di
+ * baris-per-baris. Record keputusan/status yang dikirim pemanggil di
  * sini karena itu SENGAJA tidak dipakai untuk membangun body request — server
  * selalu menjadi sumber kebenaran, persis seperti `petugas`/`approvedByName`
  * yang sudah dipaksa dari sesi login sejak Phase 12/13. Lihat
@@ -21,6 +21,7 @@
  */
 
 import { apiGet, apiPost } from '../infrastructure/api-client.js';
+import { APPROVAL_DECISION } from '../domain/statuses.js';
 
 /**
  * "D/M/YYYY" (format lokal — inspection-service.js `create()` sudah memanggil
@@ -76,7 +77,6 @@ export async function add(inspection) {
     formData.append('plantId', inspection.plantId);
     formData.append('keteranganLokasi', inspection.keteranganLokasi ?? '');
     formData.append('tanggal', toIsoDate(inspection.tanggal) || '');
-    formData.append('status', inspection.status ?? '');
     formData.append('dueDate', toIsoDate(inspection.dueDate) || '');
     formData.append('temuan', JSON.stringify(inspection.temuan || []));
     for (const file of inspection.fotoDekat || []) formData.append('fotoDekat', file);
@@ -87,26 +87,24 @@ export async function add(inspection) {
 }
 
 /**
- * Menyetujui/menolak satu tahap — memicu endpoint aksi bisnis penuh di
- * backend (approve() atau reject() dijalankan LAGI di sana, dengan data
- * server yang terbaru). `record.rejected` yang menentukan endpoint mana yang
- * dipanggil; `approverId` diabaikan di sini karena server selalu mengambil
- * identitas dari sesi login, bukan dari body request.
+ * Menyetujui/menolak tahap yang sedang berjalan — memicu endpoint aksi bisnis
+ * penuh di backend (approve() atau reject() dijalankan LAGI di sana, dengan
+ * data server yang terbaru). Hanya tahap (sebagai penjaga "layar basi") dan
+ * alasan penolakan yang dikirim; identitas penyetuju, attempt, dan status
+ * berikutnya selalu dihitung server, bukan diambil dari body request.
+ * Penolakan server (4xx) dilempar sebagai ApiError oleh api-client.js.
+ *
+ * @returns {Promise<boolean>} true — sama dengan kontrak versi MySQL
  */
-export async function saveApproval(inspectionId, stageId, record) {
-    const path = record.rejected
-        ? `/inspections/${encodeURIComponent(inspectionId)}/reject`
-        : `/inspections/${encodeURIComponent(inspectionId)}/approve`;
-    await apiPost(path, { stageId });
+export async function recordDecision(inspectionId, decision, _nextState) {
+    const base = `/inspections/${encodeURIComponent(inspectionId)}`;
+    if (decision.decision === APPROVAL_DECISION.REJECTED) {
+        await apiPost(`${base}/reject`, { stageId: decision.stage, reason: decision.rejectionReason });
+    } else {
+        await apiPost(`${base}/approve`, { stageId: decision.stage });
+    }
+    return true;
 }
-
-/**
- * No-op di sini: status inspeksi sudah ikut diperbarui backend sebagai efek
- * samping saveApproval()/addCorrectiveAction() di atas (masing-masing
- * memanggil approval-service.js/corrective-action-service.js penuh di
- * server, yang sudah menghitung dan menyimpan status baru sendiri).
- */
-export async function setStatus(_inspectionId, _status) {}
 
 /** Menambahkan satu tindakan perbaikan lewat endpoint aksi bisnis penuh (foto wajib ditegakkan ulang di server). Phase 15: action.foto berisi File asli, dikirim lewat FormData. */
 export async function addCorrectiveAction(inspectionId, action) {

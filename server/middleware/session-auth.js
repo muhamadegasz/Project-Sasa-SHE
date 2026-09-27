@@ -19,7 +19,8 @@ export async function sessionAuth(req, res, next) {
         return req.session.destroy(() => res.status(401).json({ error: 'UNAUTHENTICATED' }));
     }
 
-    req.user = { id: user.id, username: user.username, displayName: user.displayName, role: user.role };
+    // plantId (Phase 17.2): cakupan plant Koordinator K3L, dibaca domain/inspection-policy.js.
+    req.user = { id: user.id, username: user.username, displayName: user.displayName, role: user.role, plantId: user.plantId };
     next();
 }
 

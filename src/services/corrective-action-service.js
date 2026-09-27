@@ -4,7 +4,6 @@
  */
 
 import * as inspectionRepository from '#repositories/inspection-repository.js';
-import { statusFromActions } from '../domain/inspection-rules.js';
 import { fail, ok } from './result.js';
 
 export const CORRECTIVE_ACTION_ERROR = {
@@ -20,8 +19,10 @@ export const CORRECTIVE_ACTION_ERROR = {
  * pelaksanaan perbaikan K3 — tanpa itu catatannya tidak bermakna. Validasi di
  * form hanyalah kenyamanan; inilah tempat aturannya benar-benar dijaga.
  *
- * Status inspeksi ikut diperbarui: selesai bila seluruh tindakan sudah closed,
- * selain itu kembali ke proses.
+ * Phase 17.2: status alur kerja inspeksi TIDAK disentuh di sini. Sebelumnya
+ * setiap tindakan baru menimpa status inspeksi (selesai/proses) — itu
+ * mencampur progres perbaikan dengan hasil pengesahan. Tindakan perbaikan
+ * punya siklus hidupnya sendiri (open/on-progress/closed).
  *
  * Sejak Phase 12: async (repository backend adalah MySQL sungguhan).
  * addCorrectiveAction() adalah jalur yang benar-benar menyimpan tindakan ke
@@ -60,9 +61,6 @@ export async function addAction(inspectionId, input) {
     inspection.perbaikan = inspection.perbaikan || [];
     inspection.perbaikan.push(action);
     await inspectionRepository.addCorrectiveAction(inspectionId, action);
-
-    inspection.status = statusFromActions(inspection);
-    await inspectionRepository.setStatus(inspectionId, inspection.status);
 
     return ok({ inspection, action });
 }

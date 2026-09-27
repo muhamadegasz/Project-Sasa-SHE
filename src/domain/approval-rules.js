@@ -1,68 +1,54 @@
-/* approval-rules.js — aturan pengesahan berjenjang empat tahap.
+/* approval-rules.js — riwayat pengesahan tiga tahap (Phase 17.2).
  *
- * Aturan intinya: tahap ke-N hanya dapat disetujui bila tahap ke-(N-1) sudah
- * disetujui. Tahap pertama tidak punya prasyarat.
+ * Riwayat bersifat APPEND-ONLY: `inspection.approvalHistory` berisi satu
+ * entri per keputusan, dan satu tahap boleh punya beberapa attempt
+ * (mis. Koordinator attempt 1 ditolak, attempt 2 disetujui). Entri lama
+ * tidak pernah ditimpa — sebelum Phase 17.2, satu baris per tahap di-UPDATE
+ * setiap kali, sehingga penolakan menghapus jejak persetujuan dan sebaliknya.
  *
- * Sebelum refactoring, aturan ini ditulis dalam DUA bentuk berbeda yang
- * kebetulan setara: approveStage mencari tahap sebelumnya lewat `order - 1`,
- * sedangkan renderApprovalStages memakai indeks array `index - 1`. Keduanya
- * kini memanggil isPreviousStageApproved() yang sama, sehingga tidak bisa lagi
- * bergeser satu sama lain.
+ * Tahap mana yang sedang berjalan TIDAK diturunkan dari riwayat ini, tapi dari
+ * inspection.currentApprovalStage (lihat workflow-rules.js). Siapa yang boleh
+ * memutuskan ada di inspection-policy.js.
  *
  * Seluruh fungsi murni kecuali yang namanya jelas membangun record baru.
- * Tidak ada yang menyentuh DOM atau memutasi inspeksi.
  */
 
 import { APPROVAL_STAGES } from '../config/constants.js';
+import { APPROVAL_DECISION, INSPECTION_STATUS } from './statuses.js';
 
-/** Satu tahap berdasarkan id, atau undefined. */
+/** Satu tahap berdasarkan kode, atau undefined. */
 export function findStage(stageId) {
     return APPROVAL_STAGES.find((stage) => stage.id === stageId);
 }
 
-/** Tahap tepat sebelum tahap ini menurut urutannya, atau undefined bila ia yang pertama. */
-export function findPreviousStage(stage) {
-    return APPROVAL_STAGES.find((candidate) => candidate.order === stage.order - 1);
+/** Seluruh keputusan untuk satu tahap, urut attempt. */
+export function stageDecisions(inspection, stageId) {
+    return ((inspection && inspection.approvalHistory) || [])
+        .filter((entry) => entry.stage === stageId)
+        .sort((a, b) => a.attempt - b.attempt);
 }
 
-/** Apakah satu tahap sudah disetujui. */
+/** Keputusan terakhir untuk satu tahap, atau undefined bila belum pernah diputuskan. */
+export function latestDecision(inspection, stageId) {
+    const decisions = stageDecisions(inspection, stageId);
+    return decisions[decisions.length - 1];
+}
+
+/** Nomor attempt untuk keputusan berikutnya pada tahap ini (dimulai dari 1). */
+export function nextAttempt(inspection, stageId) {
+    const decisions = stageDecisions(inspection, stageId);
+    return decisions.length === 0 ? 1 : decisions[decisions.length - 1].attempt + 1;
+}
+
+/** Apakah keputusan terakhir tahap ini adalah persetujuan. */
 export function isStageApproved(inspection, stageId) {
-    const approvals = inspection && inspection.approvals;
-    return Boolean(approvals && approvals[stageId] && approvals[stageId].approved === true);
+    const latest = latestDecision(inspection, stageId);
+    return Boolean(latest && latest.decision === APPROVAL_DECISION.APPROVED);
 }
 
-/**
- * Apakah prasyarat sebuah tahap sudah terpenuhi.
- *
- * Tahap pertama selalu terpenuhi karena tidak punya pendahulu.
- */
-export function isPreviousStageApproved(inspection, stage) {
-    const previous = findPreviousStage(stage);
-    if (!previous) return true;
-    return isStageApproved(inspection, previous.id);
-}
-
-/** Apakah tahap ini yang sedang menunggu giliran persetujuan. */
-export function canApproveStage(inspection, stage) {
-    return !isStageApproved(inspection, stage.id)
-        && isPreviousStageApproved(inspection, stage);
-}
-
-/**
- * Apakah keempat tahap sudah disetujui.
- *
- * Menggantikan lima salinan ekspresi yang sebelumnya ditulis ulang di
- * cetakPDF, renderInspeksiTable, openPerbaikanModal, getApprovalStatusText,
- * dan approveStage.
- */
-export function isFullyApproved(inspection) {
-    return APPROVAL_STAGES.every((stage) => isStageApproved(inspection, stage.id));
-}
-
-/** Jumlah tahap yang sudah disetujui. */
+/** Jumlah tahap yang keputusan terakhirnya disetujui. */
 export function countApproved(inspection) {
-    const approvals = (inspection && inspection.approvals) || {};
-    return Object.values(approvals).filter((entry) => entry && entry.approved === true).length;
+    return APPROVAL_STAGES.filter((stage) => isStageApproved(inspection, stage.id)).length;
 }
 
 /** Total tahap pengesahan yang harus dilalui. */
@@ -71,58 +57,27 @@ export function totalStages() {
 }
 
 /**
- * Record pengesahan untuk satu tahap yang disetujui.
- *
- * Tahap Safety Officer selalu memakai nama petugas inspeksi (ia yang membuat
- * laporannya). Tahap lain memakai nama tampilan `approver` bila disediakan —
- * ini menutup S-07 (docs/SECURITY.md): sebelum Phase 12, tahap 2-4 selalu
- * memakai literal 'Approver', tanpa identitas sungguhan sama sekali.
- * `approver` opsional (undefined) supaya kode lama yang belum punya identitas
- * pengguna (sebelum auth sungguhan di Phase 13) tetap berperilaku sama persis
- * seperti sebelumnya — fallback ke 'Approver'.
+ * Apakah inspeksi sudah selesai disahkan. Sumber kebenarannya status alur
+ * kerja (COMPLETED hanya bisa dicapai lewat persetujuan tahap terakhir, lihat
+ * workflow-rules.js), bukan hitungan ulang dari riwayat.
  */
-export function buildApprovalRecord(stage, inspection, approver) {
-    return {
-        approved: true,
-        by: stage.name === 'Safety Officer' ? inspection.petugas : (approver ? approver.displayName : 'Approver'),
-        jabatan: stage.title,
-        tanggal: new Date().toLocaleString('id-ID'),
-    };
-}
-
-/** Record penolakan untuk satu tahap. */
-export function buildRejectionRecord(stage) {
-    return {
-        approved: false,
-        by: 'Rejected',
-        jabatan: stage.title,
-        tanggal: new Date().toLocaleString('id-ID'),
-        rejected: true,
-    };
+export function isFullyApproved(inspection) {
+    return Boolean(inspection) && inspection.status === INSPECTION_STATUS.COMPLETED;
 }
 
 /**
- * Kumpulan pengesahan awal untuk inspeksi yang baru dibuat.
- *
- * Tahap pertama langsung disetujui atas nama Safety Officer yang melakukan
- * inspeksi — ia memang yang membuat laporannya. Tahap 2 sampai 4 menunggu.
+ * Entri riwayat baru untuk satu keputusan. `reviewer` adalah pengguna login
+ * ({id, displayName}). `reason` hanya untuk penolakan — kewajibannya diperiksa
+ * approval-service.js, bukan di sini.
  */
-export function buildInitialApprovals(officerName) {
-    const approvals = {};
-    APPROVAL_STAGES.forEach((stage, index) => {
-        approvals[stage.id] = index === 0
-            ? {
-                approved: true,
-                by: officerName,
-                jabatan: stage.title,
-                tanggal: new Date().toLocaleString('id-ID'),
-            }
-            : {
-                approved: false,
-                by: null,
-                jabatan: stage.title,
-                tanggal: null,
-            };
-    });
-    return approvals;
+export function buildDecisionRecord(inspection, stage, decision, reviewer, reason = null) {
+    return {
+        stage: stage.id,
+        attempt: nextAttempt(inspection, stage.id),
+        decision,
+        reviewerUserId: reviewer ? reviewer.id : null,
+        reviewerName: reviewer ? reviewer.displayName : null,
+        rejectionReason: decision === APPROVAL_DECISION.REJECTED ? reason : null,
+        decidedAt: new Date().toISOString(),
+    };
 }

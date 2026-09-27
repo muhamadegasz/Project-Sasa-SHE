@@ -1310,3 +1310,63 @@ end-to-end: byte tersimpan di disk, tersaji kembali sebagai gambar sungguhan.
   gambar dengan `Content-Type: image/*`, bukan `data:image/svg+xml` placeholder lama). Diverifikasi
   bersih 2× berturutan dengan backend segar.
 - `npm audit`: 0 vulnerabilities setelah menambah `multer`.
+
+## K-24: Phase 17.2 — Fondasi alur pengesahan (database + domain)
+
+### Keputusan
+
+- **Tiga tahap, Safety Officer bukan tahap.** `APPROVAL_STAGES` (`src/config/constants.js`) kini
+  Koordinator K3L → Manajer → Ketua P2K3 dengan kode string (`koordinator_k3l`, `manajer`,
+  `ketua_p2k3`), sama dengan ENUM database. Setiap tahap menyebut satu `role` pemiliknya.
+- **Status alur kerja** `draft → in_review ⇄ revision_required → completed`, tanpa `submitted`.
+  Transisi sah ada di satu tabel (`src/domain/workflow-rules.js`); status tidak bisa lagi diambil
+  dari isian form (dropdown "Status Inspeksi" dihapus, `input.status` diabaikan service).
+  Penolakan **tidak** mengubah tahap: setelah revisi, inspeksi kembali ke tahap yang menolaknya.
+- **Riwayat append-only.** Tabel `approvals` baru: satu baris per keputusan, `UNIQUE (inspection_id,
+  stage, attempt)`, alasan penolakan, kolom tanda tangan (`signature_method` upload/canvas + path/mime
+  file) dan watermark (`watermark_enabled`, `watermark_x/y` ternormalisasi 0..1). CHECK: alasan hanya
+  untuk penolakan, tanda tangan hanya untuk persetujuan, posisi watermark wajib & dalam 0..1 bila
+  aktif (dengan `IS NOT NULL` eksplisit — `NULL BETWEEN 0 AND 1` bernilai NULL dan lolos CHECK;
+  ditemukan saat menguji migrasi di database salinan).
+- **Keputusan + status disimpan dalam satu transaksi** (`recordDecision()`), dengan UPDATE yang
+  dijaga `status = 'in_review' AND current_approval_stage = <tahap keputusan>` — dua persetujuan
+  bersamaan untuk tahap yang sama menghasilkan tepat satu keputusan (diuji di unit test).
+  Sebelumnya `saveApproval()` (UPDATE yang menimpa) dan `setStatus()` adalah dua query lepas.
+- **Cakupan plant Koordinator:** kolom `users.plant_id` (FK, satu plant — bukan many-to-many).
+  Koordinator tanpa plant ditolak di policy (gagal-tertutup), bukan lewat CHECK database, karena
+  akun koordinator lama belum punya plant. Seed: `dewi` = plant 1, `rina` (baru) = plant 9.
+- **Policy terpisah dari transisi** (`src/domain/inspection-policy.js`): `canView` dipisah dari
+  `canEdit/canRevise/canSubmit/canApprove/canReject/canDelete`. `approval-service.js` memakainya dan
+  mengembalikan alasan `FORBIDDEN`, yang dipetakan ke HTTP 403 di satu tempat (`to-http.js`).
+  `ROLE_BY_STAGE` di route dihapus.
+- **Tindakan perbaikan dilepas dari status inspeksi:** `statusFromActions()` dihapus;
+  `corrective-action-service.js` tidak lagi menyentuh status alur kerja.
+
+### Migrasi data lama (003) — tidak ada yang dihapus
+
+- `inspections.status` lama di-rename menjadi `legacy_status` (data utuh); `approvals` lama
+  di-rename menjadi `approvals_legacy` (52 baris utuh, FK/CASCADE ikut). Keduanya tidak dibaca kode.
+- **Status baru diturunkan dari keputusan lama, BUKAN dari `legacy_status`** — terbukti tidak bisa
+  dipercaya: INS-006 berstatus `selesai` padahal tahap Ketua belum pernah disetujui, INS-003 `tinjau`
+  padahal tidak pernah ditolak. Aturannya: tahap pertama (2,3,4) yang belum disetujui menjadi
+  `current_approval_stage`; bila tahap itu ditolak → `revision_required`, bila belum diputuskan →
+  `in_review`; ketiganya disetujui → `completed`. Semua inspeksi lama dianggap sudah diajukan
+  (membuat = mengajukan di alur lama), jadi tidak ada yang menjadi draft.
+- Keputusan sungguhan tahap 2-4 (disetujui atau ditolak) disalin sebagai attempt 1. Tahap 1 (Safety
+  Officer) dan baris placeholder "belum diputuskan" tidak disalin — keduanya bukan keputusan.
+  Penolakan lama tidak pernah menyimpan identitas penolak (hanya literal `'Rejected'`) → reviewer
+  `NULL`, tidak dikarang. Alasan penolakan lama juga tidak ada → `NULL` (kewajiban alasan ditegakkan
+  service untuk keputusan baru).
+- Diuji dulu pada salinan database (restore dari dump, jalankan 003, cek setiap baris, uji CHECK &
+  cascade delete, uji instalasi bersih 001→003) sebelum diterapkan ke `she_sasa`. Dump sebelum
+  migrasi disimpan di luar repo.
+
+### Penghubung sementara sampai Phase 17.3
+
+- Belum ada UI draft: `inspectionService.create()` membangun DRAFT lalu langsung melewati transisi
+  submit (→ IN_REVIEW di tahap Koordinator) — perilaku "simpan = ajukan" yang sama seperti sebelumnya.
+- Alasan penolakan diminta lewat `prompt()` di `rejectStage()`.
+- Persetujuan tanpa tanda tangan masih diterima (kolomnya sudah ada; upload/canvas Phase 17.3).
+- Visibilitas (`canView`) sudah ada di domain dan teruji, tapi **belum** diterapkan pada
+  `GET /api/inspections` dan endpoint file foto — keduanya masih mengembalikan semua data ke setiap
+  pengguna login. Tombol setujui/tolak masih tampil untuk semua role (server tetap menolak).

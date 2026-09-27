@@ -16,9 +16,6 @@ import { upload, UPLOAD_DIR, verifyImageContent, cleanupUploadedFiles } from '..
 
 export const inspectionsRouter = Router();
 
-/** Tahap 2-4 masing-masing hanya boleh disetujui/ditolak oleh satu role. Tahap 1 otomatis saat pembuatan, tidak ada aksi manual. */
-const ROLE_BY_STAGE = { 2: 'koordinator_k3l', 3: 'manajer_bagian', 4: 'ketua_p2k3' };
-
 /** multer hanya mengisi req.files bila body sungguhan multipart/form-data — permintaan
  * JSON biasa (mis. fixture E2E lewat page.request) lewat sini tanpa terpengaruh, req.files
  * akan undefined dan fallback ke [] di bawah. Metadata (bukan byte) yang diteruskan ke
@@ -71,25 +68,16 @@ inspectionsRouter.post(
     }),
 );
 
+// Phase 17.2: wewenang (role + status + tahap berjalan + cakupan plant
+// Koordinator) diputuskan domain/inspection-policy.js lewat approval-service,
+// bukan pemetaan role-per-tahap di route ini. Identitas selalu dari sesi.
 inspectionsRouter.post('/:id/approve', asyncHandler(async (req, res) => {
-    const stageId = Number(req.body.stageId);
-    const requiredRole = ROLE_BY_STAGE[stageId];
-    if (!requiredRole || req.user.role !== requiredRole) {
-        return res.status(403).json({ error: 'FORBIDDEN', message: `Tahap ${stageId} bukan wewenang role "${req.user.role}"` });
-    }
-
-    const result = await approvalService.approve(req.params.id, stageId, req.user);
+    const result = await approvalService.approve(req.params.id, req.body.stageId, req.user);
     sendResult(res, result);
 }));
 
 inspectionsRouter.post('/:id/reject', asyncHandler(async (req, res) => {
-    const stageId = Number(req.body.stageId);
-    const requiredRole = ROLE_BY_STAGE[stageId];
-    if (!requiredRole || req.user.role !== requiredRole) {
-        return res.status(403).json({ error: 'FORBIDDEN', message: `Tahap ${stageId} bukan wewenang role "${req.user.role}"` });
-    }
-
-    const result = await approvalService.reject(req.params.id, stageId, req.user);
+    const result = await approvalService.reject(req.params.id, req.body.stageId, req.user, req.body.reason);
     sendResult(res, result);
 }));
 

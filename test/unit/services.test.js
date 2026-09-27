@@ -54,15 +54,15 @@ function seedBaseline() {
     inspectionFake.__seed([
         {
             id: 'INS-001',
-            plantId: 3, lokasi: 'Fermentation', petugas: 'Arif', status: 'proses',
-            approvals: { 1: { approved: true, by: 'Arif', jabatan: 'Safety Officer', tanggal: '1/1/2026' } },
+            plantId: 3, lokasi: 'Fermentation', petugas: 'Arif', petugasUserId: 1,
+            status: 'in_review', currentApprovalStage: 'koordinator_k3l', approvalHistory: [],
             temuan: [{ deskripsi: 'Kabel terkelupas', kategori: 'Kelistrikan' }],
             perbaikan: [{ tgl: '1/1/2026', action: 'Tindakan awal', status: 'open', pic: 'Arif', foto: ['awal.jpg'] }],
         },
         {
             id: 'INS-002',
-            plantId: 9, lokasi: 'Logistic', petugas: 'Arif', status: 'proses',
-            approvals: { 1: { approved: true, by: 'Arif', jabatan: 'Safety Officer', tanggal: '1/1/2026' } },
+            plantId: 9, lokasi: 'Logistic', petugas: 'Arif', petugasUserId: 1,
+            status: 'in_review', currentApprovalStage: 'koordinator_k3l', approvalHistory: [],
             temuan: [], perbaikan: [],
         },
     ]);
@@ -75,60 +75,121 @@ beforeEach(seedBaseline);
 // approval-service
 // =========================================================================
 
+// Phase 17.2: tiga tahap, riwayat append-only, wewenang lewat inspection-policy.
+const AE = approvalService.APPROVAL_ERROR;
+const dewiPlant9 = { id: 5, displayName: 'Dewi', role: 'koordinator_k3l', plantId: 9 };
+const koordinatorPlant3 = { id: 11, displayName: 'Bambang', role: 'koordinator_k3l', plantId: 3 };
+const andi = { id: 6, displayName: 'Andi', role: 'manajer_bagian' };
+const hadi = { id: 7, displayName: 'Hadi', role: 'ketua_p2k3' };
+
 test('approve: inspeksi tidak ada -> INSPECTION_NOT_FOUND', async () => {
-    const result = await approvalService.approve('TIDAK-ADA', 1);
+    const result = await approvalService.approve('TIDAK-ADA', 'koordinator_k3l', dewiPlant9);
     assert.equal(result.ok, false);
-    assert.equal(result.reason, approvalService.APPROVAL_ERROR.INSPECTION_NOT_FOUND);
+    assert.equal(result.reason, AE.INSPECTION_NOT_FOUND);
 });
 
-test('approve: tahap tidak ada -> STAGE_NOT_FOUND', async () => {
-    const result = await approvalService.approve('INS-002', 99);
-    assert.equal(result.reason, approvalService.APPROVAL_ERROR.STAGE_NOT_FOUND);
+test('approve: kode tahap tidak dikenal (termasuk tahap lama bernomor) -> STAGE_NOT_FOUND', async () => {
+    assert.equal((await approvalService.approve('INS-002', 'safety_officer', dewiPlant9)).reason, AE.STAGE_NOT_FOUND);
+    assert.equal((await approvalService.approve('INS-002', 2, dewiPlant9)).reason, AE.STAGE_NOT_FOUND);
 });
 
-test('approve: tahap yang sudah disetujui -> ALREADY_APPROVED', async () => {
-    const result = await approvalService.approve('INS-002', 1);
-    assert.equal(result.reason, approvalService.APPROVAL_ERROR.ALREADY_APPROVED);
+test('approve: tahap yang bukan tahap berjalan -> STAGE_NOT_CURRENT (tidak bisa melompat)', async () => {
+    const result = await approvalService.approve('INS-002', 'ketua_p2k3', hadi);
+    assert.equal(result.reason, AE.STAGE_NOT_CURRENT);
 });
 
-test('approve: lompat ke tahap 3 sebelum tahap 2 -> PREVIOUS_STAGE_PENDING', async () => {
-    const result = await approvalService.approve('INS-002', 3);
-    assert.equal(result.reason, approvalService.APPROVAL_ERROR.PREVIOUS_STAGE_PENDING);
+test('approve: inspeksi yang tidak IN_REVIEW -> NOT_IN_REVIEW', async () => {
+    const stored = await inspectionFake.findById('INS-002');
+    stored.status = 'revision_required';
+    assert.equal((await approvalService.approve('INS-002', 'koordinator_k3l', dewiPlant9)).reason, AE.NOT_IN_REVIEW);
 });
 
-test('approve: tahap 2 berhasil, belum fullyApproved, identitas approver tersimpan (S-07)', async () => {
-    const result = await approvalService.approve('INS-002', 2, { id: 5, displayName: 'Dewi' });
+test('approve: role bukan pemilik tahap -> FORBIDDEN (Manajer di tahap Koordinator)', async () => {
+    assert.equal((await approvalService.approve('INS-002', 'koordinator_k3l', andi)).reason, AE.FORBIDDEN);
+});
+
+test('approve: Koordinator plant lain -> FORBIDDEN, riwayat tidak berubah', async () => {
+    const result = await approvalService.approve('INS-002', 'koordinator_k3l', koordinatorPlant3);
+    assert.equal(result.reason, AE.FORBIDDEN);
+    assert.equal((await inspectionFake.findById('INS-002')).approvalHistory.length, 0);
+});
+
+test('approve: Koordinator plant-nya sendiri berhasil — riwayat bertambah, tahap maju ke Manajer, identitas tersimpan (S-07)', async () => {
+    const result = await approvalService.approve('INS-002', 'koordinator_k3l', dewiPlant9);
     assert.equal(result.ok, true);
-    assert.equal(result.data.stage.id, 2);
+    assert.equal(result.data.stage.id, 'koordinator_k3l');
     assert.equal(result.data.fullyApproved, false);
-    assert.equal(result.data.inspection.approvals[2].by, 'Dewi', 'bukan literal "Approver" — menutup S-07');
 
     const stored = await inspectionFake.findById('INS-002');
-    assert.equal(stored.approvals[2].by, 'Dewi', 'benar-benar tersimpan lewat saveApproval(), bukan cuma di objek lokal');
+    assert.equal(stored.status, 'in_review');
+    assert.equal(stored.currentApprovalStage, 'manajer');
+    assert.equal(stored.approvalHistory.length, 1);
+    const [entry] = stored.approvalHistory;
+    assert.deepEqual(
+        { stage: entry.stage, attempt: entry.attempt, decision: entry.decision, reviewerUserId: entry.reviewerUserId, reviewerName: entry.reviewerName },
+        { stage: 'koordinator_k3l', attempt: 1, decision: 'approved', reviewerUserId: 5, reviewerName: 'Dewi' },
+    );
 });
 
-test('approve: keempat tahap -> fullyApproved true, status inspeksi jadi selesai', async () => {
-    await approvalService.approve('INS-002', 2, { id: 5, displayName: 'Dewi' });
-    await approvalService.approve('INS-002', 3, { id: 6, displayName: 'Andi' });
-    const result = await approvalService.approve('INS-002', 4, { id: 7, displayName: 'Hadi' });
+test('approve: ketiga tahap -> COMPLETED, fullyApproved true', async () => {
+    await approvalService.approve('INS-002', 'koordinator_k3l', dewiPlant9);
+    await approvalService.approve('INS-002', 'manajer', andi);
+    const result = await approvalService.approve('INS-002', 'ketua_p2k3', hadi);
     assert.equal(result.data.fullyApproved, true);
 
     const stored = await inspectionFake.findById('INS-002');
-    assert.equal(stored.status, 'selesai');
+    assert.equal(stored.status, 'completed');
+    assert.equal(stored.currentApprovalStage, null);
+    assert.equal(stored.approvalHistory.length, 3);
 });
 
-test('reject: berhasil, status inspeksi jadi tinjau', async () => {
-    const result = await approvalService.reject('INS-002', 2, { id: 5, displayName: 'Dewi' });
+test('approve: approve ulang tahap yang sudah lewat -> STAGE_NOT_CURRENT, bukan menimpa keputusan', async () => {
+    await approvalService.approve('INS-002', 'koordinator_k3l', dewiPlant9);
+    const again = await approvalService.approve('INS-002', 'koordinator_k3l', dewiPlant9);
+    assert.equal(again.reason, AE.STAGE_NOT_CURRENT);
+    assert.equal((await inspectionFake.findById('INS-002')).approvalHistory.length, 1);
+});
+
+test('approve: dua persetujuan bersamaan untuk tahap yang sama -> tepat satu tersimpan', async () => {
+    const [first, second] = await Promise.all([
+        approvalService.approve('INS-002', 'koordinator_k3l', dewiPlant9),
+        approvalService.approve('INS-002', 'koordinator_k3l', dewiPlant9),
+    ]);
+    assert.equal([first, second].filter((result) => result.ok).length, 1);
+    assert.equal([first, second].find((result) => !result.ok).reason, AE.STAGE_NOT_CURRENT);
+    assert.equal((await inspectionFake.findById('INS-002')).approvalHistory.length, 1);
+});
+
+test('reject: alasan wajib (kosong/spasi) -> REJECTION_REASON_REQUIRED, tidak ada yang tersimpan', async () => {
+    assert.equal((await approvalService.reject('INS-002', 'koordinator_k3l', dewiPlant9, '   ')).reason, AE.REJECTION_REASON_REQUIRED);
+    assert.equal((await approvalService.reject('INS-002', 'koordinator_k3l', dewiPlant9)).reason, AE.REJECTION_REASON_REQUIRED);
+    const stored = await inspectionFake.findById('INS-002');
+    assert.equal(stored.status, 'in_review');
+    assert.equal(stored.approvalHistory.length, 0);
+});
+
+test('reject: -> REVISION_REQUIRED, tahap TETAP, alasan tersimpan, persetujuan sebelumnya tidak disentuh', async () => {
+    await approvalService.approve('INS-002', 'koordinator_k3l', dewiPlant9);
+    const result = await approvalService.reject('INS-002', 'manajer', andi, '  Foto kurang jelas  ');
     assert.equal(result.ok, true);
 
     const stored = await inspectionFake.findById('INS-002');
-    assert.equal(stored.status, 'tinjau');
-    assert.equal(stored.approvals[2].rejected, true);
+    assert.equal(stored.status, 'revision_required');
+    assert.equal(stored.currentApprovalStage, 'manajer', 'kembali ke Manajer setelah revisi, bukan ke Koordinator');
+    assert.equal(stored.approvalHistory.length, 2);
+    assert.equal(stored.approvalHistory[0].decision, 'approved', 'persetujuan Koordinator tetap ada di riwayat');
+    assert.equal(stored.approvalHistory[1].decision, 'rejected');
+    assert.equal(stored.approvalHistory[1].rejectionReason, 'Foto kurang jelas');
+});
+
+test('reject: wewenang sama dengan approve — Safety Officer dan Admin -> FORBIDDEN', async () => {
+    assert.equal((await approvalService.reject('INS-002', 'koordinator_k3l', { id: 1, role: 'safety_officer' }, 'x')).reason, AE.FORBIDDEN);
+    assert.equal((await approvalService.reject('INS-002', 'koordinator_k3l', { id: 9, role: 'admin' }, 'x')).reason, AE.FORBIDDEN);
 });
 
 test('reject: inspeksi tidak ada -> INSPECTION_NOT_FOUND', async () => {
-    const result = await approvalService.reject('TIDAK-ADA', 1);
-    assert.equal(result.reason, approvalService.APPROVAL_ERROR.INSPECTION_NOT_FOUND);
+    const result = await approvalService.reject('TIDAK-ADA', 'koordinator_k3l', dewiPlant9, 'x');
+    assert.equal(result.reason, AE.INSPECTION_NOT_FOUND);
 });
 
 // =========================================================================
@@ -152,7 +213,7 @@ test('addAction: foto wajib -> PHOTO_REQUIRED', async () => {
     assert.equal((await correctiveActionService.addAction('INS-001', { action: 'Perbaiki', photos: [] })).reason, CA.PHOTO_REQUIRED);
 });
 
-test('addAction: berhasil — deskripsi di-trim, jumlah bertambah, status inspeksi ikut diperbarui', async () => {
+test('addAction: berhasil — deskripsi di-trim, jumlah bertambah, status alur kerja inspeksi TIDAK berubah (Phase 17.2)', async () => {
     const before = (await inspectionFake.findById('INS-001')).perbaikan.length;
     const result = await correctiveActionService.addAction('INS-001', {
         action: '  Ganti kabel  ', status: 'on-progress', pic: 'Tulus', photos: ['a.jpg', 'b.jpg'],
@@ -163,7 +224,11 @@ test('addAction: berhasil — deskripsi di-trim, jumlah bertambah, status inspek
 
     const stored = await inspectionFake.findById('INS-001');
     assert.equal(stored.perbaikan.length, before + 1);
-    assert.equal(stored.status, 'proses', 'ada tindakan belum closed -> status proses');
+    assert.equal(stored.status, 'in_review', 'tindakan perbaikan tidak menentukan status alur kerja');
+    assert.equal(stored.currentApprovalStage, 'koordinator_k3l');
+
+    await correctiveActionService.addAction('INS-001', { action: 'Tutup semua', status: 'closed', pic: 'Tulus', photos: ['c.jpg'] });
+    assert.equal((await inspectionFake.findById('INS-001')).status, 'in_review', 'bahkan saat tindakan closed');
 });
 
 // =========================================================================
@@ -196,17 +261,19 @@ test('create: plantId tidak ditemukan -> PLANT_NOT_FOUND (regresi bug 500 pra-Ph
     assert.equal(result.reason, IE.PLANT_NOT_FOUND);
 });
 
-test('create: berhasil — lokasi dari plant, tahap 1 auto-approved, satu tindakan per temuan', async () => {
+test('create: berhasil — lokasi dari plant, langsung diajukan ke Koordinator (interim 17.2), satu tindakan per temuan', async () => {
     const countBefore = await inspectionFake.count();
     const result = await inspectionService.create({
-        plantId: '16', tanggal: '2026-09-19', petugas: 'Penguji', status: 'proses', dueDate: '2026-10-01',
+        // status dari form DIABAIKAN — hanya transisi alur kerja yang boleh menentukannya.
+        plantId: '16', tanggal: '2026-09-19', petugas: 'Penguji', status: 'completed', dueDate: '2026-10-01',
         temuan: [{ deskripsi: 'Temuan A', kategori: 'Kelistrikan' }, { deskripsi: 'Temuan B', kategori: 'Kebakaran' }],
     });
     assert.equal(result.ok, true);
     assert.equal(await inspectionFake.count(), countBefore + 1);
     assert.equal(result.data.inspection.lokasi, 'Utility');
-    assert.equal(result.data.inspection.approvals[1].approved, true);
-    assert.equal(result.data.inspection.approvals[1].by, 'Penguji');
+    assert.equal(result.data.inspection.status, 'in_review');
+    assert.equal(result.data.inspection.currentApprovalStage, 'koordinator_k3l');
+    assert.deepEqual(result.data.inspection.approvalHistory, [], 'Safety Officer bukan tahap pengesahan — tidak ada persetujuan otomatis');
     assert.equal(result.data.inspection.perbaikan.length, 2);
     assert.equal(result.data.inspection.perbaikan[0].status, 'open');
 });

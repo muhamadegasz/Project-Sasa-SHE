@@ -35,13 +35,19 @@ function guessMimeType(filename) {
     return 'application/octet-stream';
 }
 
-/** Nama akun seed per role. Password sama dengan username — data pengembangan, bukan produksi. */
+/**
+ * Nama akun seed per role. Password sama dengan username — data pengembangan, bukan produksi.
+ * Phase 17.2: setiap Koordinator K3L bertanggung jawab atas tepat satu plant
+ * (plantId). Dewi = plant 1 (tempat fixture E2E dibuat), Rina = plant 9 —
+ * dua koordinator supaya pembatasan plant bisa diuji dari dua arah.
+ */
 const SEED_USERS = [
     { username: 'arif', displayName: 'Arif', role: 'safety_officer' },
     { username: 'tulus', displayName: 'Tulus', role: 'safety_officer' },
     { username: 'mustofa', displayName: 'Mustofa', role: 'safety_officer' },
     { username: 'melka', displayName: 'Melka', role: 'safety_officer' },
-    { username: 'dewi', displayName: 'Dewi', role: 'koordinator_k3l' },
+    { username: 'dewi', displayName: 'Dewi', role: 'koordinator_k3l', plantId: 1 },
+    { username: 'rina', displayName: 'Rina', role: 'koordinator_k3l', plantId: 9 },
     { username: 'andi', displayName: 'Andi', role: 'manajer_bagian' },
     { username: 'hadi', displayName: 'Hadi', role: 'ketua_p2k3' },
     { username: 'admin', displayName: 'Administrator', role: 'admin' },
@@ -49,7 +55,10 @@ const SEED_USERS = [
 
 async function wipe(connection) {
     await connection.query('SET FOREIGN_KEY_CHECKS = 0');
-    for (const table of ['photos', 'approvals', 'corrective_actions', 'findings', 'inspections', 'schedules', 'plants', 'users']) {
+    // approvals_legacy (migrasi 003): TRUNCATE tidak ikut cascade, jadi arsip
+    // lama ikut dibersihkan eksplisit — tanpa ini barisnya menunjuk id inspeksi
+    // yang sudah dipakai ulang oleh data seed baru.
+    for (const table of ['photos', 'approvals', 'approvals_legacy', 'corrective_actions', 'findings', 'inspections', 'schedules', 'plants', 'users']) {
         await connection.query(`TRUNCATE TABLE ${table}`);
     }
     await connection.query('SET FOREIGN_KEY_CHECKS = 1');
@@ -60,8 +69,8 @@ async function seedUsers(connection) {
     for (const user of SEED_USERS) {
         const passwordHash = await bcrypt.hash(user.username, 10);
         const [result] = await connection.query(
-            'INSERT INTO users (username, password_hash, display_name, role) VALUES (?, ?, ?, ?)',
-            [user.username, passwordHash, user.displayName, user.role],
+            'INSERT INTO users (username, password_hash, display_name, role, plant_id) VALUES (?, ?, ?, ?, ?)',
+            [user.username, passwordHash, user.displayName, user.role, user.plantId ?? null],
         );
         userIdByDisplayName.set(user.displayName, result.insertId);
     }
@@ -95,8 +104,9 @@ async function seedInspections(connection, userIdByDisplayName) {
         }
 
         const [inspectionResult] = await connection.query(
-            `INSERT INTO inspections (plant_id, keterangan_lokasi, tanggal, petugas, petugas_user_id, status, due_date)
-             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO inspections (plant_id, keterangan_lokasi, tanggal, petugas, petugas_user_id,
+                                      status, current_approval_stage, submitted_at, due_date)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 inspection.plantId,
                 inspection.keteranganLokasi,
@@ -104,6 +114,8 @@ async function seedInspections(connection, userIdByDisplayName) {
                 inspection.petugas,
                 petugasUserId,
                 inspection.status,
+                inspection.currentApprovalStage,
+                inspection.status === 'draft' ? null : `${toSqlDate(inspection.tanggal)} 08:00:00`,
                 inspection.dueDate ? toSqlDate(inspection.dueDate) : null,
             ],
         );
@@ -112,25 +124,22 @@ async function seedInspections(connection, userIdByDisplayName) {
         await insertPhotos(connection, inspection.fotoDekat, 'dekat', { inspectionId });
         await insertPhotos(connection, inspection.fotoJauh, 'jauh', { inspectionId });
 
-        // approvals: tahap 1 selalu oleh petugas (identitas sungguhan tersedia).
-        // Tahap 2-4 di data demo lama memakai nama fiktif tanpa akun sungguhan
-        // (di luar SEED_USERS) — approved_by_user_id dibiarkan NULL, nama
-        // historisnya tetap disimpan di approved_by_name.
-        for (const [stageIdStr, approval] of Object.entries(inspection.approvals)) {
-            const stageId = Number(stageIdStr);
-            const approvedByUserId = stageId === 1 ? petugasUserId : (userIdByDisplayName.get(approval.by) || null);
+        // Riwayat pengesahan append-only (Phase 17.2): satu baris per keputusan.
+        // Penyetuju yang bukan akun seed (nama demo lama, mis. Bambang/Sari)
+        // disimpan namanya saja, reviewer_user_id NULL.
+        for (const entry of inspection.approvalHistory) {
             await connection.query(
-                `INSERT INTO approvals (inspection_id, stage_id, approved, rejected, approved_by_user_id, approved_by_name, jabatan, decided_at)
+                `INSERT INTO approvals (inspection_id, stage, attempt, decision, reviewer_user_id, reviewer_name, rejection_reason, decided_at)
                  VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     inspectionId,
-                    stageId,
-                    approval.approved ? 1 : 0,
-                    approval.rejected ? 1 : 0,
-                    approval.approved ? approvedByUserId : null,
-                    approval.by,
-                    approval.jabatan,
-                    approval.tanggal ? toSqlDateTime(approval.tanggal) : null,
+                    entry.stage,
+                    entry.attempt,
+                    entry.decision,
+                    userIdByDisplayName.get(entry.by) || null,
+                    entry.by,
+                    entry.reason || null,
+                    toSqlDateTime(entry.tanggal),
                 ],
             );
         }
@@ -182,8 +191,9 @@ async function main() {
     const connection = await pool.getConnection();
     try {
         await wipe(connection);
-        const userIdByDisplayName = await seedUsers(connection);
+        // Plant dulu: users.plant_id (Phase 17.2) adalah FK ke plants.
         await seedPlants(connection);
+        const userIdByDisplayName = await seedUsers(connection);
         await seedInspections(connection, userIdByDisplayName);
         await seedSchedules(connection, userIdByDisplayName);
         console.log(`seed selesai: ${SEED_USERS.length} user, ${PLANT_LIST.length} plant.`);

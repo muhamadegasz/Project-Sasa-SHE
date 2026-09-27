@@ -9,13 +9,13 @@ import * as inspectionRepository from '../../repositories/inspection-repository.
 import { bindModalClose, openModal } from '../components/modal.js';
 import { showToast } from '../components/toast.js';
 import { renderApprovalStages } from './approval.view.js';
+import { formatInspectionStatus } from '../../shared/labels.js';
+import { totalStages } from '../../domain/approval-rules.js';
 
 export async function openDetailModal(id) {
     const item = await inspectionRepository.findById(id);
     if (!item) { showToast('⚠️ Data tidak ditemukan'); return; }
     const content = document.getElementById('detailContent');
-
-    const statusMap = { 'selesai': 'Selesai', 'proses': 'Proses', 'tinjau': 'Tinjau' };
 
     const temuanHtml = item.temuan && item.temuan.length > 0 ?
         item.temuan.map(t =>
@@ -46,7 +46,7 @@ export async function openDetailModal(id) {
                     </div>
                     <div class="detail-item">
                         <span class="label"><i class="fas fa-map-marker-alt"></i> Status</span>
-                        <span class="value"><span class="status-badge ${escapeHtml(item.status)}">${escapeHtml(statusMap[item.status] || item.status)}</span></span>
+                        <span class="value"><span class="status-badge ${escapeHtml(item.status)}">${escapeHtml(formatInspectionStatus(item.status))}</span></span>
                     </div>
                     <div class="detail-item">
                         <span class="label"><i class="fas fa-building"></i> Lokasi / Plant</span>
@@ -89,7 +89,7 @@ export async function openDetailModal(id) {
                 </div>
 
                 <div class="detail-section">
-                    <div class="section-title"><i class="fas fa-stamp"></i> Pengesahan (4 Tahap)</div>
+                    <div class="section-title"><i class="fas fa-stamp"></i> Pengesahan (${totalStages()} Tahap)</div>
                     ${renderApprovalStages(item)}
                     <div style="margin-top:0.5rem;">
                         <button class="btn-sm primary" data-action="openApprovalModal" data-id="${escapeHtml(item.id)}"><i class="fas fa-stamp"></i> Kelola Pengesahan</button>

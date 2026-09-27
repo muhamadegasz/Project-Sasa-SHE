@@ -4,9 +4,13 @@
  * menyentuh DOM, tanpa memutasi apa pun, tanpa menampilkan pesan.
  *
  * Renderer memakai hasilnya, bukan menghitung ulang sendiri.
+ *
+ * Phase 17.2: progres perbaikan di sini TIDAK menentukan status alur kerja
+ * inspeksi (statusFromActions() dihapus — dulu menimpa status inspeksi setiap
+ * tindakan ditambahkan). Status alur kerja ada di workflow-rules.js.
  */
 
-import { ACTION_STATUS, INSPECTION_STATUS, REPAIR_STATUS } from './statuses.js';
+import { ACTION_STATUS, REPAIR_STATUS } from './statuses.js';
 
 /** Apakah inspeksi punya minimal satu tindakan perbaikan. */
 function hasActions(inspection) {
@@ -57,22 +61,6 @@ export function hasActionInProgress(inspection) {
 export function hasActionOpen(inspection) {
     return hasActions(inspection)
         && inspection.perbaikan.some((action) => action.status === ACTION_STATUS.OPEN);
-}
-
-/**
- * Status inspeksi yang seharusnya setelah daftar tindakannya berubah.
- *
- * Dipakai ketika progres perbaikan baru ditambahkan: begitu seluruh tindakan
- * closed, inspeksi dianggap selesai; selain itu kembali ke proses.
- *
- * Catatan: aturan ini TIDAK mempertimbangkan pengesahan. Pengesahan punya
- * jalurnya sendiri di approval-rules.js, dan juga dapat mengubah status
- * inspeksi. Perilaku itu sudah begitu sebelum refactoring dan tidak diubah.
- */
-export function statusFromActions(inspection) {
-    return allActionsClosed(inspection)
-        ? INSPECTION_STATUS.SELESAI
-        : INSPECTION_STATUS.PROSES;
 }
 
 /** Jumlah temuan pada sebuah inspeksi. */

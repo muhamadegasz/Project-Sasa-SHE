@@ -20,16 +20,16 @@ export function createInspectionSeed() {
         keteranganLokasi: 'Ruang Panel E&I Lantai 2',
         tanggal: getDateOffset(-5),
         petugas: 'Arif',
-        status: 'selesai',
+        status: 'completed',
+        currentApprovalStage: null,
         dueDate: getDateOffset(-2),
         fotoDekat: ['kimia_dekat1.jpg', 'kimia_dekat2.jpg'],
         fotoJauh: ['kimia_jauh1.jpg'],
-        approvals: {
-            1: { approved: true, by: 'Arif', jabatan: 'Safety Officer', tanggal: getDateOffset(-4) + ' 09:00' },
-            2: { approved: true, by: 'Bambang', jabatan: 'Koord. K3L Bagian', tanggal: getDateOffset(-3) + ' 10:30' },
-            3: { approved: true, by: 'Siti', jabatan: 'Manajer Bagian', tanggal: getDateOffset(-2) + ' 13:15' },
-            4: { approved: true, by: 'Hadi', jabatan: 'Ketua P2K3', tanggal: getDateOffset(-1) + ' 16:00' }
-        },
+        approvalHistory: [
+            { stage: 'koordinator_k3l', attempt: 1, decision: 'approved', by: 'Dewi', tanggal: getDateOffset(-3) + ' 10:30' },
+            { stage: 'manajer', attempt: 1, decision: 'approved', by: 'Andi', tanggal: getDateOffset(-2) + ' 13:15' },
+            { stage: 'ketua_p2k3', attempt: 1, decision: 'approved', by: 'Hadi', tanggal: getDateOffset(-1) + ' 16:00' },
+        ],
         temuan: [
             { deskripsi: 'Kabel ground tidak terpasang dengan benar', kategori: 'Kelistrikan' },
             { deskripsi: 'Panel kontrol tidak terkunci', kategori: 'Kecelakaan' }
@@ -47,16 +47,12 @@ export function createInspectionSeed() {
         keteranganLokasi: 'Area Fermentasi A2',
         tanggal: getDateOffset(-3),
         petugas: 'Mustofa',
-        status: 'proses',
+        status: 'in_review',
+        currentApprovalStage: 'koordinator_k3l',
         dueDate: getDateOffset(3),
         fotoDekat: ['fermentasi_dekat1.jpg'],
         fotoJauh: ['fermentasi_jauh1.jpg'],
-        approvals: {
-            1: { approved: true, by: 'Mustofa', jabatan: 'Safety Officer', tanggal: getDateOffset(-2) + ' 08:00' },
-            2: { approved: false, by: null, jabatan: 'Koord. K3L Bagian', tanggal: null },
-            3: { approved: false, by: null, jabatan: 'Manajer Bagian', tanggal: null },
-            4: { approved: false, by: null, jabatan: 'Ketua P2K3', tanggal: null }
-        },
+        approvalHistory: [],
         temuan: [
             { deskripsi: 'Suhu fermentasi tidak stabil', kategori: 'Kesehatan' },
             { deskripsi: 'Kebocoran pada pipa transfer', kategori: 'Kebocoran' }
@@ -74,16 +70,16 @@ export function createInspectionSeed() {
         keteranganLokasi: 'Gedung PMR 2 - Lantai 3',
         tanggal: getDateOffset(-7),
         petugas: 'Melka',
-        status: 'tinjau',
+        status: 'revision_required',
+        currentApprovalStage: 'manajer',
         dueDate: getDateOffset(-1),
         fotoDekat: ['pmr2_dekat1.jpg'],
         fotoJauh: ['pmr2_jauh1.jpg'],
-        approvals: {
-            1: { approved: true, by: 'Melka', jabatan: 'Safety Officer', tanggal: getDateOffset(-6) + ' 11:00' },
-            2: { approved: true, by: 'Dewi', jabatan: 'Koord. K3L Bagian', tanggal: getDateOffset(-5) + ' 09:30' },
-            3: { approved: false, by: null, jabatan: 'Manajer Bagian', tanggal: null },
-            4: { approved: false, by: null, jabatan: 'Ketua P2K3', tanggal: null }
-        },
+        approvalHistory: [
+            { stage: 'koordinator_k3l', attempt: 1, decision: 'approved', by: 'Bambang', tanggal: getDateOffset(-5) + ' 09:30' },
+            { stage: 'manajer', attempt: 1, decision: 'rejected', by: 'Andi', tanggal: getDateOffset(-4) + ' 14:00',
+                reason: 'Foto jauh belum memperlihatkan jalur evakuasi; lengkapi foto area rambu.' },
+        ],
         temuan: [
             { deskripsi: 'APAR tidak terisi penuh', kategori: 'Kebakaran' },
             { deskripsi: 'Rambu evakuasi tidak terlihat', kategori: 'Kecelakaan' }
@@ -101,16 +97,16 @@ export function createInspectionSeed() {
         keteranganLokasi: 'Gudang Logistik - Rak C4',
         tanggal: getDateOffset(-10),
         petugas: 'Tulus',
-        status: 'selesai',
+        status: 'completed',
+        currentApprovalStage: null,
         dueDate: getDateOffset(-5),
         fotoDekat: ['logistik_dekat1.jpg'],
         fotoJauh: ['logistik_jauh1.jpg'],
-        approvals: {
-            1: { approved: true, by: 'Tulus', jabatan: 'Safety Officer', tanggal: getDateOffset(-9) + ' 10:00' },
-            2: { approved: true, by: 'Rina', jabatan: 'Koord. K3L Bagian', tanggal: getDateOffset(-8) + ' 11:30' },
-            3: { approved: true, by: 'Andi', jabatan: 'Manajer Bagian', tanggal: getDateOffset(-7) + ' 09:00' },
-            4: { approved: true, by: 'Hadi', jabatan: 'Ketua P2K3', tanggal: getDateOffset(-6) + ' 15:00' }
-        },
+        approvalHistory: [
+            { stage: 'koordinator_k3l', attempt: 1, decision: 'approved', by: 'Rina', tanggal: getDateOffset(-8) + ' 11:30' },
+            { stage: 'manajer', attempt: 1, decision: 'approved', by: 'Andi', tanggal: getDateOffset(-7) + ' 09:00' },
+            { stage: 'ketua_p2k3', attempt: 1, decision: 'approved', by: 'Hadi', tanggal: getDateOffset(-6) + ' 15:00' },
+        ],
         temuan: [
             { deskripsi: 'Rak penyimpanan tidak stabil', kategori: 'Kecelakaan' },
             { deskripsi: 'Penerangan gudang kurang', kategori: 'Kesehatan' }
@@ -128,16 +124,12 @@ export function createInspectionSeed() {
         keteranganLokasi: 'Ruang Utility - Pompa Air',
         tanggal: getDateOffset(-1),
         petugas: 'Mustofa',
-        status: 'proses',
+        status: 'in_review',
+        currentApprovalStage: 'koordinator_k3l',
         dueDate: getDateOffset(7),
         fotoDekat: ['utility_dekat1.jpg'],
         fotoJauh: ['utility_jauh1.jpg'],
-        approvals: {
-            1: { approved: true, by: 'Mustofa', jabatan: 'Safety Officer', tanggal: getDateOffset(0) + ' 07:30' },
-            2: { approved: false, by: null, jabatan: 'Koord. K3L Bagian', tanggal: null },
-            3: { approved: false, by: null, jabatan: 'Manajer Bagian', tanggal: null },
-            4: { approved: false, by: null, jabatan: 'Ketua P2K3', tanggal: null }
-        },
+        approvalHistory: [],
         temuan: [
             { deskripsi: 'Bocor pada sambungan pipa', kategori: 'Kebocoran' },
             { deskripsi: 'Tekanan air tidak stabil', kategori: 'Lainnya' }
@@ -153,16 +145,17 @@ export function createInspectionSeed() {
         keteranganLokasi: 'Area IPAL - Bak Sedimentasi',
         tanggal: getDateOffset(-12),
         petugas: 'Melka',
-        status: 'selesai',
+        status: 'in_review',
+        currentApprovalStage: 'ketua_p2k3',
         dueDate: getDateOffset(-8),
         fotoDekat: ['ipal_dekat1.jpg'],
         fotoJauh: ['ipal_jauh1.jpg'],
-        approvals: {
-            1: { approved: true, by: 'Melka', jabatan: 'Safety Officer', tanggal: getDateOffset(-11) + ' 08:00' },
-            2: { approved: true, by: 'Dewi', jabatan: 'Koord. K3L Bagian', tanggal: getDateOffset(-10) + ' 09:30' },
-            3: { approved: true, by: 'Andi', jabatan: 'Manajer Bagian', tanggal: getDateOffset(-9) + ' 13:00' },
-            4: { approved: false, by: null, jabatan: 'Ketua P2K3', tanggal: null }
-        },
+        approvalHistory: [
+            { stage: 'koordinator_k3l', attempt: 1, decision: 'rejected', by: 'Sari', tanggal: getDateOffset(-10) + ' 09:30',
+                reason: 'Kategori temuan belum sesuai; pompa IPAL termasuk Kebocoran.' },
+            { stage: 'koordinator_k3l', attempt: 2, decision: 'approved', by: 'Sari', tanggal: getDateOffset(-10) + ' 15:00' },
+            { stage: 'manajer', attempt: 1, decision: 'approved', by: 'Andi', tanggal: getDateOffset(-9) + ' 13:00' },
+        ],
         temuan: [
             { deskripsi: 'Pompa IPAL tidak berfungsi optimal', kategori: 'Lainnya' },
             { deskripsi: 'Kebersihan area sekitar kurang', kategori: 'Kesehatan' }

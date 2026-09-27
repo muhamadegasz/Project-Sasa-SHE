@@ -1,12 +1,17 @@
-/* approval.spec.js — Phase 14.1-G: APPROVAL #9-12.
+/* approval.spec.js — Phase 14.1-G: APPROVAL #9-12, diperbarui Phase 17.2
+ * (tiga tahap berkode string, riwayat append-only, alasan penolakan wajib,
+ * wewenang lewat domain/inspection-policy.js).
  *
  * Setiap test membuat inspeksi fixture-nya SENDIRI lewat API (support/api.js)
- * — tidak ada test yang bergantung pada inspeksi buatan test lain.
+ * — tidak ada test yang bergantung pada inspeksi buatan test lain. Fixture
+ * dibuat di plant 1, plant yang ditugaskan ke koordinator seed "dewi".
  */
 
 import { test, expect } from '@playwright/test';
 import { loginViaUi, goToTab } from './support/ui.js';
 import { apiLogin, createInspectionFixture } from './support/api.js';
+
+const API = 'http://project-sasa-she.test:3001/api';
 
 async function openApprovalModalFor(page, inspectionId) {
     await goToTab(page, 'Inspeksi');
@@ -15,7 +20,12 @@ async function openApprovalModalFor(page, inspectionId) {
     await expect(page.locator('#approvalModal')).toHaveClass(/show/);
 }
 
-test('koordinator K3L yang berwenang bisa menyetujui tahap 2', async ({ page }) => {
+async function fetchInspection(page, inspectionId) {
+    const res = await page.request.get(`${API}/inspections/${inspectionId}`);
+    return res.json();
+}
+
+test('koordinator K3L plant yang bersangkutan bisa menyetujui tahapnya — tahap maju ke Manajer', async ({ page }) => {
     const arif = await apiLogin('arif');
     const inspection = await createInspectionFixture(arif);
 
@@ -25,46 +35,55 @@ test('koordinator K3L yang berwenang bisa menyetujui tahap 2', async ({ page }) 
     await page.locator('#approvalContent').getByRole('button', { name: /Setujui/ }).click();
     await expect(page.locator('#toastMessage')).toContainText('menyetujui inspeksi');
 
-    const check = await page.request.get(`http://project-sasa-she.test:3001/api/inspections/${inspection.id}`);
-    const body = await check.json();
-    expect(body.approvals['2'].approved).toBe(true);
-    expect(body.approvals['2'].by).toBe('Dewi');
+    const body = await fetchInspection(page, inspection.id);
+    expect(body.status).toBe('in_review');
+    expect(body.currentApprovalStage).toBe('manajer');
+    expect(body.approvalHistory).toHaveLength(1);
+    expect(body.approvalHistory[0]).toMatchObject({ stage: 'koordinator_k3l', attempt: 1, decision: 'approved', reviewerName: 'Dewi' });
 });
 
-test('koordinator K3L yang berwenang bisa menolak tahap 2', async ({ page }) => {
+test('koordinator K3L bisa menolak dengan alasan — inspeksi perlu revisi, tahap tetap di Koordinator', async ({ page }) => {
     const arif = await apiLogin('arif');
     const inspection = await createInspectionFixture(arif);
 
     await loginViaUi(page, 'dewi');
     await openApprovalModalFor(page, inspection.id);
 
-    page.once('dialog', (dialog) => dialog.accept());
+    // Alasan wajib (Phase 17.2) — sementara diminta lewat prompt() sampai form penolakan Phase 17.3.
+    page.once('dialog', (dialog) => dialog.accept('Foto area kurang jelas'));
     await page.locator('#approvalContent').getByRole('button', { name: /Tolak/ }).click();
     await expect(page.locator('#toastMessage')).toContainText('menolak inspeksi');
 
-    const check = await page.request.get(`http://project-sasa-she.test:3001/api/inspections/${inspection.id}`);
-    const body = await check.json();
-    expect(body.status).toBe('tinjau');
-    expect(body.approvals['2'].rejected).toBe(true);
+    const body = await fetchInspection(page, inspection.id);
+    expect(body.status).toBe('revision_required');
+    expect(body.currentApprovalStage).toBe('koordinator_k3l');
+    expect(body.approvalHistory[0]).toMatchObject({ stage: 'koordinator_k3l', decision: 'rejected', rejectionReason: 'Foto area kurang jelas' });
 });
 
-test('role yang tidak berwenang tidak bisa menyetujui — server menolak walau tombol diklik di UI', async ({ page }) => {
+test('role yang tidak berwenang tidak bisa menyetujui — ditolak di UI DAN oleh server', async ({ page }) => {
     const arif = await apiLogin('arif');
     const inspection = await createInspectionFixture(arif);
 
-    // arif (safety_officer) login lagi lewat UI — pemilik tahap 2 adalah
-    // koordinator_k3l, bukan safety_officer. UI sendiri tidak menyembunyikan
-    // tombol berdasar role (hanya berdasar urutan tahap) — proteksi
-    // sesungguhnya harus datang dari server.
+    // arif (safety_officer) — pembuat inspeksi, bukan tahap pengesahan. UI
+    // sendiri belum menyembunyikan tombol berdasar role (UI Phase 17.3).
     await loginViaUi(page, 'arif');
     await openApprovalModalFor(page, inspection.id);
 
     await page.locator('#approvalContent').getByRole('button', { name: /Setujui/ }).click();
-    await expect(page.locator('#toastMessage')).toContainText('Terjadi kesalahan');
+    await expect(page.locator('#toastMessage')).toContainText('tidak berwenang');
 
-    const check = await page.request.get(`http://project-sasa-she.test:3001/api/inspections/${inspection.id}`);
-    const body = await check.json();
-    expect(body.approvals['2'].approved, 'tetap belum disetujui — permintaan sungguhan ditolak server, bukan cuma UI diam-diam berhasil').toBe(false);
+    // Pemeriksaan di browser bukan otorisasi: kirim langsung ke server dengan
+    // sesi arif sendiri — server yang harus menolak.
+    const { csrfToken } = await (await page.request.get(`${API}/auth/me`)).json();
+    const direct = await page.request.post(`${API}/inspections/${inspection.id}/approve`, {
+        headers: { 'X-CSRF-Token': csrfToken },
+        data: { stageId: 'koordinator_k3l' },
+    });
+    expect(direct.status()).toBe(403);
+
+    const body = await fetchInspection(page, inspection.id);
+    expect(body.approvalHistory, 'tetap belum ada keputusan — permintaan sungguhan ditolak server').toHaveLength(0);
+    expect(body.currentApprovalStage).toBe('koordinator_k3l');
 });
 
 test('alur pengesahan tidak bisa dilompati lewat UI — hanya tahap yang sedang berjalan yang punya tombol aksi', async ({ page }) => {
@@ -75,6 +94,6 @@ test('alur pengesahan tidak bisa dilompati lewat UI — hanya tahap yang sedang 
     await openApprovalModalFor(page, inspection.id);
 
     const approveButtons = page.locator('#approvalContent').getByRole('button', { name: /Setujui/ });
-    await expect(approveButtons, 'hanya SATU tombol setujui yang tersedia — tahap 3 dan 4 belum menawarkan aksi apa pun sebelum tahap 2 selesai').toHaveCount(1);
-    await expect(approveButtons.first()).toHaveAttribute('data-stage', '2');
+    await expect(approveButtons, 'hanya SATU tombol setujui — tahap Manajer dan Ketua belum menawarkan aksi apa pun').toHaveCount(1);
+    await expect(approveButtons.first()).toHaveAttribute('data-stage', 'koordinator_k3l');
 });

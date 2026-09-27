@@ -344,15 +344,9 @@
                                 <input type="text" id="formPetugas" data-testid="inspection-officer-display" placeholder="Nama Safety Officer" readonly title="Selalu diisi dari akun yang sedang login — server memaksa nilai ini, lihat docs/DECISIONS.md Phase 14">
                             </div>
                         </div>
+                        <!-- Phase 17.2: tidak ada lagi pilihan "Status Inspeksi" — status
+                             hanya berubah lewat alur pengajuan/pengesahan, bukan isian form. -->
                         <div class="form-row">
-                            <div class="form-group">
-                                <label>Status Inspeksi</label>
-                                <select id="formStatus">
-                                    <option value="proses">Proses</option>
-                                    <option value="selesai">Selesai</option>
-                                    <option value="tinjau">Tinjau</option>
-                                </select>
-                            </div>
                             <div class="form-group">
                                 <label>Due Date ke Plant</label>
                                 <input type="date" id="formDueDate" data-testid="inspection-duedate">

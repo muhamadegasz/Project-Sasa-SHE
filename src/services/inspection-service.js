@@ -6,8 +6,8 @@
 
 import * as inspectionRepository from '#repositories/inspection-repository.js';
 import * as plantRepository from '#repositories/plant-repository.js';
-import { buildInitialApprovals } from '../domain/approval-rules.js';
-import { ACTION_STATUS } from '../domain/statuses.js';
+import { submittedState } from '../domain/workflow-rules.js';
+import { ACTION_STATUS, INSPECTION_STATUS } from '../domain/statuses.js';
 import { formatDate } from '../shared/date.js';
 import { fail, ok } from './result.js';
 
@@ -27,7 +27,15 @@ export const INSPECTION_ERROR = {
  *
  * Setiap temuan otomatis melahirkan satu tindakan perbaikan berstatus open,
  * sehingga daftar perbaikan tidak pernah kosong untuk inspeksi yang punya
- * temuan. Tahap pengesahan pertama langsung disetujui atas nama petugas.
+ * temuan.
+ *
+ * Phase 17.2: status TIDAK lagi diambil dari isian form (input.status
+ * diabaikan) — hanya transisi alur kerja yang boleh mengubahnya. Inspeksi
+ * dibangun sebagai DRAFT lalu langsung melewati transisi submit (DRAFT ->
+ * IN_REVIEW, tahap Koordinator K3L): form saat ini belum punya pilihan
+ * "simpan sebagai draft", jadi menyimpan = mengajukan, sama seperti sebelumnya.
+ * Phase 17.3 memisahkan keduanya. Safety Officer tidak lagi menjadi tahap
+ * pengesahan — riwayat pengesahan inspeksi baru kosong.
  *
  * Sejak Phase 12: async, karena repository backend adalah query MySQL
  * sungguhan. Id tidak lagi dihitung di sini — inspectionRepository.add()
@@ -48,6 +56,7 @@ export async function create(input) {
     if (!plant) return fail(INSPECTION_ERROR.PLANT_NOT_FOUND);
 
     const today = new Date().toLocaleDateString('id-ID');
+    const submitted = submittedState({ status: INSPECTION_STATUS.DRAFT, currentApprovalStage: null });
 
     const inspection = await inspectionRepository.add({
         lokasi: plant.name,
@@ -60,11 +69,13 @@ export async function create(input) {
         // Keamanan). Frontend in-memory (belum ada auth sampai Phase 13/14)
         // tidak pernah mengirim ini — repository in-memory mengabaikannya.
         petugasUserId: input.petugasUserId,
-        status: input.status,
+        status: submitted.status,
+        currentApprovalStage: submitted.currentApprovalStage,
+        submittedAt: new Date().toISOString(),
         dueDate: formatDate(input.dueDate),
         fotoDekat: input.fotoDekat || [],
         fotoJauh: input.fotoJauh || [],
-        approvals: buildInitialApprovals(input.petugas),
+        approvalHistory: [],
         temuan: findings,
         perbaikan: findings.map((finding, index) => ({
             tgl: today,

@@ -7,7 +7,10 @@
 
 import { escapeHtml } from '../../shared/html.js';
 import { APPROVAL_STAGES } from '../../config/constants.js';
-import { formatActionStatus } from '../../shared/labels.js';
+import { formatActionStatus, formatInspectionStatus } from '../../shared/labels.js';
+import { formatDate } from '../../shared/date.js';
+import { isStageApproved, latestDecision } from '../../domain/approval-rules.js';
+import { INSPECTION_STATUS } from '../../domain/statuses.js';
 
 function buildGalleryHtml(item) {
     const allPhotos = [...(item.fotoDekat || []), ...(item.fotoJauh || [])];
@@ -32,17 +35,18 @@ function buildPerbaikanRows(item) {
         '<tr><td colspan="4" style="text-align:center;color:#888;">Belum ada tindakan perbaikan</td></tr>';
 }
 
+/** Phase 17.2: satu blok per tahap pengesahan (tiga), dari keputusan terakhirnya. Gambar tanda tangan menyusul (Phase 17.3+). */
 function buildApprovalSignatures(item) {
     return APPROVAL_STAGES.map(s => {
-        const approval = item.approvals && item.approvals[s.id];
-        if (approval && approval.approved) {
+        if (isStageApproved(item, s.id)) {
+            const approval = latestDecision(item, s.id);
             return `
                 <div class="sign-item">
                     <div style="font-size:0.7rem;color:#888;">${escapeHtml(s.title)}</div>
-                    <div class="sign-name">${escapeHtml(approval.by)}</div>
-                    <div style="font-size:0.7rem;color:#666;">${escapeHtml(approval.jabatan)}</div>
+                    <div class="sign-name">${escapeHtml(approval.reviewerName || '-')}</div>
+                    <div style="font-size:0.7rem;color:#666;">${escapeHtml(s.title)}</div>
                     <div class="sign-line"></div>
-                    <div style="font-size:0.6rem;color:#888;">${escapeHtml(approval.tanggal)}</div>
+                    <div style="font-size:0.6rem;color:#888;">${escapeHtml(formatDate(approval.decidedAt))}</div>
                 </div>
             `;
         }
@@ -76,7 +80,7 @@ export function buildInspectionReportHtml(item) {
                     </div>
                     <div class="item">
                         <div class="label">Status</div>
-                        <div class="value"><span style="background:${item.status === 'selesai' ? '#e8f5e9' : item.status === 'proses' ? '#fff3e0' : '#fce4ec'};padding:0.1rem 0.6rem;border-radius:60px;font-size:0.75rem;">${escapeHtml(item.status.charAt(0).toUpperCase() + item.status.slice(1))}</span></div>
+                        <div class="value"><span style="background:${item.status === INSPECTION_STATUS.COMPLETED ? '#e8f5e9' : item.status === INSPECTION_STATUS.IN_REVIEW ? '#fff3e0' : '#fce4ec'};padding:0.1rem 0.6rem;border-radius:60px;font-size:0.75rem;">${escapeHtml(formatInspectionStatus(item.status))}</span></div>
                     </div>
                     <div class="item">
                         <div class="label">Lokasi / Plant</div>

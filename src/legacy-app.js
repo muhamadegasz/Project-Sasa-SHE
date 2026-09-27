@@ -128,8 +128,10 @@ const PESAN_GAGAL = {
     INSPECTION_NOT_FOUND: '⚠️ Data tidak ditemukan',
     PLANT_NOT_FOUND: '⚠️ Plant tidak ditemukan, coba pilih ulang',
     STAGE_NOT_FOUND: '⚠️ Tahap tidak ditemukan',
-    PREVIOUS_STAGE_PENDING: '⚠️ Tahap sebelumnya belum disetujui!',
-    ALREADY_APPROVED: '⚠️ Tahap ini sudah disetujui!',
+    NOT_IN_REVIEW: '⚠️ Inspeksi ini tidak sedang menunggu pengesahan',
+    STAGE_NOT_CURRENT: '⚠️ Tahap ini sudah tidak menunggu keputusan — muat ulang data',
+    REJECTION_REASON_REQUIRED: '⚠️ Alasan penolakan wajib diisi',
+    FORBIDDEN: '⛔ Anda tidak berwenang memutuskan tahap ini',
     ACTION_REQUIRED: '⚠️ Masukkan deskripsi tindakan',
     PHOTO_REQUIRED: '⚠️ Wajib upload foto sebagai bukti progres!',
     PLANT_REQUIRED: '⚠️ Silakan pilih Plant terlebih dahulu!',
@@ -354,9 +356,12 @@ async function approveStage(inspeksiId, stageId) {
 async function rejectStage(inspeksiId, stageId) {
     const stage = findStage(stageId);
     if (!stage) { showToast(pesanGagal('STAGE_NOT_FOUND')); return; }
-    if (!confirm(`Tolak inspeksi ${inspeksiId} oleh ${stage.title}?`)) return;
+    // Phase 17.2: alasan penolakan wajib. prompt() adalah penghubung sementara
+    // sampai form penolakan sungguhan di Phase 17.3; null = dibatalkan pengguna.
+    const reason = prompt(`Alasan penolakan inspeksi ${inspeksiId} oleh ${stage.title}:`);
+    if (reason === null) return;
 
-    const result = await approvalService.reject(inspeksiId, stageId, getCurrentUser());
+    const result = await approvalService.reject(inspeksiId, stageId, getCurrentUser(), reason);
     if (!result.ok) { showToast(pesanGagal(result.reason)); return; }
 
     showToast(`❌ ${result.data.stage.title} menolak inspeksi ${inspeksiId}`);
@@ -595,7 +600,6 @@ document.getElementById('submitInspeksi').addEventListener('click', async functi
             keteranganLokasi: document.getElementById('formKeteranganLokasi').value.trim(),
             tanggal: document.getElementById('formTanggal').value,
             petugas: user ? user.displayName : getRandomOfficer(),
-            status: document.getElementById('formStatus').value,
             dueDate: document.getElementById('formDueDate').value,
             fotoDekat: Array.from(document.getElementById('fotoDekat').files),
             fotoJauh: Array.from(document.getElementById('fotoJauh').files),
@@ -796,7 +800,7 @@ async function initApp() {
     console.log('🚀 SHE Sasa K3 System - PHASE 14 (backend sungguhan) ACTIVE');
     console.log(`📊 ${totalInspeksi} inspeksi, ${totalJadwal} jadwal mingguan`);
     console.log(`🏭 ${totalPlant} Plant terdaftar`);
-    console.log(`📋 4 Tahap Pengesahan: ${APPROVAL_STAGES.map(s => s.title).join(' → ')}`);
+    console.log(`📋 ${APPROVAL_STAGES.length} Tahap Pengesahan: ${APPROVAL_STAGES.map(s => s.title).join(' → ')}`);
     console.log(`📅 Jadwal mingguan setiap plant - ${totalJadwal} total jadwal`);
 }
 
@@ -819,10 +823,10 @@ document.getElementById('loginUsername').addEventListener('keydown', function(e)
    Elemen yang dulu memakai onclick="handler(${jsArg(id)})" sekarang memakai
    data-action="handler" data-id="...". Baris di bawah memetakan setiap nama
    data-action ke handler-nya, sekaligus mengonversi tipe: dataset SELALU
-   berisi string, sedangkan sebagian handler mengharapkan number (stageId,
-   delta bulan, index array). Tanpa Number(...) di sini, changeCalendarMonth
-   akan menggabung string alih-alih menghitung bulan, dan findStage/approveStage
-   akan gagal mencocokkan stageId lewat === karena "2" !== 2.
+   berisi string, sedangkan sebagian handler mengharapkan number (delta bulan,
+   index array). Tanpa Number(...) di sini, changeCalendarMonth akan
+   menggabung string alih-alih menghitung bulan. Kode tahap pengesahan sejak
+   Phase 17.2 adalah string ('koordinator_k3l', ...), jadi TIDAK dikonversi.
 
    Menggantikan src/compat/global-bridge.js, yang sudah dihapus. -------------- */
 registerAction('logout', () => logout());
@@ -832,8 +836,8 @@ registerAction('setRealisasiHariIni', () => setRealisasiHariIni());
 registerAction('changeCalendarMonth', (el) => changeCalendarMonth(Number(el.dataset.delta)));
 registerAction('showDayEvents', (el) => showDayEvents(el.dataset.date));
 registerAction('openLightbox', (el) => openLightbox(JSON.parse(el.dataset.images), Number(el.dataset.index)));
-registerAction('approveStage', (el) => approveStage(el.dataset.id, Number(el.dataset.stage)));
-registerAction('rejectStage', (el) => rejectStage(el.dataset.id, Number(el.dataset.stage)));
+registerAction('approveStage', (el) => approveStage(el.dataset.id, el.dataset.stage));
+registerAction('rejectStage', (el) => rejectStage(el.dataset.id, el.dataset.stage));
 registerAction('exportTemuanPerItem', (el) => exportTemuanPerItem(el.dataset.id));
 registerAction('cetakPDF', (el) => cetakPDF(el.dataset.id));
 registerAction('openApprovalModal', (el) => openApprovalModal(el.dataset.id));

@@ -123,19 +123,29 @@ test('highlight: query itu sendiri berisi payload HTML tidak menghasilkan tag ak
 // =========================================================================
 
 test('renderApprovalStages: id inspeksi jahat di data-id tidak memutus atribut', () => {
+    // Phase 17.2: tombol (dengan data-id) hanya ada di tahap yang sedang menunggu.
     const item = {
-        id: XSS_ATTR,
-        approvals: { 1: { approved: true, by: 'Arif', jabatan: 'Safety Officer', tanggal: '1/1/2026' } },
+        id: XSS_ATTR, status: 'in_review', currentApprovalStage: 'koordinator_k3l', approvalHistory: [],
     };
     const html = renderApprovalStages(item);
     assert.ok(!html.includes('<script>'));
     assert.ok(html.includes('data-id="&quot;&gt;&lt;script&gt;alert(2)&lt;/script&gt;"'));
 });
 
-test('renderApprovalStages: nama penyetuju (approval.by) jahat tampil sebagai teks, bukan markup', () => {
+test('renderApprovalStages: nama penyetuju (reviewerName) jahat tampil sebagai teks, bukan markup', () => {
     const item = {
-        id: 'INS-001',
-        approvals: { 1: { approved: true, by: XSS_TAG, jabatan: 'Safety Officer', tanggal: '1/1/2026' } },
+        id: 'INS-001', status: 'in_review', currentApprovalStage: 'manajer',
+        approvalHistory: [{ stage: 'koordinator_k3l', attempt: 1, decision: 'approved', reviewerName: XSS_TAG, decidedAt: '2026-01-01' }],
+    };
+    const html = renderApprovalStages(item);
+    assert.ok(!html.includes('<img src=x onerror'));
+    assert.ok(html.includes('&lt;img src=x onerror=alert(1)&gt;'));
+});
+
+test('renderApprovalStages: alasan penolakan jahat (isian bebas penyetuju, Phase 17.2) tampil sebagai teks', () => {
+    const item = {
+        id: 'INS-001', status: 'revision_required', currentApprovalStage: 'koordinator_k3l',
+        approvalHistory: [{ stage: 'koordinator_k3l', attempt: 1, decision: 'rejected', reviewerName: 'Dewi', rejectionReason: XSS_TAG, decidedAt: '2026-01-01' }],
     };
     const html = renderApprovalStages(item);
     assert.ok(!html.includes('<img src=x onerror'));
@@ -185,11 +195,11 @@ test('renderAllInspeksiWithSearch: query pencarian yang mengandung HTML tidak me
 
 test('buildInspectionReportHtml: petugas, temuan, dan tindakan perbaikan jahat semuanya ter-escape', () => {
     const html = buildInspectionReportHtml({
-        id: 'INS-999', status: 'selesai', lokasi: 'Fermentation', keteranganLokasi: '-',
+        id: 'INS-999', status: 'completed', currentApprovalStage: null, lokasi: 'Fermentation', keteranganLokasi: '-',
         tanggal: '1/1/2026', petugas: XSS_TAG, dueDate: '-',
         temuan: [{ deskripsi: XSS_ATTR, kategori: 'Lainnya' }],
         perbaikan: [{ tgl: '1/1/2026', action: XSS_TAG, pic: XSS_ATTR, status: 'closed', foto: [] }],
-        approvals: { 1: { approved: true, by: XSS_TAG, jabatan: 'Safety Officer', tanggal: '1/1/2026' } },
+        approvalHistory: [{ stage: 'koordinator_k3l', attempt: 1, decision: 'approved', reviewerName: XSS_TAG, decidedAt: '2026-01-01' }],
     });
 
     assert.ok(!html.includes('<img src=x onerror'), 'petugas/tindakan tidak lolos sebagai tag aktif');

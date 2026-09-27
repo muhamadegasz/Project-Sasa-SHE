@@ -13,10 +13,22 @@
  */
 
 import { countApproved, isFullyApproved, totalStages } from '../domain/approval-rules.js';
-import { ACTION_STATUS, REPAIR_STATUS } from '../domain/statuses.js';
+import { ACTION_STATUS, INSPECTION_STATUS, REPAIR_STATUS } from '../domain/statuses.js';
+
+const INSPECTION_STATUS_LABELS = {
+    [INSPECTION_STATUS.DRAFT]: 'Draft',
+    [INSPECTION_STATUS.IN_REVIEW]: 'Dalam Review',
+    [INSPECTION_STATUS.REVISION_REQUIRED]: 'Perlu Revisi',
+    [INSPECTION_STATUS.COMPLETED]: 'Selesai',
+};
+
+/** Label status alur kerja inspeksi (Phase 17.2) — dipakai tabel, modal, PDF, dan Excel. */
+export function formatInspectionStatus(status) {
+    return INSPECTION_STATUS_LABELS[status] || status;
+}
 
 /**
- * Ringkasan pengesahan: "✅ Lengkap (4/4)" atau "2/4".
+ * Ringkasan pengesahan: "✅ Lengkap (3/3)" atau "2/3".
  *
  * Dipakai di tabel inspeksi, modal perbaikan, dan ketiga jalur ekspor Excel.
  */

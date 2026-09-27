@@ -9,7 +9,7 @@ import { escapeHtml, jsArg } from '../../shared/html.js';
 import { isOverdue } from '../../shared/date.js';
 import { getProgress, getRepairStatus } from '../../domain/inspection-rules.js';
 import { isFullyApproved } from '../../domain/approval-rules.js';
-import { formatApprovalStatus, formatActionStatus, formatRepairStatus } from '../../shared/labels.js';
+import { formatApprovalStatus, formatActionStatus, formatInspectionStatus, formatRepairStatus } from '../../shared/labels.js';
 import { ACTION_STATUS } from '../../domain/statuses.js';
 import { getRandomOfficer } from '../../data/officers.js';
 import * as inspectionRepository from '../../repositories/inspection-repository.js';
@@ -67,13 +67,13 @@ export async function openPerbaikanModal(id) {
                 </div>
                 <div class="info-row">
                     <span class="label">Status</span>
-                    <span class="value"><span class="status-badge ${escapeHtml(item.status)}">${escapeHtml(item.status.charAt(0).toUpperCase() + item.status.slice(1))}</span></span>
+                    <span class="value"><span class="status-badge ${escapeHtml(item.status)}">${escapeHtml(formatInspectionStatus(item.status))}</span></span>
                 </div>
                 <div class="info-row" style="margin-top:0.3rem;padding-top:0.5rem;border-top:2px solid #f0e0e0;">
                     <span class="label">Pengesahan</span>
                     <span class="value">
                         <span class="status-badge ${allApproved ? 'selesai' : 'proses'}">
-                            ${allApproved ? '✅ Lengkap (4/4)' : formatApprovalStatus(item)}
+                            ${formatApprovalStatus(item)}
                         </span>
                         ${!allApproved ? `<button class="btn-sm info" data-action="openApprovalModal" data-id="${escapeHtml(item.id)}" style="margin-left:0.3rem;font-size:0.55rem;"><i class="fas fa-stamp"></i></button>` : ''}
                     </span>

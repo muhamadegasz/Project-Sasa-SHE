@@ -15,6 +15,8 @@ function toPublicShape(row) {
         username: row.username,
         displayName: row.display_name,
         role: row.role,
+        // Phase 17.2: plant yang ditugaskan (hanya bermakna untuk koordinator_k3l).
+        plantId: row.plant_id,
         isActive: Boolean(row.is_active),
     };
 }
@@ -22,7 +24,7 @@ function toPublicShape(row) {
 /** Satu user berdasarkan id, TANPA password_hash (bentuk publik). */
 export async function findById(id) {
     const [rows] = await pool.query(
-        'SELECT id, username, display_name, role, is_active FROM users WHERE id = ?',
+        'SELECT id, username, display_name, role, plant_id, is_active FROM users WHERE id = ?',
         [Number(id)],
     );
     return toPublicShape(rows[0]);
@@ -31,7 +33,7 @@ export async function findById(id) {
 /** Satu user berdasarkan username, TERMASUK password_hash — dipakai khusus untuk verifikasi login. */
 export async function findByUsernameWithPasswordHash(username) {
     const [rows] = await pool.query(
-        'SELECT id, username, password_hash, display_name, role, is_active FROM users WHERE username = ?',
+        'SELECT id, username, password_hash, display_name, role, plant_id, is_active FROM users WHERE username = ?',
         [username],
     );
     if (!rows[0]) return undefined;
@@ -41,12 +43,13 @@ export async function findByUsernameWithPasswordHash(username) {
         passwordHash: rows[0].password_hash,
         displayName: rows[0].display_name,
         role: rows[0].role,
+        plantId: rows[0].plant_id,
         isActive: Boolean(rows[0].is_active),
     };
 }
 
 /** Seluruh user (bentuk publik), untuk halaman admin. */
 export async function getAll() {
-    const [rows] = await pool.query('SELECT id, username, display_name, role, is_active FROM users ORDER BY id');
+    const [rows] = await pool.query('SELECT id, username, display_name, role, plant_id, is_active FROM users ORDER BY id');
     return rows.map(toPublicShape);
 }

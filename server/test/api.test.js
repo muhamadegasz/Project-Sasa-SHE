@@ -111,71 +111,85 @@ test('GET /api/users hanya boleh admin', async () => {
     const admin = await loginAs('admin');
     const asAdmin = await admin.agent.get('/api/users');
     assert.equal(asAdmin.status, 200);
-    assert.equal(asAdmin.body.length, 8);
+    // 9 sejak Phase 17.2: Koordinator kedua (rina, plant 9) untuk menguji cakupan plant.
+    assert.equal(asAdmin.body.length, 9);
 });
 
-test('alur penuh: buat inspeksi -> approve berjenjang 2/3/4 -> tambah tindakan perbaikan', async () => {
+async function createInspection(officer, overrides = {}) {
+    const res = await withCsrf(officer.agent.post('/api/inspections'), officer.csrfToken).send({
+        plantId: 1,
+        keteranganLokasi: 'Gudang B',
+        tanggal: '2026-09-20',
+        dueDate: '2026-10-01',
+        temuan: [{ deskripsi: 'Uji end-to-end', kategori: 'Kelistrikan' }],
+        ...overrides,
+    });
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    return res.body.inspection;
+}
+
+function decide(session, id, action, body) {
+    return withCsrf(session.agent.post(`/api/inspections/${id}/${action}`), session.csrfToken).send(body);
+}
+
+test('alur penuh (Phase 17.2): ajukan -> Koordinator -> Manajer -> Ketua -> COMPLETED, dengan wewenang per tahap & plant', async () => {
     const arif = await loginAs('arif');
-    const dewi = await loginAs('dewi');
+    const dewi = await loginAs('dewi'); // koordinator plant 1
+    const rina = await loginAs('rina'); // koordinator plant 9
     const andi = await loginAs('andi');
     const hadi = await loginAs('hadi');
     const admin = await loginAs('admin');
 
-    // 1. Safety Officer membuat inspeksi baru. petugas HARUS dipaksa dari
-    //    identitas login (Arif), bukan dari body, walau body tidak mengirim
-    //    petugas sama sekali.
-    const createRes = await withCsrf(arif.agent.post('/api/inspections'), arif.csrfToken).send({
-        plantId: 9,
-        keteranganLokasi: 'Gudang B',
-        tanggal: '2026-09-20',
-        status: 'proses',
-        dueDate: '2026-10-01',
-        temuan: [{ deskripsi: 'Uji end-to-end', kategori: 'Kelistrikan' }],
-    });
-    assert.equal(createRes.status, 201);
-    const inspection = createRes.body.inspection;
+    // 1. Safety Officer membuat inspeksi — petugas dipaksa dari sesi; status dari
+    //    body DIABAIKAN; langsung diajukan ke tahap Koordinator (interim 17.2).
+    const inspection = await createInspection(arif, { status: 'completed', petugas: 'Bukan Arif' });
     assert.equal(inspection.petugas, 'Arif', 'petugas dipaksa dari req.user, bukan body');
-    assert.equal(inspection.approvals[1].approved, true, 'tahap 1 otomatis disetujui');
-    assert.equal(inspection.approvals[1].by, 'Arif');
-    assert.equal(inspection.approvals[2].approved, false);
+    assert.equal(inspection.status, 'in_review', 'status dari body diabaikan');
+    assert.equal(inspection.currentApprovalStage, 'koordinator_k3l');
+    assert.deepEqual(inspection.approvalHistory, [], 'Safety Officer bukan tahap pengesahan');
     const id = inspection.id;
 
-    // 2. Bukan koordinator -> 403, walau tahap sebelumnya sudah beres.
-    const wrongRole = await withCsrf(admin.agent.post(`/api/inspections/${id}/approve`), admin.csrfToken).send({ stageId: 2 });
-    assert.equal(wrongRole.status, 403);
+    // 2. Admin bukan tahap pengesahan -> 403.
+    const asAdmin = await decide(admin, id, 'approve', { stageId: 'koordinator_k3l' });
+    assert.equal(asAdmin.status, 403);
+    assert.equal(asAdmin.body.error, 'FORBIDDEN');
 
-    // 3. Lompat ke tahap 4 sebelum tahap 2/3 -> role benar untuk stage 4 (Hadi), supaya PREVIOUS_STAGE_PENDING teruji, bukan sekadar 403 role salah.
-    const skipAhead = await withCsrf(hadi.agent.post(`/api/inspections/${id}/approve`), hadi.csrfToken).send({ stageId: 4 });
+    // 3. Koordinator plant LAIN -> 403, walau tahu id inspeksinya.
+    const otherPlant = await decide(rina, id, 'approve', { stageId: 'koordinator_k3l' });
+    assert.equal(otherPlant.status, 403);
+
+    // 4. Melompat ke tahap Ketua sebelum Koordinator/Manajer -> 400 STAGE_NOT_CURRENT.
+    const skipAhead = await decide(hadi, id, 'approve', { stageId: 'ketua_p2k3' });
     assert.equal(skipAhead.status, 400);
-    assert.equal(skipAhead.body.error, 'PREVIOUS_STAGE_PENDING');
+    assert.equal(skipAhead.body.error, 'STAGE_NOT_CURRENT');
 
-    // 4. Koordinator K3L (Dewi) menyetujui tahap 2 — identitas sungguhan tersimpan (menutup S-07).
-    const approve2 = await withCsrf(dewi.agent.post(`/api/inspections/${id}/approve`), dewi.csrfToken).send({ stageId: 2 });
-    assert.equal(approve2.status, 200);
-    assert.equal(approve2.body.stage.id, 2);
-    assert.equal(approve2.body.fullyApproved, false);
+    // 5. Koordinator plant-nya sendiri menyetujui — identitas sungguhan tersimpan (S-07).
+    const approveKoordinator = await decide(dewi, id, 'approve', { stageId: 'koordinator_k3l' });
+    assert.equal(approveKoordinator.status, 200);
+    assert.equal(approveKoordinator.body.fullyApproved, false);
 
-    // 4b. Approve dobel pada tahap yang sama -> ditolak (bukan menimpa keputusan diam-diam).
-    const doubleApprove = await withCsrf(dewi.agent.post(`/api/inspections/${id}/approve`), dewi.csrfToken).send({ stageId: 2 });
+    // 5b. Approve ulang tahap yang sudah lewat -> ditolak, bukan menimpa keputusan.
+    const doubleApprove = await decide(dewi, id, 'approve', { stageId: 'koordinator_k3l' });
     assert.equal(doubleApprove.status, 400);
-    assert.equal(doubleApprove.body.error, 'ALREADY_APPROVED');
+    assert.equal(doubleApprove.body.error, 'STAGE_NOT_CURRENT');
 
-    const afterStage2 = await arif.agent.get(`/api/inspections/${id}`);
-    assert.equal(afterStage2.body.approvals[2].approved, true);
-    assert.equal(afterStage2.body.approvals[2].by, 'Dewi', 'identitas asli tersimpan, bukan literal "Approver"');
+    const afterKoordinator = (await arif.agent.get(`/api/inspections/${id}`)).body;
+    assert.equal(afterKoordinator.currentApprovalStage, 'manajer');
+    assert.equal(afterKoordinator.approvalHistory.length, 1);
+    assert.equal(afterKoordinator.approvalHistory[0].reviewerName, 'Dewi');
+    assert.equal(afterKoordinator.approvalHistory[0].reviewerUserId, dewi.user.id);
 
-    // 5. Manajer Bagian (Andi) menyetujui tahap 3.
-    const approve3 = await withCsrf(andi.agent.post(`/api/inspections/${id}/approve`), andi.csrfToken).send({ stageId: 3 });
-    assert.equal(approve3.status, 200);
+    // 6. Manajer lalu Ketua -> COMPLETED.
+    assert.equal((await decide(andi, id, 'approve', { stageId: 'manajer' })).status, 200);
+    const approveKetua = await decide(hadi, id, 'approve', { stageId: 'ketua_p2k3' });
+    assert.equal(approveKetua.status, 200);
+    assert.equal(approveKetua.body.fullyApproved, true);
 
-    // 6. Ketua P2K3 (Hadi) menyetujui tahap 4 -> lengkap, status jadi selesai.
-    const approve4 = await withCsrf(hadi.agent.post(`/api/inspections/${id}/approve`), hadi.csrfToken).send({ stageId: 4 });
-    assert.equal(approve4.status, 200);
-    assert.equal(approve4.body.fullyApproved, true);
-
-    const afterFull = await arif.agent.get(`/api/inspections/${id}`);
-    assert.equal(afterFull.body.status, 'selesai');
-    assert.equal(afterFull.body.approvals[4].by, 'Hadi');
+    const completed = (await arif.agent.get(`/api/inspections/${id}`)).body;
+    assert.equal(completed.status, 'completed');
+    assert.equal(completed.currentApprovalStage, null);
+    assert.deepEqual(completed.approvalHistory.map((entry) => [entry.stage, entry.decision]),
+        [['koordinator_k3l', 'approved'], ['manajer', 'approved'], ['ketua_p2k3', 'approved']]);
 
     // 7. Tambah tindakan perbaikan (butuh foto — PHOTO_REQUIRED bila kosong).
     const noPhoto = await withCsrf(arif.agent.post(`/api/inspections/${id}/corrective-actions`), arif.csrfToken)
@@ -183,28 +197,63 @@ test('alur penuh: buat inspeksi -> approve berjenjang 2/3/4 -> tambah tindakan p
     assert.equal(noPhoto.status, 400);
     assert.equal(noPhoto.body.error, 'PHOTO_REQUIRED');
 
-    // Phase 15: "foto wajib" sekarang menegakkan file sungguhan (multipart),
-    // bukan lagi cuma array nama file lewat JSON — .attach() mengirim byte
-    // sungguhan lewat FIXTURE_JPEG, persis seperti FormData dari browser.
-    const withPhotoReq = withCsrf(arif.agent.post(`/api/inspections/${id}/corrective-actions`), arif.csrfToken);
-    const withPhoto = await withPhotoReq
+    // Phase 15: "foto wajib" menegakkan file sungguhan (multipart), bukan
+    // cuma array nama file lewat JSON — .attach() mengirim byte sungguhan.
+    const withPhoto = await withCsrf(arif.agent.post(`/api/inspections/${id}/corrective-actions`), arif.csrfToken)
         .field('action', 'Ganti label')
-        .field('status', 'closed')
+        .field('status', 'open')
         .field('pic', 'Arif')
         .attach('photos', FIXTURE_JPEG);
     assert.equal(withPhoto.status, 201);
 
-    const afterAction = await arif.agent.get(`/api/inspections/${id}`);
-    // 2 bukan 1: create() sudah otomatis membuat 1 tindakan "Temuan 1: ..."
-    // per temuan (lihat inspection-service.js) — "Ganti label" di atas
-    // adalah tindakan KEDUA, ditambahkan lewat corrective-actions endpoint.
-    assert.equal(afterAction.body.perbaikan.length, 2);
-    assert.equal(afterAction.body.perbaikan[1].foto[0].originalName, 'label.jpg');
+    const afterAction = (await arif.agent.get(`/api/inspections/${id}`)).body;
+    // 2 bukan 1: create() sudah otomatis membuat 1 tindakan per temuan.
+    assert.equal(afterAction.perbaikan.length, 2);
+    assert.equal(afterAction.perbaikan[1].foto[0].originalName, 'label.jpg');
+    assert.equal(afterAction.status, 'completed', 'tindakan perbaikan (open) tidak mengubah status alur kerja (Phase 17.2)');
 
     // 8. Hanya Safety Officer yang boleh menambah tindakan perbaikan.
     const wrongRoleAction = await withCsrf(admin.agent.post(`/api/inspections/${id}/corrective-actions`), admin.csrfToken)
         .send({ action: 'X', status: 'open', pic: 'Y', photos: ['a.jpg'] });
     assert.equal(wrongRoleAction.status, 403);
+});
+
+test('penolakan (Phase 17.2): alasan wajib, -> REVISION_REQUIRED di tahap yang menolak, persetujuan lama tetap', async () => {
+    const arif = await loginAs('arif');
+    const dewi = await loginAs('dewi');
+    const andi = await loginAs('andi');
+    const { id } = await createInspection(arif);
+
+    assert.equal((await decide(dewi, id, 'approve', { stageId: 'koordinator_k3l' })).status, 200);
+
+    const noReason = await decide(andi, id, 'reject', { stageId: 'manajer', reason: '   ' });
+    assert.equal(noReason.status, 400);
+    assert.equal(noReason.body.error, 'REJECTION_REASON_REQUIRED');
+
+    const rejected = await decide(andi, id, 'reject', { stageId: 'manajer', reason: 'Foto area kurang jelas' });
+    assert.equal(rejected.status, 200);
+
+    const body = (await arif.agent.get(`/api/inspections/${id}`)).body;
+    assert.equal(body.status, 'revision_required');
+    assert.equal(body.currentApprovalStage, 'manajer', 'tahap tetap di Manajer, tidak mundur ke Koordinator');
+    assert.deepEqual(body.approvalHistory.map((entry) => [entry.stage, entry.attempt, entry.decision]),
+        [['koordinator_k3l', 1, 'approved'], ['manajer', 1, 'rejected']]);
+    assert.equal(body.approvalHistory[1].rejectionReason, 'Foto area kurang jelas');
+    assert.equal(body.approvalHistory[1].reviewerUserId, andi.user.id, 'identitas penolak tersimpan (dulu tidak pernah)');
+
+    // Selama revisi, tahap itu tidak bisa diputuskan lagi.
+    const whileRevising = await decide(andi, id, 'approve', { stageId: 'manajer' });
+    assert.equal(whileRevising.status, 400);
+    assert.equal(whileRevising.body.error, 'NOT_IN_REVIEW');
+});
+
+test('login mengembalikan plantId Koordinator (cakupan satu plant)', async () => {
+    const dewi = await loginAs('dewi');
+    const rina = await loginAs('rina');
+    const arif = await loginAs('arif');
+    assert.equal(dewi.user.plantId, 1);
+    assert.equal(rina.user.plantId, 9);
+    assert.equal(arif.user.plantId, null);
 });
 
 test('POST /api/inspections dengan plantId tidak ada -> 400 PLANT_NOT_FOUND (bukan 500)', async () => {

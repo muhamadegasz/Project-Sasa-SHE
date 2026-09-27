@@ -1,104 +1,112 @@
 /* approval-service.js — operasi pengesahan inspeksi.
  *
- * Menyusun aturan dari domain/approval-rules.js dengan data dari repository.
- * Tidak menyentuh DOM, tidak menampilkan toast, tidak me-render apa pun.
+ * Menyusun aturan dari domain/ (workflow-rules, approval-rules,
+ * inspection-policy) dengan data dari repository. Tidak menyentuh DOM, tidak
+ * menampilkan toast, tidak me-render apa pun.
+ *
+ * Phase 17.2: tiga tahap (Koordinator K3L -> Manajer -> Ketua P2K3), riwayat
+ * append-only, tahap yang berjalan disimpan di inspection.currentApprovalStage.
+ * Service ini dipakai di browser (umpan balik cepat) DAN di server (otoritatif)
+ * — server selalu memeriksa ulang, apa pun hasil pemeriksaan di browser.
+ *
+ * `stageId` dari pemanggil adalah tahap yang DIKIRA sedang berjalan oleh
+ * layar pengguna. Bila tidak sama dengan tahap sebenarnya (layar basi, klik
+ * ganda), keputusan ditolak STAGE_NOT_CURRENT — tidak pernah diteruskan
+ * diam-diam ke tahap lain.
  */
 
 import * as inspectionRepository from '#repositories/inspection-repository.js';
-import {
-    buildApprovalRecord,
-    buildRejectionRecord,
-    findStage,
-    isFullyApproved,
-    isPreviousStageApproved,
-    isStageApproved,
-} from '../domain/approval-rules.js';
-import { INSPECTION_STATUS } from '../domain/statuses.js';
+import { buildDecisionRecord, findStage } from '../domain/approval-rules.js';
+import { approvedState, rejectedState } from '../domain/workflow-rules.js';
+import { canApprove, canReject } from '../domain/inspection-policy.js';
+import { APPROVAL_DECISION, INSPECTION_STATUS } from '../domain/statuses.js';
 import { fail, ok } from './result.js';
 
 export const APPROVAL_ERROR = {
     INSPECTION_NOT_FOUND: 'INSPECTION_NOT_FOUND',
     STAGE_NOT_FOUND: 'STAGE_NOT_FOUND',
-    PREVIOUS_STAGE_PENDING: 'PREVIOUS_STAGE_PENDING',
-    ALREADY_APPROVED: 'ALREADY_APPROVED',
+    NOT_IN_REVIEW: 'NOT_IN_REVIEW',
+    STAGE_NOT_CURRENT: 'STAGE_NOT_CURRENT',
+    REJECTION_REASON_REQUIRED: 'REJECTION_REASON_REQUIRED',
+    // Dipetakan ke HTTP 403 oleh server/middleware/to-http.js.
+    FORBIDDEN: 'FORBIDDEN',
 };
 
 /**
- * Menyetujui satu tahap pengesahan.
- *
- * Begitu keempat tahap disetujui, status inspeksi berubah menjadi selesai.
- *
- * Sejak Phase 12: async (repository backend adalah MySQL sungguhan), dan
- * menerima `approver` (identitas pengguna login — {id, displayName}) yang
- * diteruskan ke buildApprovalRecord() dan ke inspectionRepository.saveApproval()
- * supaya identitas penyetuju benar-benar tersimpan (menutup S-07). Opsional
- * supaya kode lama tanpa auth sungguhan (sebelum Phase 13) tetap jalan.
- *
- * Mutasi langsung pada `inspection` dipertahankan (dipakai in-memory repo
- * lewat referensi hidup dari findById()); saveApproval()/setStatus() adalah
- * jalur yang BENAR-BENAR menyimpan pada repository backend (MySQL) — lihat
- * catatan di src/repositories/inspection-repository.js.
- *
- * @returns ok({ inspection, stage, fullyApproved }) atau fail(APPROVAL_ERROR.*)
+ * Pemeriksaan bersama approve/reject: inspeksi ada, tahap dikenal, inspeksi
+ * sedang direview di tahap itu, dan pengguna berwenang memutuskannya.
+ * Mengembalikan { inspection, stage } atau sebuah fail().
  */
-export async function approve(inspectionId, stageId, approver) {
+async function loadDecidable(inspectionId, stageId, reviewer, isAllowed) {
     const inspection = await inspectionRepository.findById(inspectionId);
-    if (!inspection) return fail(APPROVAL_ERROR.INSPECTION_NOT_FOUND);
+    if (!inspection) return { failure: fail(APPROVAL_ERROR.INSPECTION_NOT_FOUND) };
 
     const stage = findStage(stageId);
-    if (!stage) return fail(APPROVAL_ERROR.STAGE_NOT_FOUND);
+    if (!stage) return { failure: fail(APPROVAL_ERROR.STAGE_NOT_FOUND) };
 
-    if (!isPreviousStageApproved(inspection, stage)) {
-        return fail(APPROVAL_ERROR.PREVIOUS_STAGE_PENDING, { stage });
+    if (inspection.status !== INSPECTION_STATUS.IN_REVIEW) {
+        return { failure: fail(APPROVAL_ERROR.NOT_IN_REVIEW, { stage }) };
     }
-    if (isStageApproved(inspection, stageId)) {
-        return fail(APPROVAL_ERROR.ALREADY_APPROVED, { stage });
+    if (inspection.currentApprovalStage !== stage.id) {
+        return { failure: fail(APPROVAL_ERROR.STAGE_NOT_CURRENT, { stage }) };
     }
-
-    if (!inspection.approvals) inspection.approvals = {};
-    const record = buildApprovalRecord(stage, inspection, approver);
-    inspection.approvals[stageId] = record;
-    await inspectionRepository.saveApproval(inspectionId, stageId, record, approver ? approver.id : null);
-
-    const fullyApproved = isFullyApproved(inspection);
-    if (fullyApproved) {
-        inspection.status = INSPECTION_STATUS.SELESAI;
-        await inspectionRepository.setStatus(inspectionId, inspection.status);
+    if (!isAllowed(reviewer, inspection)) {
+        return { failure: fail(APPROVAL_ERROR.FORBIDDEN, { stage }) };
     }
-
-    return ok({ inspection, stage, fullyApproved });
+    return { inspection, stage };
 }
 
 /**
- * Menolak satu tahap pengesahan.
+ * Menyimpan satu keputusan + status barunya sebagai satu operasi. Repository
+ * menolak (false) bila tahap sudah berubah sejak inspeksi dibaca — mis. dua
+ * permintaan approve yang datang hampir bersamaan.
+ */
+async function commit(inspection, decision, nextState) {
+    const saved = await inspectionRepository.recordDecision(inspection.id, decision, nextState);
+    if (!saved) return null;
+    return {
+        ...inspection,
+        ...nextState,
+        approvalHistory: [...(inspection.approvalHistory || []), decision],
+    };
+}
+
+/**
+ * Menyetujui tahap yang sedang berjalan. Setelah tahap terakhir, inspeksi
+ * menjadi COMPLETED.
  *
- * Penolakan mengembalikan status inspeksi ke tinjau. Tidak ada pemeriksaan
- * urutan di sini — perilaku itu dipertahankan apa adanya dari kode lama.
- *
- * Catatan: konfirmasi pengguna adalah urusan pemanggil. Service hanya
- * mengerjakan penolakannya.
- *
- * Sejak Phase 12: async + menerima `approver` opsional, sama seperti
- * approve() — identitasnya diteruskan ke saveApproval() untuk disimpan
- * (approved_by_user_id), walau teks tampilan tahap yang ditolak tetap
- * literal 'Rejected' (buildRejectionRecord tidak diubah, di luar cakupan
- * fase ini).
+ * @returns ok({ inspection, stage, fullyApproved }) atau fail(APPROVAL_ERROR.*)
+ */
+export async function approve(inspectionId, stageId, reviewer) {
+    const { inspection, stage, failure } = await loadDecidable(inspectionId, stageId, reviewer, canApprove);
+    if (failure) return failure;
+
+    const nextState = approvedState(inspection);
+    const decision = buildDecisionRecord(inspection, stage, APPROVAL_DECISION.APPROVED, reviewer);
+    const updated = await commit(inspection, decision, nextState);
+    if (!updated) return fail(APPROVAL_ERROR.STAGE_NOT_CURRENT, { stage });
+
+    return ok({ inspection: updated, stage, fullyApproved: updated.status === INSPECTION_STATUS.COMPLETED });
+}
+
+/**
+ * Menolak tahap yang sedang berjalan. Alasan wajib. Inspeksi menjadi
+ * REVISION_REQUIRED dan tahapnya TETAP — setelah direvisi dan diajukan ulang,
+ * inspeksi kembali ke tahap ini. Keputusan tahap sebelumnya tidak disentuh.
  *
  * @returns ok({ inspection, stage }) atau fail(APPROVAL_ERROR.*)
  */
-export async function reject(inspectionId, stageId, approver) {
-    const inspection = await inspectionRepository.findById(inspectionId);
-    if (!inspection) return fail(APPROVAL_ERROR.INSPECTION_NOT_FOUND);
+export async function reject(inspectionId, stageId, reviewer, reason) {
+    const { inspection, stage, failure } = await loadDecidable(inspectionId, stageId, reviewer, canReject);
+    if (failure) return failure;
 
-    const stage = findStage(stageId);
-    if (!stage) return fail(APPROVAL_ERROR.STAGE_NOT_FOUND);
+    const trimmedReason = String(reason ?? '').trim();
+    if (!trimmedReason) return fail(APPROVAL_ERROR.REJECTION_REASON_REQUIRED, { stage });
 
-    if (!inspection.approvals) inspection.approvals = {};
-    const record = buildRejectionRecord(stage);
-    inspection.approvals[stageId] = record;
-    await inspectionRepository.saveApproval(inspectionId, stageId, record, approver ? approver.id : null);
-    inspection.status = INSPECTION_STATUS.TINJAU;
-    await inspectionRepository.setStatus(inspectionId, inspection.status);
+    const nextState = rejectedState(inspection);
+    const decision = buildDecisionRecord(inspection, stage, APPROVAL_DECISION.REJECTED, reviewer, trimmedReason);
+    const updated = await commit(inspection, decision, nextState);
+    if (!updated) return fail(APPROVAL_ERROR.STAGE_NOT_CURRENT, { stage });
 
-    return ok({ inspection, stage });
+    return ok({ inspection: updated, stage });
 }

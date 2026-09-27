@@ -25,7 +25,7 @@ import { formatDate, isOverdue } from '../../shared/date.js';
 import { PERIODE_LIST } from '../../config/constants.js';
 import { getProgress, getRepairStatus } from '../../domain/inspection-rules.js';
 import { isFullyApproved, countApproved } from '../../domain/approval-rules.js';
-import { formatApprovalStatus, formatRepairStatus } from '../../shared/labels.js';
+import { formatApprovalStatus, formatInspectionStatus, formatRepairStatus } from '../../shared/labels.js';
 import * as scheduleRules from '../../domain/schedule-rules.js';
 import * as scheduleRepository from '../../repositories/schedule-repository.js';
 import * as inspectionRepository from '../../repositories/inspection-repository.js';
@@ -34,10 +34,9 @@ import * as plantRepository from '../../repositories/plant-repository.js';
 // Dipakai ketiga tabel di berkas ini (inspeksi, jadwal, perbaikan).
 const OVERDUE_BADGE = '<span class="overdue-badge"><i class="fas fa-exclamation-circle"></i> OVERDUE</span>';
 
-/** Badge status inspeksi (selesai/proses/tinjau) — dipakai kedua varian tabel inspeksi. */
+/** Badge status alur kerja inspeksi — dipakai kedua varian tabel inspeksi. */
 function inspectionStatusBadge(item) {
-    const label = item.status.charAt(0).toUpperCase() + item.status.slice(1);
-    return `<span class="status-badge ${escapeHtml(item.status)}">${escapeHtml(label)}</span>`;
+    return `<span class="status-badge ${escapeHtml(item.status)}">${escapeHtml(formatInspectionStatus(item.status))}</span>`;
 }
 
 function updateNotifBadge(count) {

@@ -9,10 +9,9 @@
  * Bedanya dengan versi in-memory: findById() di sana mengembalikan REFERENSI
  * HIDUP ke array (memutasinya = memutasi "database"). Query SQL tidak bisa
  * begitu — findById() di sini mengembalikan salinan baru setiap kali, jadi
- * approval-service.js dkk memanggil saveApproval()/setStatus()/
- * addCorrectiveAction() secara eksplisit untuk BENAR-BENAR menyimpan
- * perubahan. Fungsi-fungsi itu no-op di versi in-memory (lihat komentar di
- * sana), di sini isinya query UPDATE/INSERT sungguhan.
+ * approval-service.js dkk memanggil recordDecision()/addCorrectiveAction()
+ * secara eksplisit untuk BENAR-BENAR menyimpan perubahan (di sini query
+ * UPDATE/INSERT sungguhan).
  *
  * id yang dipakai di seluruh permukaan publik SELALU string tampilan
  * "INS-nnn" (bukan angka mentah) — sama seperti yang sudah dipakai
@@ -60,7 +59,9 @@ async function loadFull(row) {
         [numericId],
     );
     const [approvalRows] = await pool.query(
-        'SELECT stage_id, approved, rejected, approved_by_name, jabatan, decided_at FROM approvals WHERE inspection_id = ?',
+        `SELECT stage, attempt, decision, reviewer_user_id, reviewer_name, rejection_reason,
+                signature_method, watermark_enabled, watermark_x, watermark_y, decided_at
+         FROM approvals WHERE inspection_id = ? ORDER BY id`,
         [numericId],
     );
     const [dekatPhotos] = await pool.query(
@@ -85,16 +86,22 @@ async function loadFull(row) {
         }
     }
 
-    const approvals = {};
-    for (const approval of approvalRows) {
-        approvals[approval.stage_id] = {
-            approved: Boolean(approval.approved),
-            by: approval.approved_by_name,
-            jabatan: approval.jabatan,
-            tanggal: approval.decided_at,
-            ...(approval.rejected ? { rejected: true } : {}),
-        };
-    }
+    // Riwayat append-only (Phase 17.2) — satu entri per keputusan, urut waktu.
+    // Path file tanda tangan sengaja tidak ikut: penyajiannya butuh otorisasi
+    // sendiri (Phase 17.3), bukan dibocorkan lewat JSON detail inspeksi.
+    const approvalHistory = approvalRows.map((row) => ({
+        stage: row.stage,
+        attempt: row.attempt,
+        decision: row.decision,
+        reviewerUserId: row.reviewer_user_id,
+        reviewerName: row.reviewer_name,
+        rejectionReason: row.rejection_reason,
+        signatureMethod: row.signature_method,
+        watermark: row.watermark_enabled
+            ? { x: Number(row.watermark_x), y: Number(row.watermark_y) }
+            : null,
+        decidedAt: row.decided_at,
+    }));
 
     return {
         id: toDisplayId(numericId),
@@ -105,10 +112,12 @@ async function loadFull(row) {
         petugas: row.petugas,
         petugasUserId: row.petugas_user_id,
         status: row.status,
+        currentApprovalStage: row.current_approval_stage,
+        submittedAt: row.submitted_at,
         dueDate: formatDate(row.due_date),
         fotoDekat: dekatPhotos.map((p) => ({ id: p.id, originalName: p.original_name })),
         fotoJauh: jauhPhotos.map((p) => ({ id: p.id, originalName: p.original_name })),
-        approvals,
+        approvalHistory,
         temuan: findings.map((f) => ({ id: f.id, deskripsi: f.deskripsi, kategori: f.kategori })),
         perbaikan: actions.map((a) => ({
             id: a.id,
@@ -123,7 +132,7 @@ async function loadFull(row) {
 
 const BASE_SELECT = `
     SELECT i.id, i.plant_id, i.keterangan_lokasi, i.tanggal, i.petugas, i.petugas_user_id,
-           i.status, i.due_date, p.name AS plant_name
+           i.status, i.current_approval_stage, i.submitted_at, i.due_date, p.name AS plant_name
     FROM inspections i
     JOIN plants p ON p.id = i.plant_id
 `;
@@ -164,8 +173,9 @@ export async function add(inspection) {
         await connection.beginTransaction();
 
         const [result] = await connection.query(
-            `INSERT INTO inspections (plant_id, keterangan_lokasi, tanggal, petugas, petugas_user_id, status, due_date)
-             VALUES (?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO inspections (plant_id, keterangan_lokasi, tanggal, petugas, petugas_user_id,
+                                      status, current_approval_stage, submitted_at, due_date)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 inspection.plantId,
                 inspection.keteranganLokasi,
@@ -173,6 +183,8 @@ export async function add(inspection) {
                 inspection.petugas,
                 inspection.petugasUserId,
                 inspection.status,
+                inspection.currentApprovalStage ?? null,
+                inspection.submittedAt ? new Date(inspection.submittedAt) : null,
                 toSqlDate(inspection.dueDate),
             ],
         );
@@ -211,23 +223,6 @@ export async function add(inspection) {
             );
         }
 
-        for (const [stageIdStr, approval] of Object.entries(inspection.approvals || {})) {
-            await connection.query(
-                `INSERT INTO approvals (inspection_id, stage_id, approved, rejected, approved_by_user_id, approved_by_name, jabatan, decided_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                [
-                    numericId,
-                    Number(stageIdStr),
-                    approval.approved ? 1 : 0,
-                    approval.rejected ? 1 : 0,
-                    approval.approved ? inspection.petugasUserId : null,
-                    approval.by,
-                    approval.jabatan,
-                    approval.approved ? new Date() : null,
-                ],
-            );
-        }
-
         await connection.commit();
         return findById(toDisplayId(numericId));
     } catch (error) {
@@ -238,30 +233,56 @@ export async function add(inspection) {
     }
 }
 
-/** Menyimpan satu tahap pengesahan — jalur yang benar-benar menyimpan ke MySQL (lihat header berkas ini). */
-export async function saveApproval(inspectionId, stageId, record, approverId) {
+/**
+ * Menyimpan satu keputusan pengesahan (Phase 17.2) — riwayat baru di-INSERT,
+ * tidak pernah menimpa baris lama — bersama status/tahap barunya, dalam SATU
+ * transaksi (sebelumnya saveApproval() dan setStatus() adalah dua query lepas).
+ *
+ * UPDATE dijaga dengan status/tahap yang diharapkan: bila inspeksi sudah tidak
+ * menunggu tahap `decision.stage` (keputusan lain masuk lebih dulu), tidak ada
+ * baris yang berubah, transaksi dibatalkan, dan fungsi mengembalikan false.
+ *
+ * @returns {Promise<boolean>} true bila tersimpan
+ */
+export async function recordDecision(inspectionId, decision, nextState) {
     const numericId = toNumericId(inspectionId);
-    await pool.query(
-        `UPDATE approvals
-         SET approved = ?, rejected = ?, approved_by_user_id = ?, approved_by_name = ?, jabatan = ?, decided_at = ?
-         WHERE inspection_id = ? AND stage_id = ?`,
-        [
-            record.approved ? 1 : 0,
-            record.rejected ? 1 : 0,
-            record.approved ? approverId || null : null,
-            record.by,
-            record.jabatan,
-            record.approved || record.rejected ? new Date() : null,
-            numericId,
-            stageId,
-        ],
-    );
-}
+    const connection = await pool.getConnection();
+    try {
+        await connection.beginTransaction();
 
-/** Menyimpan status inspeksi — jalur yang benar-benar menyimpan ke MySQL. */
-export async function setStatus(inspectionId, status) {
-    const numericId = toNumericId(inspectionId);
-    await pool.query('UPDATE inspections SET status = ? WHERE id = ?', [status, numericId]);
+        const [update] = await connection.query(
+            `UPDATE inspections SET status = ?, current_approval_stage = ?
+             WHERE id = ? AND status = 'in_review' AND current_approval_stage = ?`,
+            [nextState.status, nextState.currentApprovalStage, numericId, decision.stage],
+        );
+        if (update.affectedRows === 0) {
+            await connection.rollback();
+            return false;
+        }
+
+        await connection.query(
+            `INSERT INTO approvals (inspection_id, stage, attempt, decision, reviewer_user_id, reviewer_name, rejection_reason, decided_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            [
+                numericId,
+                decision.stage,
+                decision.attempt,
+                decision.decision,
+                decision.reviewerUserId,
+                decision.reviewerName,
+                decision.rejectionReason,
+                new Date(decision.decidedAt),
+            ],
+        );
+
+        await connection.commit();
+        return true;
+    } catch (error) {
+        await connection.rollback();
+        throw error;
+    } finally {
+        connection.release();
+    }
 }
 
 /** Menyimpan satu tindakan perbaikan baru (+ fotonya) — jalur yang benar-benar menyimpan ke MySQL. */

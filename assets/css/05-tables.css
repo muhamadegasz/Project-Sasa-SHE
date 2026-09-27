@@ -236,17 +236,23 @@ td {
     display: inline-block;
 }
 
-.status-badge.selesai {
+/* Phase 17.2: status alur kerja inspeksi memakai warna status lama yang
+   setara — completed=selesai, in_review=proses, revision_required=tinjau,
+   draft=aktif (belum diajukan). Kelas lama tetap dipakai jadwal & pengesahan. */
+.status-badge.selesai,
+.status-badge.completed {
     background: #e8f5e9;
     color: #2e7d32;
 }
 
-.status-badge.proses {
+.status-badge.proses,
+.status-badge.in_review {
     background: #fff3e0;
     color: #e65100;
 }
 
-.status-badge.tinjau {
+.status-badge.tinjau,
+.status-badge.revision_required {
     background: #fce4ec;
     color: #c62828;
 }
@@ -276,7 +282,8 @@ td {
     color: #e65100;
 }
 
-.status-badge.aktif {
+.status-badge.aktif,
+.status-badge.draft {
     background: #e3f2fd;
     color: #0d47a1;
 }

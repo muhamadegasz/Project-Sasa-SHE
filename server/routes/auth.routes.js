@@ -17,7 +17,7 @@ import { asyncHandler } from '../middleware/async-handler.js';
 export const authRouter = Router();
 
 function publicUser(user) {
-    return { id: user.id, username: user.username, displayName: user.displayName, role: user.role };
+    return { id: user.id, username: user.username, displayName: user.displayName, role: user.role, plantId: user.plantId };
 }
 
 authRouter.post('/login', asyncHandler(async (req, res) => {
