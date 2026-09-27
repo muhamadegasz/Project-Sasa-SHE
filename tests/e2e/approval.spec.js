@@ -20,8 +20,16 @@ async function openApprovalModalFor(page, inspectionId) {
     await expect(page.locator('#approvalModal')).toHaveClass(/show/);
 }
 
-async function fetchInspection(page, inspectionId) {
-    const res = await page.request.get(`${API}/inspections/${inspectionId}`);
+/**
+ * Membaca inspeksi lewat API dengan sesi `requestContext` (page.request milik
+ * pengguna UI, atau context apiLogin()). Sejak Phase 17.3A server hanya
+ * menyajikan inspeksi yang boleh dilihat sesi itu — setelah memutuskan,
+ * penyetuju tidak lagi melihat inspeksinya, jadi hasil keputusan dibaca
+ * sebagai pemiliknya (Safety Officer pembuat).
+ */
+async function fetchInspection(requestContext, inspectionId) {
+    const res = await requestContext.get(`${API}/inspections/${inspectionId}`);
+    expect(res.status(), 'inspeksi harus terlihat oleh sesi pembacanya').toBe(200);
     return res.json();
 }
 
@@ -35,7 +43,7 @@ test('koordinator K3L plant yang bersangkutan bisa menyetujui tahapnya — tahap
     await page.locator('#approvalContent').getByRole('button', { name: /Setujui/ }).click();
     await expect(page.locator('#toastMessage')).toContainText('menyetujui inspeksi');
 
-    const body = await fetchInspection(page, inspection.id);
+    const body = await fetchInspection(arif.context, inspection.id);
     expect(body.status).toBe('in_review');
     expect(body.currentApprovalStage).toBe('manajer');
     expect(body.approvalHistory).toHaveLength(1);
@@ -54,7 +62,7 @@ test('koordinator K3L bisa menolak dengan alasan — inspeksi perlu revisi, taha
     await page.locator('#approvalContent').getByRole('button', { name: /Tolak/ }).click();
     await expect(page.locator('#toastMessage')).toContainText('menolak inspeksi');
 
-    const body = await fetchInspection(page, inspection.id);
+    const body = await fetchInspection(arif.context, inspection.id);
     expect(body.status).toBe('revision_required');
     expect(body.currentApprovalStage).toBe('koordinator_k3l');
     expect(body.approvalHistory[0]).toMatchObject({ stage: 'koordinator_k3l', decision: 'rejected', rejectionReason: 'Foto area kurang jelas' });
@@ -81,7 +89,7 @@ test('role yang tidak berwenang tidak bisa menyetujui — ditolak di UI DAN oleh
     });
     expect(direct.status()).toBe(403);
 
-    const body = await fetchInspection(page, inspection.id);
+    const body = await fetchInspection(page.request, inspection.id);
     expect(body.approvalHistory, 'tetap belum ada keputusan — permintaan sungguhan ditolak server').toHaveLength(0);
     expect(body.currentApprovalStage).toBe('koordinator_k3l');
 });

@@ -96,11 +96,20 @@ test('GET /api/plants -> 15 plant dari PLANT_LIST', async () => {
     assert.equal(res.body.length, 15);
 });
 
-test('GET /api/inspections -> 6 inspeksi hasil seed', async () => {
+test('GET /api/inspections -> 6 inspeksi hasil seed, sesuai cakupan pengguna (Phase 17.3A)', async () => {
+    // Admin melihat semua non-draft: keenam inspeksi seed.
+    const admin = await loginAs('admin');
+    const asAdmin = await admin.agent.get('/api/inspections');
+    assert.equal(asAdmin.status, 200);
+    assert.equal(asAdmin.body.length, 6);
+
+    // Safety Officer tidak melihat revisi milik SO lain (INS-003, Melka) —
+    // sebelum Phase 17.3A daftar ini membocorkannya.
     const { agent } = await loginAs('arif');
     const res = await agent.get('/api/inspections');
     assert.equal(res.status, 200);
-    assert.equal(res.body.length, 6);
+    assert.equal(res.body.length, 5);
+    assert.ok(!res.body.some((inspection) => inspection.id === 'INS-003'));
 });
 
 test('GET /api/users hanya boleh admin', async () => {
@@ -290,4 +299,253 @@ test('jadwal: buat, update, hapus (hapus hanya admin)', async () => {
 
     const getDeleted = await arif.agent.get('/api/schedules');
     assert.ok(!getDeleted.body.some((s) => s.id === scheduleId));
+});
+
+// =========================================================================
+// Phase 17.3A — visibilitas baca di server (daftar, detail, file foto).
+//
+// Seed (server/db/seed.js, di-reset di before()): INS-001 completed plant 1
+// (Arif), INS-002 in_review@koordinator plant 3 (Mustofa), INS-003
+// revision_required@manajer plant 6 (Melka), INS-004 completed plant 9
+// (Tulus), INS-005 in_review@koordinator plant 16, INS-006 in_review@ketua
+// plant 14. Koordinator: dewi = plant 1, rina = plant 9.
+//
+// Inspeksi di luar cakupan harus dijawab 404 {error:'NOT_FOUND'} yang SAMA
+// PERSIS dengan id yang tidak ada — setiap test di bawah menguji akses
+// LANGSUNG by id (IDOR), bukan hanya isi daftar.
+// =========================================================================
+
+/** Inspeksi dengan satu foto sungguhan (multipart) di plant tertentu. */
+async function createInspectionWithPhoto(officer, plantId) {
+    const res = await withCsrf(officer.agent.post('/api/inspections'), officer.csrfToken)
+        .field('plantId', String(plantId))
+        .field('keteranganLokasi', `visibilitas plant ${plantId}`)
+        .field('tanggal', '2026-09-20')
+        .field('dueDate', '2026-10-01')
+        .field('temuan', JSON.stringify([{ deskripsi: `Temuan plant ${plantId}`, kategori: 'Lainnya' }]))
+        .attach('fotoDekat', FIXTURE_JPEG);
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    return res.body.inspection;
+}
+
+async function listedIds(session) {
+    const res = await session.agent.get('/api/inspections');
+    assert.equal(res.status, 200);
+    return res.body.map((inspection) => inspection.id);
+}
+
+async function detailStatus(session, id) {
+    return (await session.agent.get(`/api/inspections/${id}`)).status;
+}
+
+async function photoStatus(session, photoId) {
+    return (await session.agent.get(`/api/inspections/photos/${photoId}/file`)).status;
+}
+
+/**
+ * Belum ada endpoint pembuatan draft (Phase 17.3B), jadi state DRAFT untuk
+ * uji visibilitas disiapkan langsung di database — HANYA di test ini.
+ */
+async function forceDraft(inspectionId) {
+    const numericId = Number(String(inspectionId).replace(/\D/g, ''));
+    await pool.query(
+        "UPDATE inspections SET status = 'draft', current_approval_stage = NULL, submitted_at = NULL WHERE id = ?",
+        [numericId],
+    );
+}
+
+async function assertHidden(session, id, label) {
+    assert.ok(!(await listedIds(session)).includes(id), `${label}: tidak boleh ada di daftar`);
+    assert.equal(await detailStatus(session, id), 404, `${label}: akses langsung by id harus 404`);
+}
+
+async function assertVisible(session, id, label) {
+    assert.ok((await listedIds(session)).includes(id), `${label}: harus ada di daftar`);
+    assert.equal(await detailStatus(session, id), 200, `${label}: akses langsung by id harus 200`);
+}
+
+test('visibilitas: 404 untuk inspeksi/foto di luar cakupan identik dengan id yang tidak ada (tidak bisa dienumerasi)', async () => {
+    const arif = await loginAs('arif');
+    const dewi = await loginAs('dewi');
+    const inspection = await createInspectionWithPhoto(arif, 9); // di luar plant dewi
+    const photoId = inspection.fotoDekat[0].id;
+
+    const hidden = await dewi.agent.get(`/api/inspections/${inspection.id}`);
+    const missing = await dewi.agent.get('/api/inspections/INS-99999');
+    assert.equal(hidden.status, 404);
+    assert.deepEqual({ status: hidden.status, body: hidden.body }, { status: missing.status, body: missing.body });
+
+    const hiddenPhoto = await dewi.agent.get(`/api/inspections/photos/${photoId}/file`);
+    const missingPhoto = await dewi.agent.get('/api/inspections/photos/99999999/file');
+    assert.deepEqual({ status: hiddenPhoto.status, body: hiddenPhoto.body }, { status: missingPhoto.status, body: missingPhoto.body });
+});
+
+test('visibilitas Safety Officer: miliknya di semua status; milik orang lain hanya IN_REVIEW/COMPLETED; draft & revisi orang lain privat', async () => {
+    const arif = await loginAs('arif');
+    const tulus = await loginAs('tulus');
+    const dewi = await loginAs('dewi');
+
+    const own = await createInspection(arif, { plantId: 1 });
+    const others = await createInspection(tulus, { plantId: 1 });
+
+    await assertVisible(arif, own.id, 'IN_REVIEW milik sendiri');
+    await assertVisible(arif, others.id, 'IN_REVIEW milik SO lain');
+    await assertVisible(arif, 'INS-001', 'COMPLETED milik sendiri (seed)');
+    await assertVisible(arif, 'INS-004', 'COMPLETED milik SO lain (seed)');
+
+    // REVISION_REQUIRED: pemilik melihat, SO lain tidak.
+    assert.equal((await decide(dewi, own.id, 'reject', { stageId: 'koordinator_k3l', reason: 'Lengkapi foto' })).status, 200);
+    await assertVisible(arif, own.id, 'REVISION_REQUIRED milik sendiri');
+    await assertHidden(tulus, own.id, 'REVISION_REQUIRED milik SO lain');
+    await assertHidden(arif, 'INS-003', 'REVISION_REQUIRED milik SO lain (seed)');
+
+    // DRAFT: pemilik melihat, siapa pun yang lain tidak — termasuk Admin.
+    await forceDraft(others.id);
+    await assertVisible(tulus, others.id, 'DRAFT milik sendiri');
+    await assertHidden(arif, others.id, 'DRAFT milik SO lain');
+    for (const username of ['dewi', 'andi', 'hadi', 'admin']) {
+        await assertHidden(await loginAs(username), others.id, `DRAFT dilihat ${username}`);
+    }
+});
+
+test('visibilitas Koordinator: hanya plant yang ditugaskan — daftar, akses langsung, dan file foto (termasuk foto tindakan perbaikan)', async () => {
+    const arif = await loginAs('arif');
+    const tulus = await loginAs('tulus');
+    const dewi = await loginAs('dewi'); // plant 1
+    const rina = await loginAs('rina'); // plant 9
+
+    const plant1 = await createInspectionWithPhoto(arif, 1);
+    const plant9 = await createInspectionWithPhoto(tulus, 9);
+    const plant1Photo = plant1.fotoDekat[0].id;
+    const plant9Photo = plant9.fotoDekat[0].id;
+
+    await assertVisible(dewi, plant1.id, 'plant sendiri, tahap Koordinator');
+    await assertHidden(dewi, plant9.id, 'plant lain');
+    await assertVisible(rina, plant9.id, 'plant sendiri (rina)');
+    await assertHidden(rina, plant1.id, 'plant lain (rina)');
+    await assertVisible(dewi, 'INS-001', 'COMPLETED di plant sendiri (seed)');
+    await assertHidden(dewi, 'INS-004', 'COMPLETED di plant lain (seed)');
+
+    assert.equal(await photoStatus(dewi, plant1Photo), 200, 'foto inspeksi plant sendiri');
+    assert.equal(await photoStatus(dewi, plant9Photo), 404, 'foto inspeksi plant lain — tahu id foto tidak cukup');
+    assert.equal(await photoStatus(rina, plant9Photo), 200);
+    assert.equal(await photoStatus(rina, plant1Photo), 404);
+
+    // Foto tindakan perbaikan diselesaikan ke inspeksinya dulu.
+    const action = await withCsrf(tulus.agent.post(`/api/inspections/${plant9.id}/corrective-actions`), tulus.csrfToken)
+        .field('action', 'Bukti perbaikan')
+        .field('status', 'open')
+        .field('pic', 'Tulus')
+        .attach('photos', FIXTURE_JPEG);
+    assert.equal(action.status, 201);
+    const withAction = (await tulus.agent.get(`/api/inspections/${plant9.id}`)).body;
+    const actionPhoto = withAction.perbaikan.at(-1).foto[0].id;
+    assert.equal(await photoStatus(rina, actionPhoto), 200, 'foto tindakan perbaikan, plant sendiri');
+    assert.equal(await photoStatus(dewi, actionPhoto), 404, 'foto tindakan perbaikan, plant lain');
+
+    // Cakupan mengikuti alur kerja: setelah tahap Koordinator lewat, koordinator tidak lagi melihatnya.
+    assert.equal((await decide(dewi, plant1.id, 'approve', { stageId: 'koordinator_k3l' })).status, 200);
+    await assertHidden(dewi, plant1.id, 'plant sendiri, tahap sudah lewat ke Manajer');
+    assert.equal(await photoStatus(dewi, plant1Photo), 404);
+});
+
+test('visibilitas Koordinator tanpa plant yang ditugaskan: tidak melihat apa pun', async () => {
+    const rina = await loginAs('rina');
+    const [[{ id: rinaId }]] = await pool.query("SELECT id FROM users WHERE username = 'rina'");
+    const arif = await loginAs('arif');
+    const inspection = await createInspectionWithPhoto(arif, 9);
+
+    await pool.query('UPDATE users SET plant_id = NULL WHERE id = ?', [rinaId]);
+    try {
+        const list = await rina.agent.get('/api/inspections');
+        assert.equal(list.status, 200);
+        assert.deepEqual(list.body, [], 'daftar kosong');
+        assert.equal(await detailStatus(rina, inspection.id), 404);
+        assert.equal(await detailStatus(rina, 'INS-004'), 404, 'bahkan COMPLETED di plant yang dulu miliknya');
+        assert.equal(await photoStatus(rina, inspection.fotoDekat[0].id), 404);
+    } finally {
+        await pool.query('UPDATE users SET plant_id = 9 WHERE id = ?', [rinaId]);
+    }
+});
+
+test('visibilitas Manajer: lintas plant (tidak mewarisi batas plant Koordinator), hanya tahapnya + yang selesai', async () => {
+    const arif = await loginAs('arif');
+    const dewi = await loginAs('dewi');
+    const rina = await loginAs('rina');
+    const andi = await loginAs('andi');
+
+    const plant1 = await createInspection(arif, { plantId: 1 });
+    const plant9 = await createInspection(arif, { plantId: 9 });
+    assert.equal((await decide(dewi, plant1.id, 'approve', { stageId: 'koordinator_k3l' })).status, 200);
+    assert.equal((await decide(rina, plant9.id, 'approve', { stageId: 'koordinator_k3l' })).status, 200);
+
+    await assertVisible(andi, plant1.id, 'tahap Manajer, plant 1');
+    await assertVisible(andi, plant9.id, 'tahap Manajer, plant 9');
+    await assertVisible(andi, 'INS-001', 'COMPLETED plant 1');
+    await assertVisible(andi, 'INS-004', 'COMPLETED plant 9');
+    await assertHidden(andi, 'INS-002', 'masih di tahap Koordinator');
+    await assertHidden(andi, 'INS-006', 'sudah di tahap Ketua');
+    await assertHidden(andi, 'INS-003', 'REVISION_REQUIRED (walau tahapnya Manajer)');
+});
+
+test('visibilitas Ketua P2K3: tahapnya sendiri + yang selesai', async () => {
+    const hadi = await loginAs('hadi');
+    await assertVisible(hadi, 'INS-006', 'tahap Ketua');
+    await assertVisible(hadi, 'INS-001', 'COMPLETED');
+    await assertVisible(hadi, 'INS-004', 'COMPLETED');
+    await assertHidden(hadi, 'INS-002', 'tahap Koordinator');
+    await assertHidden(hadi, 'INS-003', 'REVISION_REQUIRED');
+});
+
+test('visibilitas Admin: IN_REVIEW, REVISION_REQUIRED, COMPLETED terlihat; DRAFT tidak', async () => {
+    const admin = await loginAs('admin');
+    const arif = await loginAs('arif');
+    await assertVisible(admin, 'INS-002', 'IN_REVIEW');
+    await assertVisible(admin, 'INS-003', 'REVISION_REQUIRED');
+    await assertVisible(admin, 'INS-001', 'COMPLETED');
+
+    const draft = await createInspection(arif, { plantId: 3 });
+    await forceDraft(draft.id);
+    await assertHidden(admin, draft.id, 'DRAFT');
+});
+
+test('visibilitas tindakan perbaikan: draft/revisi SO lain tidak bisa dibaca atau ditulisi lewat POST corrective-actions', async () => {
+    const arif = await loginAs('arif');
+    const tulus = await loginAs('tulus');
+    const dewi = await loginAs('dewi');
+    const { readdirSync } = await import('node:fs');
+    const { UPLOAD_DIR } = await import('../config/upload.js');
+
+    const postAction = (session, id) => withCsrf(session.agent.post(`/api/inspections/${id}/corrective-actions`), session.csrfToken)
+        .field('action', 'Tindakan dari SO lain')
+        .field('status', 'open')
+        .field('pic', 'Tulus')
+        .attach('photos', FIXTURE_JPEG);
+    const actionCount = async (id) => {
+        const [[{ total }]] = await pool.query('SELECT COUNT(*) AS total FROM corrective_actions WHERE inspection_id = ?', [Number(String(id).replace(/\D/g, ''))]);
+        return total;
+    };
+
+    const draft = await createInspection(arif, { plantId: 1, keteranganLokasi: 'RAHASIA-DRAFT' });
+    await forceDraft(draft.id);
+    const revision = await createInspection(arif, { plantId: 1 });
+    assert.equal((await decide(dewi, revision.id, 'reject', { stageId: 'koordinator_k3l', reason: 'Lengkapi' })).status, 200);
+
+    const missing = await postAction(tulus, 'INS-99999');
+    for (const [label, target] of [['DRAFT', draft], ['REVISION_REQUIRED', revision]]) {
+        const filesBefore = readdirSync(UPLOAD_DIR).length;
+        const actionsBefore = await actionCount(target.id);
+        const res = await postAction(tulus, target.id);
+        assert.equal(res.status, 404, `${label} SO lain: ditolak`);
+        assert.deepEqual({ status: res.status, body: res.body }, { status: missing.status, body: missing.body }, `${label}: identik dengan id tidak ada`);
+        assert.ok(!JSON.stringify(res.body).includes('RAHASIA'), `${label}: tidak ada data inspeksi di respons`);
+        assert.equal(await actionCount(target.id), actionsBefore, `${label}: tidak ada tindakan tersimpan`);
+        assert.equal(readdirSync(UPLOAD_DIR).length, filesBefore, `${label}: foto yang terlanjur diunggah dibersihkan`);
+    }
+
+    // Tidak terlalu ketat: pemilik tetap bisa menambah tindakan ke revisinya,
+    // dan SO lain tetap bisa ke inspeksi yang memang terlihat olehnya (IN_REVIEW).
+    assert.equal((await postAction(arif, revision.id)).status, 201, 'pemilik, REVISION_REQUIRED');
+    const visibleToTulus = await createInspection(arif, { plantId: 1 });
+    assert.equal((await postAction(tulus, visibleToTulus.id)).status, 201, 'SO lain, IN_REVIEW');
 });

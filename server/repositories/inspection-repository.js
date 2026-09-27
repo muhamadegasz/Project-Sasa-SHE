@@ -1,10 +1,16 @@
 /* inspection-repository.js — versi MySQL, dipakai backend (server/).
  *
- * Signature fungsi (getAll, findById, add, count) SAMA dengan
- * src/repositories/inspection-repository.js (versi in-memory, dipakai
- * browser) — itulah seam yang membuat src/services/inspection-service.js,
- * approval-service.js, dan corrective-action-service.js bisa dipakai APA
- * ADANYA oleh backend ini (lihat docs/ROADMAP-PHASE12.md).
+ * Signature fungsi yang dipakai services (findById, add, count,
+ * recordDecision, addCorrectiveAction) SAMA dengan
+ * src/repositories/inspection-repository.js (versi browser) — itulah seam
+ * yang membuat src/services/inspection-service.js, approval-service.js, dan
+ * corrective-action-service.js bisa dipakai APA ADANYA oleh backend ini
+ * (lihat docs/ROADMAP-PHASE12.md).
+ *
+ * Phase 17.3A: bacaan yang DISAJIKAN ke pengguna (daftar, detail, file foto)
+ * selalu lewat fungsi yang menerapkan cakupan visibilitas pengguna
+ * (getAllVisibleTo, findByIdVisibleTo, findPhotoFile) — tidak ada lagi
+ * daftar tanpa cakupan di berkas ini.
  *
  * Bedanya dengan versi in-memory: findById() di sana mengembalikan REFERENSI
  * HIDUP ke array (memutasinya = memutasi "database"). Query SQL tidak bisa
@@ -21,6 +27,7 @@
 
 import { pool } from '../db/pool.js';
 import { formatDate } from '../../src/shared/date.js';
+import { visibilityScope } from '../../src/domain/inspection-policy.js';
 
 function toDisplayId(numericId) {
     return `INS-${String(numericId).padStart(3, '0')}`;
@@ -137,13 +144,53 @@ const BASE_SELECT = `
     JOIN plants p ON p.id = i.plant_id
 `;
 
-/** Seluruh inspeksi, urutan terbaru (id terbesar) di depan — sama seperti unshift() di versi in-memory. */
-export async function getAll() {
-    const [rows] = await pool.query(`${BASE_SELECT} ORDER BY i.id DESC`);
+/**
+ * Menerjemahkan visibilityScope(user) (domain/inspection-policy.js — sumber
+ * aturannya) menjadi klausa WHERE atas alias `i` (tabel inspections), supaya
+ * inspeksi di luar cakupan tidak pernah dibaca dari database (Phase 17.3A).
+ * Aturan siapa-melihat-apa TIDAK ditulis di sini, hanya dipetakan ke kolom.
+ * Cakupan kosong -> '1 = 0' (tidak ada baris).
+ */
+function visibilityWhere(user) {
+    const params = [];
+    const clauses = visibilityScope(user).map((criterion) => {
+        const conditions = [];
+        if (criterion.petugasUserId != null) { conditions.push('i.petugas_user_id = ?'); params.push(criterion.petugasUserId); }
+        if (criterion.plantId != null) { conditions.push('i.plant_id = ?'); params.push(criterion.plantId); }
+        if (criterion.statuses) { conditions.push('i.status IN (?)'); params.push(criterion.statuses); }
+        if (criterion.currentApprovalStage) { conditions.push('i.current_approval_stage = ?'); params.push(criterion.currentApprovalStage); }
+        return `(${conditions.join(' AND ')})`;
+    });
+    return { sql: clauses.length ? `(${clauses.join(' OR ')})` : '1 = 0', params };
+}
+
+/** Inspeksi yang boleh dilihat `user` (pengguna login), terbaru di depan. Dipakai GET /api/inspections. */
+export async function getAllVisibleTo(user) {
+    const scope = visibilityWhere(user);
+    const [rows] = await pool.query(`${BASE_SELECT} WHERE ${scope.sql} ORDER BY i.id DESC`, scope.params);
     return Promise.all(rows.map(loadFull));
 }
 
-/** Satu inspeksi berdasarkan id ("INS-nnn"), atau undefined bila tidak ada. */
+/**
+ * Satu inspeksi bila ada DAN boleh dilihat `user`, selain itu undefined —
+ * sengaja tidak membedakan "tidak ada" dari "di luar cakupan". Dipakai
+ * GET /api/inspections/:id.
+ */
+export async function findByIdVisibleTo(id, user) {
+    const numericId = toNumericId(id);
+    if (Number.isNaN(numericId)) return undefined;
+    const scope = visibilityWhere(user);
+    const [rows] = await pool.query(`${BASE_SELECT} WHERE i.id = ? AND ${scope.sql}`, [numericId, ...scope.params]);
+    if (rows.length === 0) return undefined;
+    return loadFull(rows[0]);
+}
+
+/**
+ * Satu inspeksi berdasarkan id ("INS-nnn"), atau undefined bila tidak ada —
+ * TANPA pemeriksaan visibilitas. Hanya untuk service yang menegakkan
+ * wewenangnya sendiri (approval-service, corrective-action-service); jangan
+ * dipakai untuk menyajikan data ke pengguna (lihat findByIdVisibleTo()).
+ */
 export async function findById(id) {
     const numericId = toNumericId(id);
     if (Number.isNaN(numericId)) return undefined;
@@ -306,11 +353,23 @@ export async function addCorrectiveAction(inspectionId, action) {
     return { id: actionId, ...action };
 }
 
-/** Metadata satu foto (untuk endpoint penyajian file, lihat inspections.routes.js). undefined bila tidak ada. */
-export async function findPhotoFile(photoId) {
+/**
+ * Metadata satu foto untuk endpoint penyajian file — HANYA bila inspeksi
+ * pemilik foto itu boleh dilihat `user` (Phase 17.3A). Foto terikat ke
+ * inspeksi langsung (dekat/jauh) atau lewat tindakan perbaikan; keduanya
+ * diselesaikan ke inspeksinya dulu, lalu cakupan visibilitas diterapkan pada
+ * inspeksi itu. undefined bila foto tidak ada ATAU inspeksinya di luar
+ * cakupan — mengetahui id foto tidak cukup.
+ */
+export async function findPhotoFile(photoId, user) {
+    const scope = visibilityWhere(user);
     const [rows] = await pool.query(
-        'SELECT file_path, mime_type, original_name FROM photos WHERE id = ?',
-        [photoId],
+        `SELECT ph.file_path, ph.mime_type, ph.original_name
+         FROM photos ph
+         LEFT JOIN corrective_actions ca ON ca.id = ph.corrective_action_id
+         JOIN inspections i ON i.id = COALESCE(ph.inspection_id, ca.inspection_id)
+         WHERE ph.id = ? AND ${scope.sql}`,
+        [photoId, ...scope.params],
     );
     if (rows.length === 0) return undefined;
     return { filePath: rows[0].file_path, mimeType: rows[0].mime_type, originalName: rows[0].original_name };

@@ -16,7 +16,6 @@
 import { ROLE, APPROVAL_STAGE } from '../config/constants.js';
 import { INSPECTION_STATUS } from './statuses.js';
 import { findStage } from './approval-rules.js';
-import { isAwaitingStage } from './workflow-rules.js';
 
 const { DRAFT, IN_REVIEW, REVISION_REQUIRED, COMPLETED } = INSPECTION_STATUS;
 
@@ -32,28 +31,66 @@ export function isInAssignedPlant(user, inspection) {
     return user.plantId != null && Number(user.plantId) === Number(inspection.plantId);
 }
 
-/** Apakah pengguna boleh melihat inspeksi ini. */
-export function canView(user, inspection) {
-    if (!user || !inspection) return false;
-    const { status } = inspection;
+/**
+ * Cakupan visibilitas seorang pengguna, sebagai daftar kriteria (Phase 17.3A).
+ * Sebuah inspeksi terlihat bila cocok dengan SALAH SATU kriteria; di dalam
+ * satu kriteria, SEMUA field yang disebut harus cocok:
+ *
+ *   { petugasUserId, plantId, statuses: [...], currentApprovalStage }
+ *
+ * Satu sumber aturan untuk dua pemakai: canView() di bawah (satu inspeksi di
+ * memori) dan repository server (klausa WHERE, supaya inspeksi di luar
+ * cakupan tidak pernah dibaca dari database). Daftar kosong = tidak melihat
+ * apa pun.
+ */
+export function visibilityScope(user) {
+    if (!user) return [];
 
     switch (user.role) {
     case ROLE.SAFETY_OFFICER:
         // Miliknya sendiri di status apa pun; milik orang lain hanya yang
         // sedang direview atau sudah selesai — draft & revisi tetap privat.
-        return isOwner(user, inspection) || status === IN_REVIEW || status === COMPLETED;
+        return [
+            { petugasUserId: user.id },
+            { statuses: [IN_REVIEW, COMPLETED] },
+        ];
     case ROLE.KOORDINATOR_K3L:
-        return isInAssignedPlant(user, inspection)
-            && (status === COMPLETED || isAwaitingStage(inspection, APPROVAL_STAGE.KOORDINATOR_K3L));
+        // Tanpa plant yang ditugaskan: tidak melihat apa pun (gagal-tertutup).
+        if (user.plantId == null) return [];
+        return [
+            { plantId: user.plantId, statuses: [IN_REVIEW], currentApprovalStage: APPROVAL_STAGE.KOORDINATOR_K3L },
+            { plantId: user.plantId, statuses: [COMPLETED] },
+        ];
     case ROLE.MANAJER_BAGIAN:
-        return status === COMPLETED || isAwaitingStage(inspection, APPROVAL_STAGE.MANAJER);
+        return [
+            { statuses: [IN_REVIEW], currentApprovalStage: APPROVAL_STAGE.MANAJER },
+            { statuses: [COMPLETED] },
+        ];
     case ROLE.KETUA_P2K3:
-        return status === COMPLETED || isAwaitingStage(inspection, APPROVAL_STAGE.KETUA_P2K3);
+        return [
+            { statuses: [IN_REVIEW], currentApprovalStage: APPROVAL_STAGE.KETUA_P2K3 },
+            { statuses: [COMPLETED] },
+        ];
     case ROLE.ADMIN:
-        return status !== DRAFT;
+        // Semua kecuali draft.
+        return [{ statuses: [IN_REVIEW, REVISION_REQUIRED, COMPLETED] }];
     default:
-        return false;
+        return [];
     }
+}
+
+function matchesCriterion(criterion, inspection) {
+    if (criterion.petugasUserId != null && Number(inspection.petugasUserId) !== Number(criterion.petugasUserId)) return false;
+    if (criterion.plantId != null && Number(inspection.plantId) !== Number(criterion.plantId)) return false;
+    if (criterion.statuses && !criterion.statuses.includes(inspection.status)) return false;
+    if (criterion.currentApprovalStage && inspection.currentApprovalStage !== criterion.currentApprovalStage) return false;
+    return true;
+}
+
+/** Apakah pengguna boleh melihat inspeksi ini. */
+export function canView(user, inspection) {
+    if (!user || !inspection) return false;
+    return visibilityScope(user).some((criterion) => matchesCriterion(criterion, inspection));
 }
 
 /** Mengubah isi draft: hanya Safety Officer pemiliknya, hanya selama DRAFT. */

@@ -349,8 +349,12 @@ async function approveStage(inspeksiId, stageId) {
         ? '🎉 Semua tahap pengesahan telah disetujui! Inspeksi selesai.'
         : `✅ ${stage.title} telah menyetujui inspeksi ${inspeksiId}`);
 
+    // Phase 17.3A: modal ditutup, TIDAK dibuka ulang — setelah tahapnya lewat,
+    // penyetuju biasanya tidak lagi berhak melihat inspeksi ini (server menjawab
+    // 404), dan membuka ulang hanya akan menimpa toast sukses dengan
+    // "Data tidak ditemukan".
+    closeModal('approvalModal');
     await refreshAll();
-    await openApprovalModal(inspeksiId);
 }
 
 async function rejectStage(inspeksiId, stageId) {
@@ -365,8 +369,10 @@ async function rejectStage(inspeksiId, stageId) {
     if (!result.ok) { showToast(pesanGagal(result.reason)); return; }
 
     showToast(`❌ ${result.data.stage.title} menolak inspeksi ${inspeksiId}`);
+    // Phase 17.3A: sama seperti approveStage — setelah ditolak, inspeksi
+    // menunggu revisi dan tidak lagi terlihat oleh penolaknya.
+    closeModal('approvalModal');
     await refreshAll();
-    await openApprovalModal(inspeksiId);
 }
 
 // ========================================================================

@@ -29,12 +29,16 @@ function filesToPhotoMeta(files) {
     }));
 }
 
+// Phase 17.3A: daftar dan detail hanya berisi inspeksi yang boleh dilihat
+// pengguna login (domain/inspection-policy.js visibilityScope, diterapkan di
+// query). Inspeksi di luar cakupan dijawab 404 yang SAMA PERSIS dengan id yang
+// tidak ada — tidak membocorkan apakah id itu ada, milik plant mana, dst.
 inspectionsRouter.get('/', asyncHandler(async (req, res) => {
-    res.json(await inspectionRepository.getAll());
+    res.json(await inspectionRepository.getAllVisibleTo(req.user));
 }));
 
 inspectionsRouter.get('/:id', asyncHandler(async (req, res) => {
-    const inspection = await inspectionRepository.findById(req.params.id);
+    const inspection = await inspectionRepository.findByIdVisibleTo(req.params.id, req.user);
     if (!inspection) return res.status(404).json({ error: 'NOT_FOUND' });
     res.json(inspection);
 }));
@@ -88,6 +92,15 @@ inspectionsRouter.post(
     asyncHandler(verifyImageContent),
     asyncHandler(async (req, res) => {
         try {
+            // Phase 17.3A: inspeksi yang tidak boleh DILIHAT juga tidak boleh
+            // ditindaklanjuti — tanpa ini, Safety Officer lain bisa membaca
+            // (respons berisi inspeksi lengkap) dan menulis ke draft/revisi
+            // privat hanya dengan menebak id. 404 identik dengan id yang tidak
+            // ada; foto yang sudah ditulis multer dibersihkan.
+            if (!(await inspectionRepository.findByIdVisibleTo(req.params.id, req.user))) {
+                await cleanupUploadedFiles(req);
+                return res.status(404).json({ error: 'NOT_FOUND' });
+            }
             const result = await correctiveActionService.addAction(req.params.id, {
                 ...req.body,
                 photos: filesToPhotoMeta(req.files),
@@ -106,8 +119,11 @@ inspectionsRouter.post(
 // server/middleware/csrf.js) — tapi tetap butuh sesi login seperti seluruh
 // route /api lain (sessionAuth dipasang blanket di server/app.js), bukan
 // express.static() publik: foto SHE bukan data yang boleh diakses tanpa login.
+// Phase 17.3A: login saja tidak cukup — foto hanya disajikan bila inspeksi
+// pemiliknya boleh dilihat pengguna ini; di luar cakupan -> 404 yang sama
+// dengan foto yang tidak ada.
 inspectionsRouter.get('/photos/:photoId/file', asyncHandler(async (req, res) => {
-    const photo = await inspectionRepository.findPhotoFile(req.params.photoId);
+    const photo = await inspectionRepository.findPhotoFile(req.params.photoId, req.user);
     if (!photo) return res.status(404).json({ error: 'NOT_FOUND' });
     // F-02: photo.mimeType sekarang hasil deteksi signature byte server saat
     // upload (verifyImageContent() di server/config/upload.js), bukan lagi
