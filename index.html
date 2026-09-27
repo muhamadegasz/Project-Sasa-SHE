@@ -526,6 +526,34 @@
         </div>
     </div>
 
+    <!-- MODAL TANDA TANGAN PERSETUJUAN (Phase 17.4B) — dibuka dari "Setujui"; lihat presentation/views/signature-modal.view.js. -->
+    <div class="modal-overlay no-print" id="signatureModal">
+        <div class="modal-box signature-modal-box" role="dialog" aria-labelledby="signatureModalTitle">
+            <button class="close-modal" id="closeSignatureModal" aria-label="Tutup">&times;</button>
+            <h3 id="signatureModalTitle"><i class="fas fa-signature"></i> Tanda Tangan Persetujuan</h3>
+            <p id="signatureModalInfo" class="signature-info"></p>
+            <div class="signature-methods" role="radiogroup" aria-label="Cara tanda tangan">
+                <label class="signature-method"><input type="radio" name="signatureMethod" value="upload"> <i class="fas fa-upload"></i> Upload Tanda Tangan</label>
+                <label class="signature-method"><input type="radio" name="signatureMethod" value="canvas"> <i class="fas fa-pen-nib"></i> Gambar Tanda Tangan</label>
+            </div>
+            <div class="signature-panel" id="signatureUploadPanel" hidden>
+                <label for="signatureFile">Berkas gambar tanda tangan (PNG/JPG, maks. 1 MB)</label>
+                <input type="file" id="signatureFile" accept="image/png,image/jpeg">
+            </div>
+            <div class="signature-panel" id="signatureCanvasPanel" hidden>
+                <canvas id="signatureCanvas" class="signature-canvas" aria-label="Area gambar tanda tangan"></canvas>
+                <button type="button" class="btn-sm outline" id="signatureClearCanvas"><i class="fas fa-eraser"></i> Hapus</button>
+            </div>
+            <div class="signature-preview" id="signaturePreviewBox" hidden>
+                <span class="signature-preview-label">Pratinjau tanda tangan yang akan dikirim:</span>
+                <img id="signaturePreview" alt="Pratinjau tanda tangan">
+                <button type="button" class="btn-sm outline" id="signatureRemoveFile" hidden><i class="fas fa-trash"></i> Hapus berkas</button>
+            </div>
+            <p id="signatureError" class="signature-error" role="alert"></p>
+            <button type="button" class="btn-sm success signature-confirm" id="confirmApproveBtn" data-action="confirmApprove" disabled>Setujui</button>
+        </div>
+    </div>
+
     <!-- MODAL KALENDER -->
     <div class="modal-overlay" id="calendarModal">
         <div class="modal-box" role="dialog" aria-labelledby="calendarModalTitle">

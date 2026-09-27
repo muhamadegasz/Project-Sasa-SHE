@@ -10,7 +10,8 @@
  * bukan lewat tombol "Masuk" di dalam #loginPage.
  */
 
-import { test, expect } from '@playwright/test';
+import { API } from './support/env.js';
+import { test, expect } from './support/test.js';
 import { loginViaUi } from './support/ui.js';
 
 test('sesi tetap ada setelah reload halaman (dipulihkan lewat GET /api/auth/me)', async ({ page }) => {
@@ -32,9 +33,9 @@ test('sesi yang tidak valid/hilang mengembalikan pengguna ke halaman login setel
     // kondisi sesi "kedaluwarsa/dihapus" sungguhan, bukan "belum pernah
     // login"), dan ini menghindari race non-deterministik pada penghapusan
     // cookie browser yang sempat teramati flaky di run paralel.
-    const me = await page.request.get('http://project-sasa-she.test:3001/api/auth/me');
+    const me = await page.request.get(`${API}/auth/me`);
     const { csrfToken } = await me.json();
-    await page.request.post('http://project-sasa-she.test:3001/api/auth/logout', {
+    await page.request.post(`${API}/auth/logout`, {
         headers: { 'X-CSRF-Token': csrfToken },
     });
 

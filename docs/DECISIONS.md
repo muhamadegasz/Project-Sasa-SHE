@@ -1416,3 +1416,134 @@ end-to-end: byte tersimpan di disk, tersaji kembali sebagai gambar sungguhan.
   bersamaan menghasilkan tepat satu (diuji). Service menetapkan status awal sebelum `await` lain.
 - **Hapus draft** didukung aturan 17.0 ("CRUD selama DRAFT"): pemilik saja, DRAFT saja; file foto
   di disk ikut dihapus (dibatasi di dalam `UPLOAD_DIR`). Penghapusan oleh Admin tetap fase lain.
+
+## K-26: Phase 17.4A — Tanda tangan persetujuan: penyimpanan & fondasi backend
+
+Hanya backend/API. Belum ada UI unggah/kanvas, pratinjau, watermark, tanda tangan di PDF, atau
+QR. Istilahnya "tanda tangan digital" dalam arti **pembubuhan gambar tanda tangan**, bukan tanda
+tangan elektronik tersertifikasi.
+
+- **Aturan terkunci:** APPROVE wajib bertanda tangan; REJECT wajib beralasan dan **tidak** bertanda
+  tangan. Data tanda tangan pada penolakan ditolak `SIGNATURE_NOT_ALLOWED` (400), bukan diabaikan.
+- **Metode:** nilai kontrak mengikuti `SIGNATURE_METHOD` / ENUM yang sudah ada — `upload` dan
+  `canvas` (huruf kecil); nilai lain, termasuk `UPLOAD`, ditolak `SIGNATURE_METHOD_INVALID`.
+  UPLOAD menerima PNG/JPEG; CANVAS hanya PNG.
+- **Kontrak API:** `POST /api/inspections/:id/approve` multipart — `stageId`, `signatureMethod`,
+  `signature` (berkas). Kanvas kelak mengirim PNG sebagai Blob lewat jalur yang sama, jadi **tidak
+  ada jalur base64/data URL**: string di field `signature` tidak pernah didekode
+  (`SIGNATURE_REQUIRED`). Body JSON lama tanpa berkas -> `SIGNATURE_REQUIRED`.
+- **Validasi isi:** format ditentukan dari byte berkas lewat `detectImageMimeTypeFromBytes()` (deteksi
+  yang sama dengan foto, `server/config/upload.js`), lalu dipersempit ke PNG/JPEG
+  (`detectSignatureMimeType`). Nama berkas dan Content-Type klien tidak dipakai sama sekali.
+  **Format tersimpan mengikuti isi:** berkas bernama `.jpg` dengan MIME `image/jpeg` yang isinya
+  PNG disimpan sebagai `image/png` / `.png`. Aturan per metode ada di `src/domain/signature-rules.js`
+  (`checkSignature`), dipakai `approval-service` setelah pemeriksaan visibilitas & wewenang.
+- **Batas ukuran 1 MB** (`SIGNATURE_MAX_BYTES`), lebih kecil dari foto (5 MB) — tanda tangan
+  bukan foto resolusi tinggi. Ditegakkan multer (`SIGNATURE_TOO_LARGE`) dan diperiksa ulang di domain.
+- **Penyimpanan:** berkas ditahan di memori (bukan ditulis multer), jadi isi yang ditolak tidak
+  pernah menyentuh disk. Berkas ditulis oleh `recordDecision()` **di dalam transaksi, setelah**
+  `UPDATE` terjaga status/tahap berhasil — keputusan basi/bersamaan tidak pernah menulis berkas.
+  Nama `signatures/<uuid>.<png|jpg>` dibuat server (ekstensi dari format hasil deteksi, flag `wx`);
+  bila INSERT/commit gagal setelah berkas ditulis, berkas BARU itu dihapus. Berkas keputusan lain
+  tidak pernah disentuh.
+- **Model data:** metadata tetap di baris `approvals` (satu keputusan = paling banyak satu tanda
+  tangan), bukan tabel terpisah. Identitas penanda tangan = `reviewer_user_id`/`reviewer_name`
+  keputusan itu, dari sesi. Migrasi `004` menambah `legacy_unsigned` + CHECK: disetujui ->
+  tanda tangan lengkap (metode, path, MIME PNG/JPEG) **kecuali** baris lama bertanda
+  `legacy_unsigned`; CANVAS -> PNG; penolakan tanpa MIME tanda tangan; `UNIQUE(signature_file_path)`.
+  Persetujuan yang tersimpan sebelum aturan ini (data 003 dan data demo seed) ditandai
+  `legacy_unsigned = 1`, bukan diberi tanda tangan palsu; aplikasi tidak pernah mengisi kolom itu.
+- **Penyajian:** `GET /api/inspections/:id/approvals/:approvalId/signature` — sesi + inspeksi
+  terlihat oleh pengguna (cakupan 17.3A) + keputusan milik inspeksi itu + path sesuai pola. Semua
+  kegagalan -> `404 {error:'NOT_FOUND'}` identik. `Content-Type` hanya PNG/JPEG hasil verifikasi, plus
+  `X-Content-Type-Options: nosniff`. Riwayat di JSON detail memuat `id` dan `hasSignature`, tidak
+  pernah path berkasnya.
+- **Akses statis:** Express tidak menyajikan `uploads/`. Karena vhost Laragon memakai folder proyek
+  sebagai DocumentRoot Apache, server menulis `uploads/signatures/.htaccess` (`Require all denied`)
+  saat mulai. Folder `uploads/` lain (foto) dan berkas proyek lain di luar cakupan fase ini — lihat
+  temuan keamanan di laporan fase.
+- **Hapus inspeksi oleh Admin (kelak):** `approvals` ikut terhapus lewat `ON DELETE CASCADE`,
+  tetapi berkasnya tidak. Pembersihan kelak cukup membaca `signature_file_path` sebelum `DELETE`
+  (pola yang sama dengan `removeDraft()` untuk foto). `UNIQUE` menjamin satu berkas milik satu keputusan.
+- **Frontend:** belum ada input tanda tangan, jadi tombol Setujui di UI kini berhenti di
+  `SIGNATURE_REQUIRED` (pesan disiapkan di `legacy-app.js`). Repository browser sudah mengirim
+  multipart bila tanda tangan tersedia. E2E menyetujui lewat `approveViaApi` bertanda tangan.
+
+## K-27: Phase 17.4A.1 — Menutup eksposur publik Apache
+
+Vhost Laragon memakai folder proyek sebagai DocumentRoot (dan vhost default menyajikan folder yang
+sama di `http://localhost/project-sasa-she/`), sehingga `.env`, `.git/` (termasuk daftar isinya),
+`server/`, `uploads/`, `node_modules/`, laporan test, dan `docs/` bisa diunduh siapa pun.
+
+- **Batas keamanan = `.htaccess` di akar proyek** (allowlist, mod_rewrite): hanya `index.html`,
+  `assets/`, dan `src/` — yang memang dimuat browser — yang disajikan. Semua yang lain, termasuk
+  berkas/folder berawalan titik di level mana pun, dijawab `404` seolah tidak ada; daftar isi folder
+  dimatikan (`Options -Indexes`). Karena berlaku per direktori, aturan ini menutup KEDUA alamat
+  (vhost dan `localhost/project-sasa-she`), sesuatu yang tidak bisa dicapai dengan mengganti DocumentRoot.
+- **Gagal tertutup:** tanpa `<IfModule>` — bila mod_rewrite tidak ada, Apache menjawab 500, bukan
+  diam-diam menyajikan semuanya. `RewriteOptions InheritDownBefore` memberlakukannya juga di subfolder
+  yang punya aturan rewrite sendiri.
+- **Upload tetap privat:** foto dan tanda tangan di `uploads/` tidak pernah disajikan Apache (404;
+  `uploads/signatures/.htaccess` dari K-26 tetap sebagai lapis kedua, 403). Satu-satunya jalan
+  membacanya adalah endpoint API yang butuh sesi + visibilitas inspeksi (K-23, K-26). Ini menggantikan
+  catatan "di luar cakupan" untuk folder foto di K-26.
+- **Konfigurasi global Apache/Laragon sengaja tidak diubah** (termasuk `Options Indexes` global untuk
+  situs lain di mesin ini) — perbaikan dibatasi pada proyek ini.
+- Diverifikasi dengan permintaan HTTP sungguhan di kedua alamat, termasuk varian huruf besar,
+  `..` ter-encode, nama pendek 8.3, dan `::$DATA`. Apache di Windows mencocokkan nama berkas
+  sungguhan di disk, jadi variasi huruf tidak bisa melewati allowlist.
+
+## K-28: Phase 17.4B — UI tanda tangan persetujuan
+
+Hanya frontend; kontrak backend K-26 tidak berubah.
+
+- **Alur:** "Setujui" di daftar tahap tidak lagi langsung menyetujui — ia membuka modal tanda tangan
+  (`#signatureModal`, `presentation/views/signature-modal.view.js`) di atas modal pengesahan.
+  Modal hanya dibuka bila `canApprove()` (aturan domain yang sama dengan server) mengizinkan; selain
+  itu pengguna mendapat pesan "tidak berwenang". Ini kenyamanan UI — server tetap otoritatif untuk
+  validasi dan wewenang.
+- **Dua cara, istilah sama dengan backend:** `upload` (PNG/JPEG, maks. 1 MB) dan `canvas` (coretan
+  Pointer Events untuk mouse/sentuh/pena, diekspor sebagai PNG). Pemeriksaan di browser membaca byte
+  awal berkas (bukan nama/tipe dari browser) dan memastikan gambar bisa ditampilkan — hanya umpan
+  balik cepat; server mendeteksi ulang. Kanvas kosong atau satu ketukan tidak dianggap tanda tangan.
+- **Yang dikirim = yang dipratinjau:** pratinjau menampilkan berkas yang persis akan dikirim; berganti
+  cara membuang data cara sebelumnya; tombol Setujui nonaktif sampai tanda tangan sah dan terkunci
+  selama pengiriman (klik ganda = satu persetujuan).
+- **Pengiriman:** multipart lewat jalur yang sudah ada (approval-service -> repository browser ->
+  `POST /approve`), tanda tangan sebagai berkas biasa — **tidak ada base64**. Kegagalan tanda tangan
+  menjaga modal tetap terbuka dengan tanda tangan yang sama; kegagalan keadaan (tahap berubah, akses
+  hilang) menutupnya. Penolakan tidak berubah: JSON berisi `stageId` dan `reason` saja.
+- **Riwayat:** tahap yang disetujui menampilkan gambar tanda tangannya lewat
+  `GET /api/inspections/:id/approvals/:approvalId/signature` (`signatureUrl` di `api-client.js`, sesi +
+  visibilitas inspeksi, tidak pernah path `/uploads`); persetujuan lama bertanda "Tanpa tanda tangan
+  (data lama)". Dirender di `renderApprovalStages`, sehingga tampil di modal pengesahan, detail, dan
+  perbaikan.
+- **Watermark sengaja TIDAK dibuat.** Kolom `watermark_enabled`/`watermark_x`/`watermark_y` ada sejak
+  migrasi 003 dan dibaca di JSON detail, tetapi `POST /approve` belum menerima atau menyimpannya (route
+  tidak membacanya, `buildDecisionRecord` tidak memuatnya, INSERT `recordDecision` memakai default),
+  belum ada nama field permintaannya, dan belum ada aset gambar watermark. Watermark karena itu adalah
+  keputusan backend/domain di fase berikutnya, bukan fitur UI saja.
+- Diverifikasi di 1280 / 375 / 390 px (tanpa overflow horizontal, modal tidak terpotong, kanvas bisa
+  dipakai dengan sentuhan tanpa menggulir halaman).
+
+## K-29: Phase 17.4B.1 — Isolasi database pengujian
+
+Suite API dan E2E dulu me-reseed database yang sama dengan aplikasi pengembangan: `seed.js`
+mengosongkan `users` dan seluruh tabel domain, sehingga data pengembangan manual hilang setiap kali
+test dijalankan.
+
+- **Dua database:** pengembangan `she_sasa` (`.env`, `npm run server`, port 3001) dan pengujian
+  otomatis `she_sasa_test`. Pengujian tidak pernah boleh me-seed `she_sasa`.
+- **`.env.test`** (tanpa rahasia; kredensial tetap dari `.env`) berisi `DB_NAME=she_sasa_test` dan
+  `E2E_API_PORT=3101`. Nilainya dimuat lebih dulu dan dotenv tidak pernah menimpanya.
+  - `npm run test:api` memakai `node --env-file=.env.test`; `before()` menjalankan migrate (membuat
+    database uji bila belum ada, idempoten) lalu seed.
+  - E2E (`playwright.config.js`) menjalankan **backend uji sendiri** (`webServer`) di port 3101 dengan
+    `she_sasa_test`; backend pengembangan di 3001 tidak dipakai. Frontend diarahkan ke backend uji lewat
+    init script (`__SHE_SASA_API_BASE__`, hanya bentuk `http://project-sasa-she.test:<port>/api` yang
+    diterima `api-client.js`); seluruh alamat API di test berasal dari `tests/e2e/support/env.js`.
+- **Pengaman seed:** `seed.js` memeriksa database yang benar-benar tersambung (`SELECT DATABASE()`)
+  dan menolak bila namanya tidak berakhiran `_test`. Tidak ada flag untuk melewatinya; akibatnya
+  `npm run db:seed` dengan `.env` biasa selalu ditolak.
+- Diverifikasi: `she_sasa` identik (jumlah baris + `CHECKSUM TABLE`) sebelum dan sesudah seluruh run
+  API dan E2E. Tersisa: folder `uploads/` masih dipakai bersama backend pengembangan dan backend uji.

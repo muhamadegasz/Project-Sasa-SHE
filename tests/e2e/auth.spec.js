@@ -14,7 +14,8 @@
  * default. Lihat catatan sejenis di inspection.spec.js (Phase 14.1-I).
  */
 
-import { test, expect } from '@playwright/test';
+import { API } from './support/env.js';
+import { test, expect } from './support/test.js';
 import { loginViaUi } from './support/ui.js';
 
 test('login dengan password salah tetap di halaman login, field password dikosongkan', async ({ page }) => {
@@ -40,7 +41,7 @@ test('login dengan kredensial benar masuk ke dashboard dengan identitas yang ben
 test('logout benar-benar menghapus sesi di server (bukan cuma redirect di UI)', async ({ page }) => {
     await loginViaUi(page, 'dewi');
 
-    const beforeLogout = await page.request.get('http://project-sasa-she.test:3001/api/inspections');
+    const beforeLogout = await page.request.get(`${API}/inspections`);
     expect(beforeLogout.ok()).toBe(true);
 
     page.once('dialog', (dialog) => dialog.accept());
@@ -48,6 +49,6 @@ test('logout benar-benar menghapus sesi di server (bukan cuma redirect di UI)', 
 
     await expect(page.getByTestId('user-name')).not.toBeVisible();
 
-    const afterLogout = await page.request.get('http://project-sasa-she.test:3001/api/inspections');
+    const afterLogout = await page.request.get(`${API}/inspections`);
     expect(afterLogout.status()).toBe(401);
 });

@@ -87,6 +87,9 @@ const hadi = { id: 7, displayName: 'Hadi', role: 'ketua_p2k3' };
 const admin = { id: 9, displayName: 'Admin', role: 'admin' };
 const owner = { id: 1, displayName: 'Arif', role: 'safety_officer' }; // petugasUserId inspeksi baseline
 const otherOfficer = { id: 2, displayName: 'Tulus', role: 'safety_officer' };
+// Phase 17.4A: persetujuan wajib bertanda tangan. mimeType = hasil deteksi isi
+// berkas (di server: detectSignatureMimeType); `file` opaque bagi service.
+const SIGNATURE = { method: 'upload', mimeType: 'image/png', size: 2048, file: 'png-bytes' };
 
 test('approve: inspeksi tidak ada -> NOT_FOUND', async () => {
     const result = await approvalService.approve('TIDAK-ADA', 'koordinator_k3l', dewiPlant9);
@@ -126,7 +129,7 @@ test('approve: tidak terlihat -> NOT_FOUND, status/tahap tidak bocor (Manajer di
 });
 
 test('approve: Koordinator plant-nya sendiri berhasil — riwayat bertambah, tahap maju ke Manajer, identitas tersimpan (S-07)', async () => {
-    const result = await approvalService.approve('INS-002', 'koordinator_k3l', dewiPlant9);
+    const result = await approvalService.approve('INS-002', 'koordinator_k3l', dewiPlant9, SIGNATURE);
     assert.equal(result.ok, true);
     assert.equal(result.data.stage.id, 'koordinator_k3l');
     assert.equal(result.data.fullyApproved, false);
@@ -143,9 +146,9 @@ test('approve: Koordinator plant-nya sendiri berhasil — riwayat bertambah, tah
 });
 
 test('approve: ketiga tahap -> COMPLETED, fullyApproved true', async () => {
-    await approvalService.approve('INS-002', 'koordinator_k3l', dewiPlant9);
-    await approvalService.approve('INS-002', 'manajer', andi);
-    const result = await approvalService.approve('INS-002', 'ketua_p2k3', hadi);
+    await approvalService.approve('INS-002', 'koordinator_k3l', dewiPlant9, SIGNATURE);
+    await approvalService.approve('INS-002', 'manajer', andi, SIGNATURE);
+    const result = await approvalService.approve('INS-002', 'ketua_p2k3', hadi, SIGNATURE);
     assert.equal(result.data.fullyApproved, true);
 
     const stored = await inspectionFake.findById('INS-002');
@@ -155,17 +158,17 @@ test('approve: ketiga tahap -> COMPLETED, fullyApproved true', async () => {
 });
 
 test('approve: approve ulang tahap yang sudah lewat ditolak, keputusan lama tidak ditimpa', async () => {
-    await approvalService.approve('INS-002', 'koordinator_k3l', dewiPlant9);
+    await approvalService.approve('INS-002', 'koordinator_k3l', dewiPlant9, SIGNATURE);
     // Setelah tahapnya lewat, Koordinator tidak lagi melihat inspeksi -> NOT_FOUND.
-    const again = await approvalService.approve('INS-002', 'koordinator_k3l', dewiPlant9);
+    const again = await approvalService.approve('INS-002', 'koordinator_k3l', dewiPlant9, SIGNATURE);
     assert.equal(again.reason, AE.NOT_FOUND);
     assert.equal((await inspectionFake.findById('INS-002')).approvalHistory.length, 1);
 });
 
 test('approve: dua persetujuan bersamaan untuk tahap yang sama -> tepat satu tersimpan', async () => {
     const [first, second] = await Promise.all([
-        approvalService.approve('INS-002', 'koordinator_k3l', dewiPlant9),
-        approvalService.approve('INS-002', 'koordinator_k3l', dewiPlant9),
+        approvalService.approve('INS-002', 'koordinator_k3l', dewiPlant9, SIGNATURE),
+        approvalService.approve('INS-002', 'koordinator_k3l', dewiPlant9, SIGNATURE),
     ]);
     assert.equal([first, second].filter((result) => result.ok).length, 1);
     assert.equal([first, second].find((result) => !result.ok).reason, AE.STAGE_NOT_CURRENT);
@@ -196,7 +199,7 @@ test('reject: alasan tepat 1000 karakter diterima', async () => {
 });
 
 test('reject: -> REVISION_REQUIRED, tahap TETAP, alasan tersimpan (di-trim), persetujuan sebelumnya tidak disentuh', async () => {
-    await approvalService.approve('INS-002', 'koordinator_k3l', dewiPlant9);
+    await approvalService.approve('INS-002', 'koordinator_k3l', dewiPlant9, SIGNATURE);
     const result = await approvalService.reject('INS-002', 'manajer', andi, '  Foto kurang jelas  ');
     assert.equal(result.ok, true);
 
@@ -382,7 +385,7 @@ test('submit: SO lain -> NOT_FOUND; non-draft -> NOT_SUBMITTABLE; dua pengajuan 
 test('revisi & ajukan ulang: kembali ke tahap YANG MENOLAK, riwayat utuh, temuan baru mendapat tindakan awal', async () => {
     const draft = await createDraft({ plantId: '9' });
     await inspectionService.submit(draft.id, owner);
-    await approvalService.approve(draft.id, 'koordinator_k3l', dewiPlant9);
+    await approvalService.approve(draft.id, 'koordinator_k3l', dewiPlant9, SIGNATURE);
     await approvalService.reject(draft.id, 'manajer', andi, 'Tambah temuan');
 
     // Hanya pemilik yang boleh merevisi; SO lain tidak melihat revisi sama sekali.
@@ -407,7 +410,7 @@ test('revisi & ajukan ulang: kembali ke tahap YANG MENOLAK, riwayat utuh, temuan
     assert.equal(stored.perbaikan.at(-1).action, 'Temuan 3: Temuan tambahan');
 
     // Keputusan berikutnya menjadi attempt 2 di tahap yang sama.
-    await approvalService.approve(draft.id, 'manajer', andi);
+    await approvalService.approve(draft.id, 'manajer', andi, SIGNATURE);
     const afterApprove = await inspectionFake.findById(draft.id);
     assert.deepEqual(afterApprove.approvalHistory.at(-1).attempt, 2);
     assert.equal(afterApprove.currentApprovalStage, 'ketua_p2k3');
@@ -549,4 +552,87 @@ test('S-04 jalur sungguhan: inspeksi dengan payload formula-injection diekspor d
     capturedSheets.length = 0;
     excel.exportInspections([evil], 'uji.xlsx');
     assert.equal(capturedSheets[0][0]['Daftar Temuan'], "'=1+1 (+X)");
+});
+
+// =========================================================================
+// Phase 17.4A — tanda tangan pada keputusan pengesahan
+// =========================================================================
+
+test('approve tanpa tanda tangan / tanda tangan tidak sah -> ditolak, tidak ada yang tersimpan', async () => {
+    const cases = [
+        [undefined, AE.SIGNATURE_REQUIRED],
+        [null, AE.SIGNATURE_REQUIRED],
+        [{ method: 'canvas' }, AE.SIGNATURE_REQUIRED],
+        [{ ...SIGNATURE, method: 'draw' }, AE.SIGNATURE_METHOD_INVALID],
+        [{ ...SIGNATURE, mimeType: null }, AE.SIGNATURE_CONTENT_INVALID],
+        [{ ...SIGNATURE, mimeType: 'image/gif' }, AE.SIGNATURE_CONTENT_INVALID],
+        [{ ...SIGNATURE, method: 'canvas', mimeType: 'image/jpeg' }, AE.SIGNATURE_CONTENT_INVALID],
+        [{ ...SIGNATURE, size: 1024 * 1024 + 1 }, AE.SIGNATURE_TOO_LARGE],
+    ];
+    for (const [signature, expected] of cases) {
+        const result = await approvalService.approve('INS-002', 'koordinator_k3l', dewiPlant9, signature);
+        assert.equal(result.reason, expected, JSON.stringify(signature));
+    }
+    const stored = await inspectionFake.findById('INS-002');
+    assert.equal(stored.currentApprovalStage, 'koordinator_k3l');
+    assert.equal(stored.approvalHistory.length, 0);
+    assert.equal(inspectionFake.__storedSignatures().length, 0);
+});
+
+test('approve: tidak terlihat / tidak berwenang diputuskan SEBELUM tanda tangan diperiksa', async () => {
+    assert.equal((await approvalService.approve('INS-002', 'koordinator_k3l', koordinatorPlant3)).reason, AE.NOT_FOUND);
+    assert.equal((await approvalService.approve('INS-002', 'koordinator_k3l', owner)).reason, AE.FORBIDDEN);
+});
+
+test('approve dengan tanda tangan sah (UPLOAD & CANVAS) -> satu tanda tangan per persetujuan, metode tercatat di riwayat', async () => {
+    const first = await approvalService.approve('INS-002', 'koordinator_k3l', dewiPlant9, SIGNATURE);
+    assert.equal(first.ok, true);
+    const second = await approvalService.approve('INS-002', 'manajer', andi, { ...SIGNATURE, method: 'canvas' });
+    assert.equal(second.ok, true);
+
+    const stored = await inspectionFake.findById('INS-002');
+    assert.deepEqual(stored.approvalHistory.map((entry) => [entry.stage, entry.signatureMethod, entry.hasSignature]),
+        [['koordinator_k3l', 'upload', true], ['manajer', 'canvas', true]]);
+    assert.deepEqual(inspectionFake.__storedSignatures().map((entry) => [entry.stage, entry.method, entry.mimeType]),
+        [['koordinator_k3l', 'upload', 'image/png'], ['manajer', 'canvas', 'image/png']]);
+    assert.equal(second.data.inspection.approvalHistory.at(-1).file, undefined, 'isi berkas tidak ikut di entri riwayat');
+});
+
+test('reject tanpa tanda tangan diterima; reject DENGAN data tanda tangan -> SIGNATURE_NOT_ALLOWED, tidak tersimpan', async () => {
+    const withSignature = await approvalService.reject('INS-002', 'koordinator_k3l', dewiPlant9, 'Foto kurang jelas', SIGNATURE);
+    assert.equal(withSignature.reason, AE.SIGNATURE_NOT_ALLOWED);
+    assert.equal((await inspectionFake.findById('INS-002')).approvalHistory.length, 0);
+
+    const result = await approvalService.reject('INS-002', 'koordinator_k3l', dewiPlant9, 'Foto kurang jelas');
+    assert.equal(result.ok, true);
+    const [entry] = (await inspectionFake.findById('INS-002')).approvalHistory;
+    assert.equal(entry.signatureMethod, null);
+    assert.equal(entry.hasSignature, false);
+    assert.equal(inspectionFake.__storedSignatures().length, 0);
+});
+
+test('persetujuan ulang setelah penolakan: attempt 2 mendapat tanda tangannya sendiri, attempt 1 (ditolak) tidak berubah', async () => {
+    await approvalService.approve('INS-002', 'koordinator_k3l', dewiPlant9, SIGNATURE);
+    await approvalService.reject('INS-002', 'manajer', andi, 'Lengkapi foto');
+    const rejectedAttempt = { ...(await inspectionFake.findById('INS-002')).approvalHistory[1] };
+    await inspectionFake.submit('INS-002', 'revision_required', { status: 'in_review', currentApprovalStage: 'manajer' }, []);
+
+    assert.equal((await approvalService.approve('INS-002', 'manajer', andi, { ...SIGNATURE, method: 'canvas' })).ok, true);
+    const history = (await inspectionFake.findById('INS-002')).approvalHistory;
+    assert.deepEqual(history.map((entry) => [entry.stage, entry.attempt, entry.decision, entry.signatureMethod]), [
+        ['koordinator_k3l', 1, 'approved', 'upload'], ['manajer', 1, 'rejected', null], ['manajer', 2, 'approved', 'canvas'],
+    ]);
+    assert.deepEqual(history[1], rejectedAttempt, 'attempt 1 tidak ditimpa');
+    assert.deepEqual(inspectionFake.__storedSignatures().map((entry) => [entry.stage, entry.attempt]),
+        [['koordinator_k3l', 1], ['manajer', 2]], 'tidak ada tanda tangan untuk attempt yang ditolak');
+});
+
+test('dua persetujuan bersamaan bertanda tangan -> tepat satu keputusan, tepat satu tanda tangan tersimpan', async () => {
+    const results = await Promise.all([
+        approvalService.approve('INS-002', 'koordinator_k3l', dewiPlant9, SIGNATURE),
+        approvalService.approve('INS-002', 'koordinator_k3l', dewiPlant9, SIGNATURE),
+    ]);
+    assert.equal(results.filter((result) => result.ok).length, 1);
+    assert.equal((await inspectionFake.findById('INS-002')).approvalHistory.length, 1);
+    assert.equal(inspectionFake.__storedSignatures().length, 1);
 });

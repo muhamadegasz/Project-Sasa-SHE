@@ -15,9 +15,17 @@
  * diuji tetap lewat UI sungguhan di masing-masing spec).
  */
 
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { request as playwrightRequest } from '@playwright/test';
+import { API_ORIGIN } from './env.js';
 
-const API_BASE = 'http://project-sasa-she.test:3001';
+// Phase 17.4B.1: backend UJI (she_sasa_test), bukan backend pengembangan — lihat support/env.js.
+const API_BASE = API_ORIGIN;
+
+// Phase 17.4A: PNG sungguhan untuk tanda tangan persetujuan lewat API.
+const SIGNATURE_PNG = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'signature.png'));
 
 function uniqueTag() {
     return `e2e-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
@@ -71,11 +79,18 @@ export async function createInspectionFixture(session, overrides = {}, { submit 
     return { ...(await submitted.json()).inspection, tag };
 }
 
-/** Menyetujui tahap yang sedang berjalan lewat API — dipakai untuk MENYIAPKAN state, bukan menguji approve itu sendiri. `stageId` adalah kode tahap (Phase 17.2), mis. 'koordinator_k3l'. */
-export async function approveViaApi(session, inspectionId, stageId) {
+/**
+ * Menyetujui tahap yang sedang berjalan lewat API — dipakai untuk MENYIAPKAN state, bukan menguji approve itu sendiri. `stageId` adalah kode tahap (Phase 17.2), mis. 'koordinator_k3l'.
+ * Phase 17.4A: persetujuan wajib bertanda tangan — dikirim multipart dengan PNG fixture (metode 'upload'), sama seperti kontrak yang kelak dipakai UI.
+ */
+export async function approveViaApi(session, inspectionId, stageId, signatureMethod = 'upload') {
     const res = await session.context.post(`/api/inspections/${inspectionId}/approve`, {
         headers: { 'X-CSRF-Token': session.csrfToken },
-        data: { stageId },
+        multipart: {
+            stageId,
+            signatureMethod,
+            signature: { name: 'signature.png', mimeType: 'image/png', buffer: SIGNATURE_PNG },
+        },
     });
     if (!res.ok()) {
         throw new Error(`approveViaApi(${inspectionId}, ${stageId}) gagal: HTTP ${res.status()} ${await res.text()}`);

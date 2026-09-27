@@ -7,11 +7,11 @@
  * dibuat di plant 1, plant yang ditugaskan ke koordinator seed "dewi".
  */
 
-import { test, expect } from '@playwright/test';
+import { API } from './support/env.js';
+import { test, expect } from './support/test.js';
 import { loginViaUi, goToTab } from './support/ui.js';
-import { apiLogin, createInspectionFixture } from './support/api.js';
+import { apiLogin, approveViaApi, createInspectionFixture } from './support/api.js';
 
-const API = 'http://project-sasa-she.test:3001/api';
 
 async function openApprovalModalFor(page, inspectionId) {
     await goToTab(page, 'Inspeksi');
@@ -33,7 +33,11 @@ async function fetchInspection(requestContext, inspectionId) {
     return res.json();
 }
 
-test('koordinator K3L plant yang bersangkutan bisa menyetujui tahapnya — tahap maju ke Manajer', async ({ page }) => {
+// Phase 17.4A: persetujuan wajib bertanda tangan. Phase 17.4B: "Setujui"
+// membuka modal tanda tangan yang tombol kirimnya nonaktif sampai ada tanda
+// tangan sah (alur unggah/kanvas lengkap diuji di signature.spec.js); server
+// tetap menolak persetujuan tanpa tanda tangan yang dikirim langsung.
+test('koordinator K3L plant yang bersangkutan: persetujuan tanpa tanda tangan tidak bisa dikirim (UI) & ditolak (server); bertanda tangan -> tahap maju ke Manajer', async ({ page }) => {
     const arif = await apiLogin('arif');
     const inspection = await createInspectionFixture(arif);
 
@@ -41,13 +45,28 @@ test('koordinator K3L plant yang bersangkutan bisa menyetujui tahapnya — tahap
     await openApprovalModalFor(page, inspection.id);
 
     await page.locator('#approvalContent').getByRole('button', { name: /Setujui/ }).click();
-    await expect(page.locator('#toastMessage')).toContainText('menyetujui inspeksi');
+    await expect(page.locator('#signatureModal')).toHaveClass(/show/);
+    await expect(page.locator('#signatureModal').getByRole('button', { name: 'Setujui' })).toBeDisabled();
 
+    const { csrfToken } = await (await page.request.get(`${API}/auth/me`)).json();
+    const unsigned = await page.request.post(`${API}/inspections/${inspection.id}/approve`, {
+        headers: { 'X-CSRF-Token': csrfToken },
+        data: { stageId: 'koordinator_k3l' },
+    });
+    expect(unsigned.status()).toBe(400);
+    expect((await unsigned.json()).error).toBe('SIGNATURE_REQUIRED');
+    const untouched = await fetchInspection(arif.context, inspection.id);
+    expect(untouched.approvalHistory).toHaveLength(0);
+    expect(untouched.currentApprovalStage).toBe('koordinator_k3l');
+
+    await approveViaApi(await apiLogin('dewi'), inspection.id, 'koordinator_k3l');
     const body = await fetchInspection(arif.context, inspection.id);
     expect(body.status).toBe('in_review');
     expect(body.currentApprovalStage).toBe('manajer');
     expect(body.approvalHistory).toHaveLength(1);
-    expect(body.approvalHistory[0]).toMatchObject({ stage: 'koordinator_k3l', attempt: 1, decision: 'approved', reviewerName: 'Dewi' });
+    expect(body.approvalHistory[0]).toMatchObject({
+        stage: 'koordinator_k3l', attempt: 1, decision: 'approved', reviewerName: 'Dewi', signatureMethod: 'upload', hasSignature: true,
+    });
 });
 
 test('koordinator K3L bisa menolak dengan alasan — inspeksi perlu revisi, tahap tetap di Koordinator', async ({ page }) => {
@@ -68,7 +87,12 @@ test('koordinator K3L bisa menolak dengan alasan — inspeksi perlu revisi, taha
     await expect(rejectModal).toHaveClass(/show/);
 
     await rejectModal.getByLabel(/Alasan penolakan/).fill('Foto area kurang jelas');
-    await rejectModal.getByRole('button', { name: 'Tolak Inspeksi' }).click();
+    const [rejectRequest] = await Promise.all([
+        page.waitForRequest((req) => req.url().endsWith(`/inspections/${inspection.id}/reject`)),
+        rejectModal.getByRole('button', { name: 'Tolak Inspeksi' }).click(),
+    ]);
+    // Phase 17.4B: penolakan tetap JSON tanpa data tanda tangan.
+    expect(rejectRequest.postDataJSON()).toEqual({ stageId: 'koordinator_k3l', reason: 'Foto area kurang jelas' });
     await expect(page.locator('#toastMessage')).toContainText('menolak inspeksi');
     await expect(rejectModal).not.toHaveClass(/show/);
 
@@ -89,6 +113,7 @@ test('role yang tidak berwenang tidak bisa menyetujui — ditolak di UI DAN oleh
 
     await page.locator('#approvalContent').getByRole('button', { name: /Setujui/ }).click();
     await expect(page.locator('#toastMessage')).toContainText('tidak berwenang');
+    await expect(page.locator('#signatureModal'), 'modal tanda tangan tidak dibuka untuk yang tidak berwenang').not.toHaveClass(/show/);
 
     // Pemeriksaan di browser bukan otorisasi: kirim langsung ke server dengan
     // sesi arif sendiri — server yang harus menolak.

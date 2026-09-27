@@ -207,3 +207,30 @@ test('buildInspectionReportHtml: petugas, temuan, dan tindakan perbaikan jahat s
     assert.ok(html.includes('&lt;img src=x onerror=alert(1)&gt;'));
     assert.ok(html.includes('&quot;&gt;&lt;script&gt;'));
 });
+
+// =========================================================================
+// Phase 17.4B — gambar tanda tangan di daftar tahap
+// =========================================================================
+
+test('renderApprovalStages: tanda tangan lewat endpoint API terotorisasi; id jahat ter-encode, tidak memutus atribut', () => {
+    const item = {
+        id: XSS_ATTR, status: 'completed', currentApprovalStage: null,
+        approvalHistory: [
+            { id: 7, stage: 'koordinator_k3l', attempt: 1, decision: 'approved', reviewerName: XSS_TAG, hasSignature: true, decidedAt: '2026-01-01' },
+            { id: '8"><b>', stage: 'manajer', attempt: 1, decision: 'approved', reviewerName: 'Andi', hasSignature: true, decidedAt: '2026-01-02' },
+            { id: 9, stage: 'ketua_p2k3', attempt: 1, decision: 'approved', reviewerName: 'Lama', hasSignature: false, decidedAt: '2026-01-03' },
+        ],
+    };
+    const html = renderApprovalStages(item);
+    assert.ok(!html.includes('<script>'));
+    assert.ok(!html.includes('<img src=x onerror'));
+    assert.ok(!html.includes('<b>'), 'id keputusan jahat tidak menjadi markup');
+    assert.ok(!html.includes('/uploads'), 'tidak pernah menunjuk berkas statis');
+    const sources = [...html.matchAll(/<img src="([^"]*)"/g)].map((match) => match[1]);
+    assert.equal(sources.length, 2, 'hanya persetujuan bertanda tangan yang punya gambar');
+    for (const source of sources) {
+        assert.match(source, /^http:\/\/project-sasa-she\.test:3001\/api\/inspections\/[^"<>]+\/approvals\/[^"<>/]+\/signature$/);
+    }
+    assert.ok(sources[0].includes('%22%3E%3Cscript%3E'), 'id inspeksi di-encode di path');
+    assert.ok(html.includes('Tanpa tanda tangan (data lama)'));
+});

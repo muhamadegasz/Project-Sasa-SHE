@@ -21,11 +21,36 @@
  * "apa pun yang kebetulan ada di database".
  */
 
+import { readFileSync } from 'node:fs';
+import dotenv from 'dotenv';
 import { defineConfig, devices } from '@playwright/test';
+
+// Phase 17.4B.1: E2E TIDAK memakai backend/database pengembangan. .env.test
+// (DB_NAME=she_sasa_test, E2E_API_PORT) dimuat ke process.env di sini, jadi
+// backend uji (webServer), globalSetup (seed), dan worker (support/env.js)
+// memakai database uji. Kredensial DB tetap dari .env (dotenv tidak menimpa).
+const testEnv = dotenv.parse(readFileSync(new URL('./.env.test', import.meta.url)));
+Object.assign(process.env, testEnv);
 
 export default defineConfig({
     testDir: './tests/e2e',
     globalSetup: './tests/e2e/global-setup.js',
+
+    // Backend uji sendiri di port E2E_API_PORT, terhubung ke she_sasa_test.
+    // migrate lebih dulu (membuat database uji bila belum ada; idempoten) —
+    // webServer dijalankan Playwright SEBELUM globalSetup (seed). Backend
+    // pengembangan di :3001 (she_sasa) tidak disentuh. Tidak memakai ulang
+    // server lain: port yang sudah terpakai menggagalkan run, bukan diam-diam
+    // terhubung ke backend yang salah.
+    webServer: {
+        command: 'node server/db/migrate.js && node --conditions=server server/listen.js',
+        url: `http://project-sasa-she.test:${testEnv.E2E_API_PORT}/api/auth/me`,
+        env: { DB_NAME: testEnv.DB_NAME, PORT: testEnv.E2E_API_PORT },
+        reuseExistingServer: false,
+        timeout: 60_000,
+        stdout: 'ignore',
+        stderr: 'pipe',
+    },
 
     // Setiap test membuat fixture datanya sendiri lewat API (id/tag unik) —
     // tidak ada state yang dibagi antar file, jadi aman dijalankan paralel.

@@ -11,6 +11,9 @@
 
 import { execFileSync } from 'node:child_process';
 
+// Phase 17.4B.1: process.env sudah berisi .env.test (playwright.config.js),
+// jadi seed mengisi she_sasa_test — dan seed.js sendiri menolak database
+// yang namanya tidak berakhiran _test.
 export default function globalSetup() {
     execFileSync(process.execPath, ['server/db/seed.js'], { cwd: process.cwd(), stdio: 'inherit' });
 }

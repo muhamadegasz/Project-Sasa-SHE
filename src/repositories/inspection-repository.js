@@ -114,19 +114,27 @@ export async function removeDraft(inspectionId) {
 /**
  * Menyetujui/menolak tahap yang sedang berjalan — memicu endpoint aksi bisnis
  * penuh di backend (approve() atau reject() dijalankan LAGI di sana, dengan
- * data server yang terbaru). Hanya tahap (sebagai penjaga "layar basi") dan
- * alasan penolakan yang dikirim; identitas penyetuju, attempt, dan status
- * berikutnya selalu dihitung server, bukan diambil dari body request.
+ * data server yang terbaru). Hanya tahap (sebagai penjaga "layar basi"),
+ * alasan penolakan, dan — Phase 17.4A — tanda tangan persetujuan yang
+ * dikirim; identitas penyetuju, attempt, dan status berikutnya selalu
+ * dihitung server, bukan diambil dari body request. Tanda tangan dikirim
+ * sebagai berkas (multipart), dan format sungguhannya dideteksi ulang server.
  * Penolakan server (4xx) dilempar sebagai ApiError oleh api-client.js.
  *
  * @returns {Promise<boolean>} true — sama dengan kontrak versi MySQL
  */
-export async function recordDecision(inspectionId, decision, _nextState) {
+export async function recordDecision(inspectionId, decision, _nextState, signature = null) {
     const base = `/inspections/${encodeURIComponent(inspectionId)}`;
     if (decision.decision === APPROVAL_DECISION.REJECTED) {
         await apiPost(`${base}/reject`, { stageId: decision.stage, reason: decision.rejectionReason });
     } else {
-        await apiPost(`${base}/approve`, { stageId: decision.stage });
+        const formData = new FormData();
+        formData.append('stageId', decision.stage);
+        if (signature) {
+            formData.append('signatureMethod', signature.method);
+            formData.append('signature', signature.file);
+        }
+        await apiPost(`${base}/approve`, formData);
     }
     return true;
 }

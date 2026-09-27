@@ -2,8 +2,9 @@
  * dan src/data/plants.js (lihat docs/ROADMAP-PHASE12.md, Phase 12).
  *
  * Bisa dijalankan berulang: membersihkan seluruh tabel domain dulu (FK checks
- * dimatikan sementara), baru mengisi ulang dari awal. Ini seed data, bukan
- * data produksi, jadi wipe-and-reseed aman.
+ * dimatikan sementara), baru mengisi ulang dari awal. Ini seed data UJI —
+ * Phase 17.4B.1: hanya berjalan di database berakhiran _test (lihat
+ * assertTestDatabase di bawah dan .env.test); database pengembangan ditolak.
  *
  * Password akun seed di-hash dengan bcryptjs supaya kolom password_hash tidak
  * pernah kosong/placeholder-palsu — walau route login sungguhan baru ada di
@@ -126,11 +127,13 @@ async function seedInspections(connection, userIdByDisplayName) {
 
         // Riwayat pengesahan append-only (Phase 17.2): satu baris per keputusan.
         // Penyetuju yang bukan akun seed (nama demo lama, mis. Bambang/Sari)
-        // disimpan namanya saja, reviewer_user_id NULL.
+        // disimpan namanya saja, reviewer_user_id NULL. Phase 17.4A: data demo
+        // tidak punya berkas tanda tangan — persetujuannya ditandai
+        // legacy_unsigned (migrasi 004), bukan diberi tanda tangan palsu.
         for (const entry of inspection.approvalHistory) {
             await connection.query(
-                `INSERT INTO approvals (inspection_id, stage, attempt, decision, reviewer_user_id, reviewer_name, rejection_reason, decided_at)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+                `INSERT INTO approvals (inspection_id, stage, attempt, decision, reviewer_user_id, reviewer_name, rejection_reason, legacy_unsigned, decided_at)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
                 [
                     inspectionId,
                     entry.stage,
@@ -139,6 +142,7 @@ async function seedInspections(connection, userIdByDisplayName) {
                     userIdByDisplayName.get(entry.by) || null,
                     entry.by,
                     entry.reason || null,
+                    entry.decision === 'approved' ? 1 : 0,
                     toSqlDateTime(entry.tanggal),
                 ],
             );
@@ -187,9 +191,28 @@ async function seedSchedules(connection, userIdByDisplayName) {
     }
 }
 
+/**
+ * Phase 17.4B.1: seed ini MENGOSONGKAN seluruh tabel domain, jadi hanya boleh
+ * berjalan di database uji. Yang diperiksa adalah database yang BENAR-BENAR
+ * tersambung (SELECT DATABASE()), bukan sekadar variabel lingkungan — nama
+ * harus berakhiran _test (mis. she_sasa_test). Database pengembangan
+ * (she_sasa) selalu ditolak; tidak ada flag untuk melewatinya.
+ */
+async function assertTestDatabase(connection) {
+    const [[{ database }]] = await connection.query('SELECT DATABASE() AS `database`');
+    if (typeof database !== 'string' || !database.endsWith('_test')) {
+        throw new Error(
+            `seed.js DITOLAK: database "${database}" bukan database uji (nama harus berakhiran "_test"). `
+            + 'Seed mengosongkan tabel users, inspections, dan seluruh data domain — tidak boleh dijalankan '
+            + 'di database pengembangan. Pengujian memakai .env.test (DB_NAME=she_sasa_test).',
+        );
+    }
+}
+
 async function main() {
     const connection = await pool.getConnection();
     try {
+        await assertTestDatabase(connection);
         await wipe(connection);
         // Plant dulu: users.plant_id (Phase 17.2) adalah FK ke plants.
         await seedPlants(connection);

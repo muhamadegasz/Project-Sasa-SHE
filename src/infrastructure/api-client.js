@@ -14,7 +14,18 @@ import { getCsrfToken, notifySessionExpired } from './session.js';
 // Backend Phase 12+ berjalan sebagai proses Node terpisah (npm run server),
 // bukan lewat vhost Apache/Laragon yang menyajikan frontend statis — lihat
 // docs/ROADMAP-PHASE12.md. Ganti di sini saja bila port/host backend berubah.
-const BASE_URL = 'http://project-sasa-she.test:3001/api';
+const DEVELOPMENT_BASE_URL = 'http://project-sasa-she.test:3001/api';
+
+// Phase 17.4B.1: pengujian E2E menjalankan backend UJI sendiri (database
+// she_sasa_test, port lain) dan menyuntikkan alamatnya lewat Playwright
+// addInitScript sebelum modul apa pun dimuat (tests/e2e/support/test.js).
+// Hanya bentuk "http://project-sasa-she.test:<port>/api" yang diterima;
+// pemakaian normal tidak pernah mengisinya -> backend pengembangan.
+const TEST_BASE_URL_PATTERN = /^http:\/\/project-sasa-she\.test:\d{2,5}\/api$/;
+const injectedBaseUrl = globalThis.__SHE_SASA_API_BASE__;
+const BASE_URL = typeof injectedBaseUrl === 'string' && TEST_BASE_URL_PATTERN.test(injectedBaseUrl)
+    ? injectedBaseUrl
+    : DEVELOPMENT_BASE_URL;
 
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'DELETE', 'PATCH']);
 
@@ -80,3 +91,8 @@ export const apiDelete = (path) => request(path, { method: 'DELETE' });
 // browser (sameSite:'lax' + situs yang sama, cuma beda port — lihat
 // docs/DECISIONS.md Phase 15), jadi tidak perlu fetch+blob manual di sini.
 export const photoUrl = (photoId) => `${BASE_URL}/inspections/photos/${encodeURIComponent(photoId)}/file`;
+
+// Phase 17.4B: gambar tanda tangan satu keputusan — endpoint yang sama butuh
+// sesi + visibilitas inspeksi (bukan path /uploads), dipakai persis seperti photoUrl.
+export const signatureUrl = (inspectionId, approvalId) =>
+    `${BASE_URL}/inspections/${encodeURIComponent(inspectionId)}/approvals/${encodeURIComponent(approvalId)}/signature`;

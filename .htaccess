@@ -1,0 +1,34 @@
+# .htaccess — Phase 17.4A.1: batasi apa yang disajikan Apache.
+#
+# Vhost Laragon memakai folder proyek ini sebagai DocumentRoot (dan vhost
+# default juga menyajikannya di http://localhost/project-sasa-she/). Tanpa
+# aturan ini seluruh isi proyek bisa diunduh: .env, .git/, server/, uploads/,
+# node_modules/, laporan test, dst.
+#
+# Pendekatan ALLOWLIST: hanya berkas yang memang dimuat browser yang
+# disajikan — index.html, assets/ (CSS), dan src/ (modul ES frontend). Semua
+# yang lain dijawab 404, seolah tidak ada. Backend/API berjalan di Node
+# (port 3001), bukan lewat Apache, jadi tidak terpengaruh. Foto & tanda
+# tangan hanya lewat API yang butuh login.
+#
+# Sengaja TANPA <IfModule mod_rewrite.c>: bila mod_rewrite tidak ada, Apache
+# gagal dengan 500 (tertutup), bukan diam-diam menyajikan semuanya.
+
+# Tidak ada daftar isi folder di mana pun (termasuk src/ dan assets/).
+Options -Indexes
+
+RewriteEngine On
+# Aturan ini juga berlaku di subfolder yang punya .htaccess berisi aturan
+# rewrite sendiri, dan dijalankan lebih dulu.
+RewriteOptions InheritDownBefore
+
+# Berkas/folder berawalan titik di level mana pun (.env, .git, .htaccess, ...).
+RewriteRule (^|/)\. - [R=404,L]
+
+# Yang boleh: halaman utama, CSS, dan modul JS frontend.
+RewriteRule ^$ - [L]
+RewriteRule ^index\.html$ - [L]
+RewriteRule ^(assets|src)/ - [L]
+
+# Selain itu: tidak ada.
+RewriteRule ^ - [R=404,L]

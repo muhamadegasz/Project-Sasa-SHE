@@ -11,7 +11,9 @@ import { INSPECTION_STATUS } from '../../src/domain/statuses.js';
 import {
     approvedState, canTransition, firstStageId, nextStageId, rejectedState, submittedState,
 } from '../../src/domain/workflow-rules.js';
-import { isStageApproved, latestDecision, nextAttempt, totalStages } from '../../src/domain/approval-rules.js';
+import { buildDecisionRecord, isStageApproved, latestDecision, nextAttempt, totalStages } from '../../src/domain/approval-rules.js';
+import { SIGNATURE_EXTENSIONS, SIGNATURE_MAX_BYTES, checkSignature } from '../../src/domain/signature-rules.js';
+import { detectImageType } from '../../src/presentation/components/signature-pad.js';
 import {
     canApprove, canDelete, canDeleteDraft, canEdit, canEditCorrectiveAction, canReject, canRevise, canSubmit, canView,
     isOwningOfficer,
@@ -285,4 +287,66 @@ test('tindakan perbaikan: COMPLETED final — pemilik pun hanya-baca; SO lain te
     for (const status of [DRAFT, IN_REVIEW, REVISION_REQUIRED, COMPLETED]) {
         assert.equal(canEditCorrectiveAction(otherOfficer, inspection({ status })), false, `SO lain, ${status}`);
     }
+});
+
+// =========================================================================
+// Phase 17.4A — aturan tanda tangan (domain/signature-rules.js)
+// =========================================================================
+
+const sig = (overrides = {}) => ({ method: 'upload', mimeType: 'image/png', size: 2048, file: 'bytes', ...overrides });
+
+test('tanda tangan: UPLOAD menerima PNG dan JPEG; CANVAS menerima PNG saja', () => {
+    assert.equal(checkSignature(sig()).value.mimeType, 'image/png');
+    assert.equal(checkSignature(sig({ mimeType: 'image/jpeg' })).value.method, 'upload');
+    assert.equal(checkSignature(sig({ method: 'canvas' })).value.method, 'canvas');
+    assert.equal(checkSignature(sig({ method: 'canvas', mimeType: 'image/jpeg' })).error, 'CONTENT_INVALID', 'CANVAS selalu PNG');
+});
+
+test('tanda tangan: metode di luar UPLOAD/CANVAS ditolak METHOD_INVALID', () => {
+    for (const method of ['draw', 'image', 'electronic', 'digital', 'typed', 'UPLOAD', 'Canvas', '', undefined, null, 1, ['upload'], { toString: () => 'upload' }, 'toString', '__proto__']) {
+        assert.equal(checkSignature(sig({ method })).error, 'METHOD_INVALID', String(method));
+    }
+});
+
+test('tanda tangan: format selain PNG/JPEG (hasil deteksi isi) ditolak CONTENT_INVALID', () => {
+    for (const mimeType of [null, undefined, 'image/gif', 'image/webp', 'image/svg+xml', 'text/html', 'application/pdf', 'image/*']) {
+        assert.equal(checkSignature(sig({ mimeType })).error, 'CONTENT_INVALID', String(mimeType));
+    }
+});
+
+test('tanda tangan: tidak ada / tanpa berkas -> REQUIRED; berkas kosong -> CONTENT_INVALID', () => {
+    assert.equal(checkSignature(undefined).error, 'REQUIRED');
+    assert.equal(checkSignature(null).error, 'REQUIRED');
+    assert.equal(checkSignature({ method: 'upload' }).error, 'REQUIRED', 'metode tanpa berkas');
+    assert.equal(checkSignature(sig({ file: null })).error, 'REQUIRED');
+    assert.equal(checkSignature(sig({ size: 0 })).error, 'CONTENT_INVALID');
+});
+
+test('tanda tangan: batas ukuran 1 MB — tepat di batas diterima, lebih 1 byte ditolak TOO_LARGE', () => {
+    assert.equal(SIGNATURE_MAX_BYTES, 1024 * 1024);
+    assert.ok(checkSignature(sig({ size: SIGNATURE_MAX_BYTES })).value);
+    assert.equal(checkSignature(sig({ size: SIGNATURE_MAX_BYTES + 1 })).error, 'TOO_LARGE');
+});
+
+test('tanda tangan: ekstensi tersimpan diturunkan dari format hasil deteksi', () => {
+    assert.deepEqual(SIGNATURE_EXTENSIONS, { 'image/png': '.png', 'image/jpeg': '.jpg' });
+});
+
+test('buildDecisionRecord: metode tanda tangan hanya melekat pada persetujuan', () => {
+    const stage = APPROVAL_STAGES[0];
+    const base = inspection({ approvalHistory: [] });
+    assert.equal(buildDecisionRecord(base, stage, 'approved', koordinatorPlant1, null, 'canvas').signatureMethod, 'canvas');
+    assert.equal(buildDecisionRecord(base, stage, 'rejected', koordinatorPlant1, 'alasan', 'canvas').signatureMethod, null);
+});
+
+test('detectImageType (browser): PNG/JPEG dari byte awal; lainnya null — tidak memakai nama/tipe berkas', () => {
+    const png = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13];
+    const jpeg = [0xff, 0xd8, 0xff, 0xe0, 0, 16, 0x4a, 0x46, 0x49, 0x46, 0, 1];
+    assert.equal(detectImageType(new Uint8Array(png)), 'image/png');
+    assert.equal(detectImageType(new Uint8Array(jpeg)), 'image/jpeg');
+    for (const [label, text] of [['GIF', 'GIF89a......'], ['WEBP', 'RIFF....WEBP'], ['SVG', '<svg xmlns="'], ['HTML', '<!doctype ht']]) {
+        assert.equal(detectImageType(new TextEncoder().encode(text)), null, label);
+    }
+    assert.equal(detectImageType(new Uint8Array(png.slice(0, 8))), null, 'terlalu pendek');
+    assert.equal(detectImageType(null), null);
 });

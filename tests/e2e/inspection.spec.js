@@ -13,7 +13,8 @@
 
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { test, expect } from '@playwright/test';
+import { API } from './support/env.js';
+import { test, expect } from './support/test.js';
 import { loginViaUi, goToTab, selectPlant } from './support/ui.js';
 
 const PLANT_SEARCH_PLACEHOLDER = 'Cari plant... (ketik nama plant)';
@@ -38,7 +39,7 @@ test('safety officer bisa membuat inspeksi baru lewat form sebagai DRAFT (pilih 
     expect(newId, `toast tidak memuat id inspeksi baru: "${toastText}"`).toBeTruthy();
 
     // Phase 17.3B: menyimpan tidak lagi otomatis mengajukan.
-    const res = await page.request.get(`http://project-sasa-she.test:3001/api/inspections/${newId}`);
+    const res = await page.request.get(`${API}/inspections/${newId}`);
     const saved = await res.json();
     expect(saved.status).toBe('draft');
     expect(saved.currentApprovalStage).toBeNull();
@@ -66,7 +67,7 @@ test('identitas petugas yang dipakai adalah user yang sedang login, bukan input 
     // Bukti sisi server, bukan cuma tampilan: field readonly bisa saja benar di
     // UI tapi diabaikan backend. GET langsung membuktikan petugas TERSIMPAN
     // sebagai identitas login, bukan apa pun yang mungkin dikirim klien.
-    const res = await page.request.get(`http://project-sasa-she.test:3001/api/inspections/${newId}`);
+    const res = await page.request.get(`${API}/inspections/${newId}`);
     expect(res.ok()).toBe(true);
     const inspection = await res.json();
     expect(inspection.petugas).toBe('Arif');

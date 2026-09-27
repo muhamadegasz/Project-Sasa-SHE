@@ -56,12 +56,18 @@ const SIGNATURES = [
     { mime: 'image/webp', check: (b) => b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46 && b[8] === 0x57 && b[9] === 0x45 && b[10] === 0x42 && b[11] === 0x50 },
 ];
 
+/** Format gambar dari byte awal `bytes` (cukup 12 byte pertama), atau null bila tidak dikenali. Dipakai juga untuk tanda tangan (signature-storage.js), dengan daftar format yang lebih sempit. */
+export function detectImageMimeTypeFromBytes(bytes) {
+    if (!bytes || bytes.length < 12) return null;
+    return SIGNATURES.find((sig) => sig.check(bytes))?.mime ?? null;
+}
+
 async function detectImageMimeType(filePath) {
     const handle = await fsOpen(filePath, 'r');
     try {
         const buffer = Buffer.alloc(12);
         await handle.read(buffer, 0, 12, 0);
-        return SIGNATURES.find((sig) => sig.check(buffer))?.mime ?? null;
+        return detectImageMimeTypeFromBytes(buffer);
     } finally {
         await handle.close();
     }

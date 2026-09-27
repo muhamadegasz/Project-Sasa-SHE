@@ -23,7 +23,8 @@ import { setSession, clearSession, getCurrentUser, onSessionExpired } from './in
 
 import { allActionsClosed, countAllFindings } from './domain/inspection-rules.js';
 import { findStage, isFullyApproved, latestDecision } from './domain/approval-rules.js';
-import { canEdit, canRevise } from './domain/inspection-policy.js';
+import { canApprove, canEdit, canRevise } from './domain/inspection-policy.js';
+import { isAwaitingStage } from './domain/workflow-rules.js';
 import { INSPECTION_STATUS } from './domain/statuses.js';
 import { localDateToIso } from './shared/date.js';
 import * as scheduleRules from './domain/schedule-rules.js';
@@ -44,6 +45,9 @@ window.showToast = showToast;
 
 import { renderCalendar, changeCalendarMonth, showDayEvents } from './presentation/views/calendar.view.js';
 import { openApprovalModal } from './presentation/views/approval.view.js';
+import {
+    closeSignatureModal, getPendingApproval, openSignatureModal, setSignatureSubmitting, showSignatureError,
+} from './presentation/views/signature-modal.view.js';
 import { openDetailModal } from './presentation/views/detail-modal.view.js';
 import { openPerbaikanModal } from './presentation/views/perbaikan-modal.view.js';
 import {
@@ -136,6 +140,11 @@ const PESAN_GAGAL = {
     REJECTION_REASON_REQUIRED: '⚠️ Alasan penolakan wajib diisi',
     REJECTION_REASON_INVALID: '⚠️ Alasan penolakan harus berupa teks',
     REJECTION_REASON_TOO_LONG: '⚠️ Alasan penolakan maksimal 1000 karakter',
+    SIGNATURE_REQUIRED: '✍️ Tanda tangan wajib dibubuhkan untuk menyetujui',
+    SIGNATURE_METHOD_INVALID: '⚠️ Cara tanda tangan tidak dikenal',
+    SIGNATURE_CONTENT_INVALID: '⚠️ Tanda tangan harus berupa gambar PNG atau JPG',
+    SIGNATURE_TOO_LARGE: '⚠️ Ukuran gambar tanda tangan maksimal 1 MB',
+    SIGNATURE_NOT_ALLOWED: '⚠️ Penolakan tidak memerlukan tanda tangan',
     FORBIDDEN: '⛔ Anda tidak berwenang untuk aksi ini',
     NOT_EDITABLE: '⚠️ Inspeksi ini tidak bisa diubah pada status sekarang',
     NOT_SUBMITTABLE: '⚠️ Inspeksi ini tidak bisa diajukan pada status sekarang',
@@ -350,21 +359,70 @@ function switchTab(tabName) {
 // ========== APPROVAL FUNCTIONS ==========
 // ========================================================================
 
+// Phase 17.4B: "Setujui" membuka modal tanda tangan — persetujuan baru
+// dikirim dari sana (confirmApprove). Modal hanya dibuka untuk peninjau yang
+// boleh memutuskan tahap yang sedang berjalan, memakai aturan domain yang sama
+// dengan server (canApprove); ini kenyamanan UI, server tetap memeriksa ulang.
 async function approveStage(inspeksiId, stageId) {
-    const result = await approvalService.approve(inspeksiId, stageId, getCurrentUser());
-    if (!result.ok) { showToast(pesanGagal(result.reason)); return; }
+    const stage = findStage(stageId);
+    if (!stage) { showToast(pesanGagal('STAGE_NOT_FOUND')); return; }
+    const item = await inspectionRepository.findById(inspeksiId);
+    if (!item) { showToast(pesanGagal('NOT_FOUND')); return; }
+    if (!isAwaitingStage(item, stageId)) { showToast(pesanGagal('STAGE_NOT_CURRENT')); return; }
+    if (!canApprove(getCurrentUser(), item)) { showToast(pesanGagal('FORBIDDEN')); return; }
+    openSignatureModal({ inspectionId: inspeksiId, stage, messageFor: pesanGagal });
+}
 
-    const { stage, fullyApproved } = result.data;
-    showToast(fullyApproved
-        ? '🎉 Semua tahap pengesahan telah disetujui! Inspeksi selesai.'
-        : `✅ ${stage.title} telah menyetujui inspeksi ${inspeksiId}`);
+let approving = false;
 
-    // Phase 17.3A: modal ditutup, TIDAK dibuka ulang — setelah tahapnya lewat,
-    // penyetuju biasanya tidak lagi berhak melihat inspeksi ini (server menjawab
-    // 404), dan membuka ulang hanya akan menimpa toast sukses dengan
-    // "Data tidak ditemukan".
-    closeModal('approvalModal');
-    await refreshAll();
+/**
+ * Kegagalan persetujuan. Masalah tanda tangan -> modal tetap terbuka dengan
+ * tanda tangan yang sama, supaya bisa diperbaiki. Selain itu (tahap sudah
+ * berubah, akses hilang, dst) tanda tangannya tidak lagi berguna -> modal
+ * tanda tangan ditutup.
+ */
+function handleApproveFailure(reason) {
+    const message = pesanGagal(reason);
+    if (String(reason).startsWith('SIGNATURE_')) { showSignatureError(message); return; }
+    closeSignatureModal();
+    showToast(message);
+}
+
+async function confirmApprove() {
+    const pending = getPendingApproval();
+    if (!pending || approving) return;
+    approving = true;
+    setSignatureSubmitting(true);
+    try {
+        let result;
+        try {
+            result = await approvalService.approve(pending.inspectionId, pending.stageId, getCurrentUser(), pending.signature);
+        } catch (error) {
+            // Penolakan server (4xx) dari repository browser -> kode alasannya.
+            if (error instanceof ApiError && error.status !== 401 && error.body?.error) {
+                handleApproveFailure(error.body.error);
+                return;
+            }
+            throw error;
+        }
+        if (!result.ok) { handleApproveFailure(result.reason); return; }
+
+        const { stage, fullyApproved } = result.data;
+        showToast(fullyApproved
+            ? '🎉 Semua tahap pengesahan telah disetujui! Inspeksi selesai.'
+            : `✅ ${stage.title} telah menyetujui inspeksi ${pending.inspectionId}`);
+
+        // Phase 17.3A: modal ditutup, TIDAK dibuka ulang — setelah tahapnya lewat,
+        // penyetuju biasanya tidak lagi berhak melihat inspeksi ini (server menjawab
+        // 404), dan membuka ulang hanya akan menimpa toast sukses dengan
+        // "Data tidak ditemukan".
+        closeSignatureModal();
+        closeModal('approvalModal');
+        await refreshAll();
+    } finally {
+        approving = false;
+        setSignatureSubmitting(false);
+    }
 }
 
 // Phase 17.3B: penolakan lewat modal (#rejectModal) dengan alasan wajib —
@@ -1018,6 +1076,7 @@ registerAction('editInspeksi', (el) => editInspeksi(el.dataset.id));
 registerAction('ajukanInspeksi', (el) => ajukanInspeksi(el.dataset.id));
 registerAction('hapusDraftInspeksi', (el) => hapusDraftInspeksi(el.dataset.id));
 registerAction('confirmReject', () => confirmReject());
+registerAction('confirmApprove', () => confirmApprove());
 initActionDispatcher();
 
 /* Ekspor murni untuk pengujian (lihat scratchpad test-*.mjs) — BUKAN untuk
@@ -1029,6 +1088,7 @@ export {
     approveStage,
     cetakPDF,
     changeCalendarMonth,
+    confirmApprove,
     confirmReject,
     editInspeksi,
     editJadwal,

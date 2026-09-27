@@ -6,11 +6,11 @@
  * server), bukan hanya tampilan.
  */
 
-import { test, expect } from '@playwright/test';
+import { API } from './support/env.js';
+import { test, expect, newIsolatedPage } from './support/test.js';
 import { loginViaUi, goToTab, selectPlant } from './support/ui.js';
 import { apiLogin, approveViaApi, createInspectionFixture } from './support/api.js';
 
-const API = 'http://project-sasa-she.test:3001/api';
 const PLANT_SEARCH_PLACEHOLDER = 'Cari plant... (ketik nama plant)';
 
 function inspeksiRow(page, inspectionId) {
@@ -60,7 +60,7 @@ test('draft -> ubah -> ajukan -> ditolak Manajer -> revisi pemilik -> ajukan ula
 
     // 3. Koordinator menyetujui (lewat API), Manajer menolak lewat modal penolakan di UI.
     await approveViaApi(await apiLogin('dewi'), id, 'koordinator_k3l');
-    const managerPage = await browser.newPage();
+    const managerPage = await newIsolatedPage(browser);
     await loginViaUi(managerPage, 'andi');
     await goToTab(managerPage, 'Inspeksi');
     await inspeksiRow(managerPage, id).getByTestId('row-approve-btn').click();

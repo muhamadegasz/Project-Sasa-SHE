@@ -9,6 +9,10 @@
  * Tombol aksi tetap hanya muncul di tahap yang sedang menunggu, untuk siapa
  * pun — penyembunyian berdasar role adalah UI Phase 17.3; wewenangnya sudah
  * ditegakkan approval-service + server (domain/inspection-policy.js).
+ *
+ * Phase 17.4B: tahap yang disetujui menampilkan gambar tanda tangannya lewat
+ * endpoint API terotorisasi (signatureUrl), atau keterangan bila persetujuan
+ * lama tidak bertanda tangan.
  */
 
 import { escapeHtml } from '../../shared/html.js';
@@ -19,8 +23,21 @@ import { isStageApproved, latestDecision, totalStages } from '../../domain/appro
 import { isAwaitingStage } from '../../domain/workflow-rules.js';
 import { INSPECTION_STATUS } from '../../domain/statuses.js';
 import * as inspectionRepository from '../../repositories/inspection-repository.js';
+import { signatureUrl } from '../../infrastructure/api-client.js';
 import { bindModalClose, openModal } from '../components/modal.js';
 import { showToast } from '../components/toast.js';
+
+/** Tanda tangan sebuah persetujuan: gambar dari API (tautan membuka ukuran penuh), atau keterangan data lama. */
+function renderStageSignature(item, decision) {
+    if (!decision.hasSignature || decision.id == null) {
+        return '<span class="stage-signature-note">Tanpa tanda tangan (data lama)</span>';
+    }
+    const url = escapeHtml(signatureUrl(item.id, decision.id));
+    return `
+        <a class="stage-signature" href="${url}" target="_blank" rel="noopener noreferrer" data-testid="stage-signature" title="Buka tanda tangan">
+            <img src="${url}" alt="Tanda tangan ${escapeHtml(decision.reviewerName || '')}" loading="lazy">
+        </a>`;
+}
 
 export function renderApprovalStages(item) {
     return `
@@ -36,11 +53,13 @@ export function renderApprovalStages(item) {
                 let statusText = '⏳ Menunggu';
                 let detail = 'Belum mencapai tahap ini';
                 let actionHtml = '';
+                let signatureHtml = '';
 
                 if (isCompleted) {
                     statusClass = 'done';
                     statusText = '✅ Disetujui';
                     detail = `${escapeHtml(latest.reviewerName || '-')} · ${escapeHtml(formatDate(latest.decidedAt))}`;
+                    signatureHtml = renderStageSignature(item, latest);
                 } else if (isRejectedAwaitingRevision) {
                     statusText = '❌ Ditolak';
                     detail = `${escapeHtml(latest.reviewerName || '-')}: ${escapeHtml(latest.rejectionReason || '-')} · menunggu revisi Safety Officer`;
@@ -66,6 +85,7 @@ export function renderApprovalStages(item) {
                         <div class="stage-info">
                             <div class="stage-title">${escapeHtml(stage.title)}</div>
                             <div class="stage-detail">${detail}</div>
+                            ${signatureHtml}
                         </div>
                         <span class="stage-status ${statusClass}">${statusText}</span>
                         ${actionHtml}

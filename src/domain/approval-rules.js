@@ -85,10 +85,12 @@ export function isFullyApproved(inspection) {
 
 /**
  * Entri riwayat baru untuk satu keputusan. `reviewer` adalah pengguna login
- * ({id, displayName}). `reason` hanya untuk penolakan — kewajibannya diperiksa
- * approval-service.js, bukan di sini.
+ * ({id, displayName}). `reason` hanya untuk penolakan, `signatureMethod`
+ * hanya untuk persetujuan (Phase 17.4A) — kewajiban keduanya diperiksa
+ * approval-service.js, bukan di sini. Berkas tanda tangannya tidak ikut di
+ * entri ini.
  */
-export function buildDecisionRecord(inspection, stage, decision, reviewer, reason = null) {
+export function buildDecisionRecord(inspection, stage, decision, reviewer, reason = null, signatureMethod = null) {
     return {
         stage: stage.id,
         attempt: nextAttempt(inspection, stage.id),
@@ -96,6 +98,7 @@ export function buildDecisionRecord(inspection, stage, decision, reviewer, reaso
         reviewerUserId: reviewer ? reviewer.id : null,
         reviewerName: reviewer ? reviewer.displayName : null,
         rejectionReason: decision === APPROVAL_DECISION.REJECTED ? reason : null,
+        signatureMethod: decision === APPROVAL_DECISION.APPROVED ? signatureMethod : null,
         decidedAt: new Date().toISOString(),
     };
 }

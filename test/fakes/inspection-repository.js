@@ -14,9 +14,14 @@
  * objek itu — perubahan hanya terjadi lewat recordDecision() di bawah, yang
  * meniru penjaga status/tahap versi MySQL (keputusan untuk tahap yang sudah
  * tidak berjalan ditolak dengan false).
+ *
+ * Phase 17.4A: tanda tangan yang "tersimpan" dicatat di storedSignatures
+ * (pengganti berkas di disk) HANYA bila penjaga lolos — sama seperti versi
+ * MySQL yang menulis berkas setelah UPDATE terjaga berhasil.
  */
 
 let inspections = [];
+let storedSignatures = [];
 let nextNumericId = 1;
 let nextFindingId = 1000;
 
@@ -32,12 +37,19 @@ export function __seed(rows) {
         temuan: [...(row.temuan || [])],
         perbaikan: [...(row.perbaikan || [])],
     }));
+    storedSignatures = [];
     const numericIds = inspections.map((row) => Number(String(row.id).replace(/\D/g, '')) || 0);
     nextNumericId = numericIds.length ? Math.max(...numericIds) + 1 : 1;
 }
 
+/** Tanda tangan yang tersimpan lewat recordDecision(), urut waktu. */
+export function __storedSignatures() {
+    return storedSignatures;
+}
+
 export function __reset() {
     inspections = [];
+    storedSignatures = [];
     nextNumericId = 1;
 }
 
@@ -100,12 +112,15 @@ export async function removeDraft(inspectionId) {
     return true;
 }
 
-export async function recordDecision(inspectionId, decision, nextState) {
+export async function recordDecision(inspectionId, decision, nextState, signature = null) {
     const inspection = inspections.find((row) => row.id === inspectionId);
     if (!inspection || inspection.status !== 'in_review' || inspection.currentApprovalStage !== decision.stage) {
         return false;
     }
-    inspection.approvalHistory = [...(inspection.approvalHistory || []), decision];
+    if (signature) {
+        storedSignatures.push({ inspectionId, stage: decision.stage, attempt: decision.attempt, method: signature.method, mimeType: signature.mimeType, size: signature.size });
+    }
+    inspection.approvalHistory = [...(inspection.approvalHistory || []), { ...decision, hasSignature: Boolean(signature) }];
     inspection.status = nextState.status;
     inspection.currentApprovalStage = nextState.currentApprovalStage;
     return true;

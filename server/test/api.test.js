@@ -21,10 +21,21 @@ import { fileURLToPath } from 'node:url';
 import request from 'supertest';
 import { app } from '../app.js';
 import { pool } from '../db/pool.js';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { randomBytes } from 'node:crypto';
+import { UPLOAD_DIR } from '../config/upload.js';
+import { SIGNATURE_DIR, detectSignatureMimeType } from '../config/signature-storage.js';
+import { SIGNATURE_MAX_BYTES } from '../../src/domain/signature-rules.js';
 
 const FIXTURE_JPEG = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'label.jpg');
+const FIXTURE_PNG = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'signature.png');
 
+// Phase 17.4B.1: DB_NAME dari .env.test (npm run test:api memakai --env-file),
+// jadi seluruh berkas ini — app, pool, migrate, seed — memakai database UJI.
+// migrate membuat she_sasa_test bila belum ada (idempoten); seed.js menolak
+// database yang namanya tidak berakhiran _test.
 before(() => {
+    execFileSync(process.execPath, ['server/db/migrate.js'], { cwd: process.cwd(), stdio: ['ignore', 'ignore', 'inherit'] });
     execFileSync(process.execPath, ['server/db/seed.js'], { cwd: process.cwd(), stdio: 'inherit' });
 });
 
@@ -149,8 +160,16 @@ async function submitInspection(officer, id) {
     return res.body.inspection;
 }
 
+/**
+ * Phase 17.4A: persetujuan wajib bertanda tangan, jadi `approve` selalu dikirim
+ * multipart dengan tanda tangan PNG sah — penolakan 403/404 di test lain
+ * karena itu terbukti berasal dari wewenang/visibilitas, bukan dari tanda
+ * tangan yang tidak ada. `reject` tetap JSON.
+ */
 function decide(session, id, action, body) {
-    return withCsrf(session.agent.post(`/api/inspections/${id}/${action}`), session.csrfToken).send(body);
+    const req = withCsrf(session.agent.post(`/api/inspections/${id}/${action}`), session.csrfToken);
+    if (action !== 'approve') return req.send(body);
+    return req.field('stageId', body.stageId).field('signatureMethod', 'upload').attach('signature', FIXTURE_PNG);
 }
 
 test('alur penuh (Phase 17.2): ajukan -> Koordinator -> Manajer -> Ketua -> COMPLETED, dengan wewenang per tahap & plant', async () => {
@@ -840,4 +859,346 @@ test('tindakan perbaikan: HANYA SO pemilik — SO lain yang melihat, peninjau, M
         assert.equal((await postAction(await loginAs(username), inspection.id)).status, 403, username);
     }
     assert.equal((await postAction(arif, inspection.id)).status, 201, 'pemilik');
+});
+
+// =========================================================================
+// Phase 17.4A — tanda tangan persetujuan: validasi isi, penyimpanan,
+// penyajian terotorisasi, pembersihan berkas
+// =========================================================================
+
+const PNG_BYTES = readFileSync(FIXTURE_PNG);
+const JPEG_BYTES = readFileSync(FIXTURE_JPEG);
+const GIF_BYTES = Buffer.from('GIF89a\x01\x00\x01\x00\x00\x00\x00;', 'latin1');
+const WEBP_BYTES = Buffer.concat([Buffer.from('RIFF'), Buffer.from([0x24, 0, 0, 0]), Buffer.from('WEBPVP8 '), Buffer.alloc(20)]);
+const SVG_BYTES = Buffer.from('<svg xmlns="http://www.w3.org/2000/svg"><script>alert(1)</script></svg>');
+const HTML_BYTES = Buffer.from('<!doctype html><script>alert(document.cookie)</script>');
+const RANDOM_BYTES = Buffer.concat([Buffer.from([0x00]), randomBytes(255)]);
+const SIGNED_PATH = /^signatures\/[0-9a-f-]{36}\.(png|jpg)$/;
+
+const toNumeric = (id) => Number(String(id).replace(/\D/g, ''));
+
+/** approve multipart dengan bagian yang bisa diatur; method/file null = tidak dikirim. */
+function approveWith(session, id, stageId, { method = 'upload', file = PNG_BYTES, filename = 'signature.png', contentType = 'image/png', extraFields = {} } = {}) {
+    const req = withCsrf(session.agent.post(`/api/inspections/${id}/approve`), session.csrfToken).field('stageId', stageId);
+    if (method !== null) req.field('signatureMethod', method);
+    for (const [name, value] of Object.entries(extraFields)) req.field(name, value);
+    if (file !== null) req.attach('signature', file, { filename, contentType });
+    return req;
+}
+
+/** Berkas tanda tangan di disk (tanpa .htaccess), terurut. */
+function signatureFiles() {
+    return readdirSync(SIGNATURE_DIR).filter((name) => name !== '.htaccess').sort();
+}
+
+async function approvalRows(id) {
+    const [rows] = await pool.query(
+        `SELECT id, stage, attempt, decision, reviewer_user_id, reviewer_name, signature_method, signature_file_path,
+                signature_mime_type, legacy_unsigned
+         FROM approvals WHERE inspection_id = ? ORDER BY id`,
+        [toNumeric(id)],
+    );
+    return rows;
+}
+
+function getSignature(session, inspectionId, approvalId) {
+    return (session ? session.agent : request(app)).get(`/api/inspections/${inspectionId}/approvals/${approvalId}/signature`);
+}
+
+test('tanda tangan: deteksi format dari ISI — PNG/JPEG saja; GIF/WEBP/SVG/HTML/acak -> null', () => {
+    assert.equal(detectSignatureMimeType(PNG_BYTES), 'image/png');
+    assert.equal(detectSignatureMimeType(JPEG_BYTES), 'image/jpeg');
+    for (const [label, bytes] of [['gif', GIF_BYTES], ['webp', WEBP_BYTES], ['svg', SVG_BYTES], ['html', HTML_BYTES], ['acak', RANDOM_BYTES], ['kosong', Buffer.alloc(0)], ['pendek', PNG_BYTES.subarray(0, 8)]]) {
+        assert.equal(detectSignatureMimeType(bytes), null, label);
+    }
+});
+
+test('approve tanpa tanda tangan -> 400 SIGNATURE_REQUIRED; data URL/base64 tidak pernah didekode; tidak ada keputusan/berkas', async () => {
+    const arif = await loginAs('arif');
+    const dewi = await loginAs('dewi');
+    const inspection = await createInspection(arif, DRAFT_CONTENT);
+    const before = signatureFiles();
+    const postJson = (body) => withCsrf(dewi.agent.post(`/api/inspections/${inspection.id}/approve`), dewi.csrfToken).send(body);
+    const dataUrl = `data:image/png;base64,${PNG_BYTES.toString('base64')}`;
+
+    for (const [label, res] of [
+        ['JSON lama tanpa tanda tangan', await postJson({ stageId: 'koordinator_k3l' })],
+        ['JSON data URL PNG sah', await postJson({ stageId: 'koordinator_k3l', signatureMethod: 'canvas', signature: dataUrl })],
+        ['JSON data URL rusak', await postJson({ stageId: 'koordinator_k3l', signatureMethod: 'canvas', signature: 'data:image/png;base64,@@@bukan-base64@@@' })],
+        ['JSON data URL berisi HTML', await postJson({ stageId: 'koordinator_k3l', signatureMethod: 'canvas', signature: `data:image/png;base64,${HTML_BYTES.toString('base64')}` })],
+        ['multipart metode tanpa berkas', await approveWith(dewi, inspection.id, 'koordinator_k3l', { file: null })],
+    ]) {
+        assert.equal(res.status, 400, label);
+        assert.equal(res.body.error, 'SIGNATURE_REQUIRED', label);
+    }
+    const noMethod = await approveWith(dewi, inspection.id, 'koordinator_k3l', { method: null });
+    assert.equal(noMethod.status, 400);
+    assert.equal(noMethod.body.error, 'SIGNATURE_METHOD_INVALID', 'berkas tanpa metode');
+    const multipartText = await withCsrf(dewi.agent.post(`/api/inspections/${inspection.id}/approve`), dewi.csrfToken)
+        .field('stageId', 'koordinator_k3l').field('signatureMethod', 'canvas').field('signature', 'data:image/png;base64,AAAA');
+    assert.equal(multipartText.status, 400);
+    assert.equal(multipartText.body.error, 'SIGNATURE_REQUIRED', 'string di field signature bukan berkas');
+
+    assert.equal((await approvalRows(inspection.id)).length, 0);
+    assert.deepEqual(signatureFiles(), before, 'tidak ada berkas tertulis');
+    assert.equal((await arif.agent.get(`/api/inspections/${inspection.id}`)).body.currentApprovalStage, 'koordinator_k3l');
+});
+
+test('approve dengan isi tanda tangan tidak sah -> 400, tidak ada keputusan/berkas (MIME klien & nama berkas tidak dipercaya)', async () => {
+    const arif = await loginAs('arif');
+    const dewi = await loginAs('dewi');
+    const inspection = await createInspection(arif, DRAFT_CONTENT);
+    const before = signatureFiles();
+
+    for (const [label, options, error] of [
+        ['GIF', { file: GIF_BYTES, filename: 'ttd.gif', contentType: 'image/gif' }, 'SIGNATURE_CONTENT_INVALID'],
+        ['WEBP', { file: WEBP_BYTES, filename: 'ttd.webp', contentType: 'image/webp' }, 'SIGNATURE_CONTENT_INVALID'],
+        ['SVG', { file: SVG_BYTES, filename: 'ttd.svg', contentType: 'image/svg+xml' }, 'SIGNATURE_CONTENT_INVALID'],
+        ['SVG menyamar .png', { file: SVG_BYTES, filename: 'signature.png', contentType: 'image/png' }, 'SIGNATURE_CONTENT_INVALID'],
+        ['byte acak .png', { file: RANDOM_BYTES, filename: 'signature.png', contentType: 'image/png' }, 'SIGNATURE_CONTENT_INVALID'],
+        ['HTML .png', { file: HTML_BYTES, filename: 'signature.png', contentType: 'image/png' }, 'SIGNATURE_CONTENT_INVALID'],
+        ['CANVAS dengan JPEG', { method: 'canvas', file: JPEG_BYTES, filename: 'blob', contentType: 'image/png' }, 'SIGNATURE_CONTENT_INVALID'],
+        ['metode tidak dikenal', { method: 'draw' }, 'SIGNATURE_METHOD_INVALID'],
+        ['metode huruf besar (nilai kontrak: upload/canvas)', { method: 'UPLOAD' }, 'SIGNATURE_METHOD_INVALID'],
+        ['lebih dari 1 MB', { file: Buffer.concat([PNG_BYTES, Buffer.alloc(SIGNATURE_MAX_BYTES)]) }, 'SIGNATURE_TOO_LARGE'],
+    ]) {
+        const res = await approveWith(dewi, inspection.id, 'koordinator_k3l', options);
+        assert.equal(res.status, 400, label);
+        assert.equal(res.body.error, error, label);
+    }
+    const twoFiles = await approveWith(dewi, inspection.id, 'koordinator_k3l').attach('signature', PNG_BYTES, { filename: 'kedua.png', contentType: 'image/png' });
+    assert.equal(twoFiles.status, 400, 'dua berkas');
+    const wrongField = await approveWith(dewi, inspection.id, 'koordinator_k3l', { file: null }).attach('foto', PNG_BYTES, { filename: 'x.png', contentType: 'image/png' });
+    assert.equal(wrongField.status, 400, 'berkas di field lain');
+
+    assert.equal((await approvalRows(inspection.id)).length, 0);
+    assert.deepEqual(signatureFiles(), before, 'berkas yang ditolak tidak pernah menyentuh disk');
+});
+
+test('approve bertanda tangan: UPLOAD PNG/JPEG & CANVAS PNG diterima; format tersimpan mengikuti ISI berkas; identitas dari sesi; path tidak bocor', async () => {
+    const arif = await loginAs('arif');
+    const dewi = await loginAs('dewi');
+    const andi = await loginAs('andi');
+    const hadi = await loginAs('hadi');
+    const inspection = await createInspection(arif, DRAFT_CONTENT);
+
+    // JPEG (.jpeg) lewat UPLOAD, dengan isian identitas/path palsu yang harus diabaikan.
+    const byDewi = await approveWith(dewi, inspection.id, 'koordinator_k3l', {
+        file: JPEG_BYTES, filename: 'ttd.jpeg', contentType: 'image/jpeg',
+        extraFields: { reviewerUserId: String(arif.user.id), reviewerName: 'Palsu', signatureFilePath: '../../.env' },
+    });
+    assert.equal(byDewi.status, 200, JSON.stringify(byDewi.body));
+    // Nama .jpg + MIME klien image/jpeg, tapi isinya PNG -> disimpan sebagai PNG.
+    assert.equal((await approveWith(andi, inspection.id, 'manajer', { file: PNG_BYTES, filename: 'ttd.jpg', contentType: 'image/jpeg' })).status, 200);
+    // Kanvas: Blob PNG tanpa nama/MIME yang berarti.
+    const byHadi = await approveWith(hadi, inspection.id, 'ketua_p2k3', { method: 'canvas', filename: 'blob', contentType: 'application/octet-stream' });
+    assert.equal(byHadi.status, 200);
+    assert.equal(byHadi.body.fullyApproved, true);
+
+    const rows = await approvalRows(inspection.id);
+    assert.deepEqual(rows.map((row) => [row.stage, row.signature_method, row.signature_mime_type, row.legacy_unsigned]), [
+        ['koordinator_k3l', 'upload', 'image/jpeg', 0], ['manajer', 'upload', 'image/png', 0], ['ketua_p2k3', 'canvas', 'image/png', 0],
+    ]);
+    assert.deepEqual([rows[0].reviewer_user_id, rows[0].reviewer_name], [dewi.user.id, 'Dewi'], 'identitas dari sesi, bukan isian');
+    for (const row of rows) {
+        assert.match(row.signature_file_path, SIGNED_PATH, 'nama berkas buatan server');
+        assert.ok(existsSync(path.join(UPLOAD_DIR, row.signature_file_path)));
+    }
+    assert.ok(rows[0].signature_file_path.endsWith('.jpg'));
+    assert.ok(rows[1].signature_file_path.endsWith('.png'), 'ekstensi dari isi berkas, bukan dari nama .jpg');
+    assert.deepEqual(readFileSync(path.join(UPLOAD_DIR, rows[2].signature_file_path)), PNG_BYTES);
+    assert.equal(new Set(rows.map((row) => row.signature_file_path)).size, 3, 'satu berkas per keputusan');
+
+    const detail = await arif.agent.get(`/api/inspections/${inspection.id}`);
+    assert.deepEqual(detail.body.approvalHistory.map((entry) => [entry.id, entry.signatureMethod, entry.hasSignature]),
+        rows.map((row) => [row.id, row.signature_method, true]));
+    assert.ok(!JSON.stringify(detail.body).includes('signatures/'), 'path berkas tidak ada di JSON');
+    assert.ok(!JSON.stringify(byHadi.body).includes('signatures/'));
+});
+
+test('penyajian tanda tangan: hanya lewat visibilitas inspeksi; id keputusan tebakan / inspeksi lain / tanpa tanda tangan -> 404; tidak ada akses statis', async () => {
+    const arif = await loginAs('arif');
+    const dewi = await loginAs('dewi'); // koordinator plant 1
+    const rina = await loginAs('rina'); // koordinator plant 9
+    const andi = await loginAs('andi');
+    const hadi = await loginAs('hadi');
+    const admin = await loginAs('admin');
+    const inspection = await createInspection(arif, DRAFT_CONTENT);
+    const other = await createInspection(arif, DRAFT_CONTENT); // IN_REVIEW di tahap Koordinator plant 1 — terlihat oleh dewi
+
+    assert.equal((await approveWith(dewi, inspection.id, 'koordinator_k3l', { file: JPEG_BYTES, filename: 'ttd.jpg', contentType: 'image/jpeg' })).status, 200);
+    const [dewiApproval] = await approvalRows(inspection.id);
+
+    const byOwner = await getSignature(arif, inspection.id, dewiApproval.id);
+    assert.equal(byOwner.status, 200);
+    assert.equal(byOwner.headers['content-type'], 'image/jpeg');
+    assert.equal(byOwner.headers['x-content-type-options'], 'nosniff');
+    assert.deepEqual(Buffer.from(byOwner.body), JPEG_BYTES);
+
+    const hidden = await getSignature(dewi, inspection.id, dewiApproval.id);
+    assert.deepEqual({ status: hidden.status, body: hidden.body }, { status: 404, body: { error: 'NOT_FOUND' } },
+        'penyetuju sendiri pun tidak bisa selama inspeksi tidak terlihat olehnya (sudah di tahap Manajer)');
+
+    assert.equal((await approveWith(andi, inspection.id, 'manajer')).status, 200);
+    assert.equal((await approveWith(hadi, inspection.id, 'ketua_p2k3', { method: 'canvas' })).status, 200);
+    assert.equal((await getSignature(dewi, inspection.id, dewiApproval.id)).status, 200, 'COMPLETED di plant-nya: terlihat lagi');
+    assert.equal((await getSignature(admin, inspection.id, dewiApproval.id)).status, 200);
+
+    const notFound = { status: 404, body: { error: 'NOT_FOUND' } };
+    const [[legacy]] = await pool.query(
+        `SELECT a.id, a.inspection_id FROM approvals a JOIN inspections i ON i.id = a.inspection_id
+         WHERE a.legacy_unsigned = 1 AND i.status <> 'draft' LIMIT 1`,
+    );
+    const [[rejected]] = await pool.query("SELECT id, inspection_id FROM approvals WHERE decision = 'rejected' LIMIT 1");
+    for (const [label, session, inspectionId, approvalId] of [
+        ['Koordinator plant lain', rina, inspection.id, dewiApproval.id],
+        ['id keputusan dipasangkan dengan inspeksi lain yang terlihat', dewi, other.id, dewiApproval.id],
+        ['id keputusan tebakan', admin, inspection.id, 999999],
+        ['id keputusan bukan angka', admin, inspection.id, 'abc'],
+        ['id keputusan berisi SQL', admin, inspection.id, encodeURIComponent('1 OR 1=1')],
+        ['id keputusan berisi traversal', admin, inspection.id, encodeURIComponent('../../.env')],
+        ['persetujuan lama tanpa tanda tangan', admin, `INS-${legacy.inspection_id}`, legacy.id],
+        ['penolakan', admin, `INS-${rejected.inspection_id}`, rejected.id],
+    ]) {
+        const res = await getSignature(session, inspectionId, approvalId);
+        assert.deepEqual({ status: res.status, body: res.body }, notFound, label);
+    }
+    assert.equal((await getSignature(null, inspection.id, dewiApproval.id)).status, 401, 'tanpa login');
+
+    // Tidak ada penyajian statis oleh Express, dan folder dijaga .htaccess untuk Apache (DocumentRoot = folder proyek).
+    assert.equal((await request(app).get(`/uploads/${dewiApproval.signature_file_path}`)).status, 404);
+    assert.equal((await request(app).get(`/${dewiApproval.signature_file_path}`)).status, 404);
+    assert.equal(readFileSync(path.join(SIGNATURE_DIR, '.htaccess'), 'utf8').trim(), 'Require all denied');
+});
+
+test('penolakan tidak bertanda tangan: data tanda tangan pada reject -> 400 SIGNATURE_NOT_ALLOWED, tidak tersimpan; reject biasa tanpa kolom tanda tangan', async () => {
+    const arif = await loginAs('arif');
+    const dewi = await loginAs('dewi');
+    const rina = await loginAs('rina');
+    const inspection = await createInspection(arif, DRAFT_CONTENT);
+    const before = signatureFiles();
+    const rejectJson = (session, body) => withCsrf(session.agent.post(`/api/inspections/${inspection.id}/reject`), session.csrfToken).send(body);
+
+    for (const [label, res] of [
+        ['metode di JSON', await rejectJson(dewi, { stageId: 'koordinator_k3l', reason: 'Kurang jelas', signatureMethod: 'upload' })],
+        ['data URL di JSON', await rejectJson(dewi, { stageId: 'koordinator_k3l', reason: 'Kurang jelas', signature: `data:image/png;base64,${PNG_BYTES.toString('base64')}` })],
+        ['berkas multipart', await withCsrf(dewi.agent.post(`/api/inspections/${inspection.id}/reject`), dewi.csrfToken)
+            .field('stageId', 'koordinator_k3l').field('reason', 'Kurang jelas').attach('signature', PNG_BYTES, { filename: 'ttd.png', contentType: 'image/png' })],
+    ]) {
+        assert.equal(res.status, 400, label);
+        assert.equal(res.body.error, 'SIGNATURE_NOT_ALLOWED', label);
+    }
+    assert.equal((await rejectJson(rina, { stageId: 'koordinator_k3l', reason: 'x', signatureMethod: 'upload' })).status, 404, 'visibilitas tetap diperiksa lebih dulu');
+    assert.equal((await approvalRows(inspection.id)).length, 0);
+    assert.deepEqual(signatureFiles(), before);
+
+    assert.equal((await rejectJson(dewi, { stageId: 'koordinator_k3l', reason: 'Kurang jelas' })).status, 200);
+    const [row] = await approvalRows(inspection.id);
+    assert.deepEqual([row.decision, row.signature_method, row.signature_file_path, row.signature_mime_type, row.legacy_unsigned],
+        ['rejected', null, null, null, 0]);
+    assert.deepEqual(signatureFiles(), before, 'penolakan tidak membuat berkas');
+});
+
+test('riwayat: persetujuan ulang setelah penolakan mendapat tanda tangan BARU; attempt ditolak tanpa tanda tangan; tanda tangan lama utuh', async () => {
+    const arif = await loginAs('arif');
+    const dewi = await loginAs('dewi');
+    const andi = await loginAs('andi');
+    const inspection = await createInspection(arif, DRAFT_CONTENT);
+
+    assert.equal((await approveWith(dewi, inspection.id, 'koordinator_k3l', { file: JPEG_BYTES, filename: 'a.jpg', contentType: 'image/jpeg' })).status, 200);
+    assert.equal((await decide(andi, inspection.id, 'reject', { stageId: 'manajer', reason: 'Lengkapi foto' })).status, 200);
+    const [koordinator, rejectedBefore] = await approvalRows(inspection.id);
+    await submitInspection(arif, inspection.id);
+    assert.equal((await approveWith(andi, inspection.id, 'manajer', { method: 'canvas' })).status, 200);
+
+    const rows = await approvalRows(inspection.id);
+    assert.deepEqual(rows.map((row) => [row.stage, row.attempt, row.decision, row.signature_method]), [
+        ['koordinator_k3l', 1, 'approved', 'upload'], ['manajer', 1, 'rejected', null], ['manajer', 2, 'approved', 'canvas'],
+    ]);
+    assert.deepEqual(rows[0], koordinator, 'persetujuan Koordinator tidak berubah');
+    assert.deepEqual(rows[1], rejectedBefore, 'attempt 1 (ditolak) tidak ditimpa, tetap tanpa tanda tangan');
+    assert.notEqual(rows[2].signature_file_path, rows[0].signature_file_path);
+    assert.deepEqual(readFileSync(path.join(UPLOAD_DIR, rows[0].signature_file_path)), JPEG_BYTES, 'berkas tanda tangan lama utuh');
+    assert.deepEqual(readFileSync(path.join(UPLOAD_DIR, rows[2].signature_file_path)), PNG_BYTES);
+});
+
+test('pembersihan: simpan ke DB gagal SETELAH berkas ditulis -> berkas baru dihapus, keputusan & tahap tidak berubah, berkas lama utuh', async () => {
+    const arif = await loginAs('arif');
+    const dewi = await loginAs('dewi');
+    const inspection = await createInspection(arif, DRAFT_CONTENT);
+    const before = signatureFiles();
+    const beforeContents = before.map((name) => readFileSync(path.join(SIGNATURE_DIR, name)));
+
+    // Kegagalan DB sungguhan pada INSERT approvals, khusus inspeksi ini.
+    await pool.query('DROP TRIGGER IF EXISTS test_fail_approval_insert');
+    await pool.query(
+        `CREATE TRIGGER test_fail_approval_insert BEFORE INSERT ON approvals FOR EACH ROW
+         IF NEW.inspection_id = ${toNumeric(inspection.id)} THEN
+             SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'uji kegagalan simpan';
+         END IF`,
+    );
+    try {
+        const failed = await approveWith(dewi, inspection.id, 'koordinator_k3l');
+        assert.equal(failed.status, 500);
+        assert.deepEqual(failed.body, { error: 'INTERNAL_ERROR' });
+    } finally {
+        await pool.query('DROP TRIGGER IF EXISTS test_fail_approval_insert');
+    }
+    assert.deepEqual(signatureFiles(), before, 'berkas yang sempat ditulis dihapus');
+    assert.deepEqual(before.map((name) => readFileSync(path.join(SIGNATURE_DIR, name))), beforeContents, 'berkas keputusan lain tidak tersentuh');
+    assert.equal((await approvalRows(inspection.id)).length, 0);
+    const detail = (await arif.agent.get(`/api/inspections/${inspection.id}`)).body;
+    assert.deepEqual([detail.status, detail.currentApprovalStage], ['in_review', 'koordinator_k3l'], 'UPDATE status ikut dibatalkan');
+
+    assert.equal((await approveWith(dewi, inspection.id, 'koordinator_k3l')).status, 200, 'setelah pulih, persetujuan berjalan normal');
+    assert.equal(signatureFiles().length, before.length + 1);
+});
+
+test('konkurensi: dua persetujuan bertanda tangan bersamaan -> tepat satu keputusan & tepat satu berkas', async () => {
+    const arif = await loginAs('arif');
+    const dewi = await loginAs('dewi');
+    const inspection = await createInspection(arif, DRAFT_CONTENT);
+    const before = signatureFiles();
+
+    const results = await Promise.all([
+        approveWith(dewi, inspection.id, 'koordinator_k3l'),
+        approveWith(dewi, inspection.id, 'koordinator_k3l', { method: 'canvas' }),
+    ]);
+    const statuses = results.map((res) => res.status).sort();
+    assert.equal(statuses[0], 200);
+    assert.ok([400, 404].includes(statuses[1]), `yang kalah ditolak (basi/tidak terlihat lagi): ${statuses}`);
+    assert.equal((await approvalRows(inspection.id)).length, 1);
+    assert.equal(signatureFiles().length, before.length + 1, 'yang kalah tidak meninggalkan berkas');
+});
+
+test('constraint DB: persetujuan tanpa tanda tangan, CANVAS non-PNG, tipe selain PNG/JPEG, tanda tangan pada penolakan, path ganda -> ditolak MariaDB', async () => {
+    const arif = await loginAs('arif');
+    const inspection = await createInspection(arif, DRAFT_CONTENT);
+    const id = toNumeric(inspection.id);
+    const connection = await pool.getConnection();
+    const insert = (values) => connection.query(
+        `INSERT INTO approvals (inspection_id, stage, attempt, decision, signature_method, signature_file_path, signature_mime_type, legacy_unsigned, rejection_reason)
+         VALUES (?, 'koordinator_k3l', ?, ?, ?, ?, ?, ?, ?)`,
+        [id, ...values],
+    );
+    try {
+        await connection.beginTransaction();
+        for (const [label, values] of [
+            ['disetujui tanpa tanda tangan', [91, 'approved', null, null, null, 0, null]],
+            ['disetujui tanpa berkas', [92, 'approved', 'upload', null, 'image/png', 0, null]],
+            ['CANVAS JPEG', [93, 'approved', 'canvas', 'signatures/x-canvas.jpg', 'image/jpeg', 0, null]],
+            ['tipe GIF', [94, 'approved', 'upload', 'signatures/x.gif', 'image/gif', 0, null]],
+            ['penolakan bertipe tanda tangan', [95, 'rejected', null, null, 'image/png', 0, 'x']],
+            ['penolakan ditandai legacy', [96, 'rejected', null, null, null, 1, 'x']],
+        ]) {
+            // MariaDB ER_CONSTRAINT_FAILED (errno 4025; mysql2 memberi nama kode versi MySQL untuk angka itu).
+            await assert.rejects(insert(values), (error) => error.errno === 4025 && /CONSTRAINT `chk_approvals_/.test(error.message), label);
+        }
+        await insert([97, 'approved', 'upload', 'signatures/uji-ganda.png', 'image/png', 0, null]);
+        await assert.rejects(insert([98, 'approved', 'upload', 'signatures/uji-ganda.png', 'image/png', 0, null]),
+            (error) => error.code === 'ER_DUP_ENTRY', 'satu berkas milik satu keputusan');
+    } finally {
+        await connection.rollback();
+        connection.release();
+    }
 });

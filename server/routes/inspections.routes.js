@@ -13,6 +13,7 @@ import { requireRole } from '../middleware/session-auth.js';
 import { sendResult } from '../middleware/to-http.js';
 import { asyncHandler } from '../middleware/async-handler.js';
 import { upload, UPLOAD_DIR, verifyImageContent, cleanupUploadedFiles } from '../config/upload.js';
+import { detectSignatureMimeType, parseSignatureUpload } from '../config/signature-storage.js';
 
 export const inspectionsRouter = Router();
 
@@ -131,17 +132,57 @@ inspectionsRouter.delete('/:id', requireRole('safety_officer'), asyncHandler(asy
     sendResult(res, await inspectionService.removeDraft(req.params.id, req.user));
 }));
 
+/**
+ * Tanda tangan dari permintaan approve (Phase 17.4A), atau null bila tidak
+ * ada data tanda tangan sama sekali. mimeType adalah hasil deteksi ISI berkas
+ * (PNG/JPEG saja), bukan nama berkas atau Content-Type klien. Tidak ada jalur
+ * base64/data URL: kanvas mengirim PNG sebagai berkas biasa, jadi string di
+ * field `signature` tidak pernah didekode (-> SIGNATURE_REQUIRED).
+ */
+function signatureFromRequest(req) {
+    if (!req.file && req.body.signatureMethod === undefined && req.body.signature === undefined) return null;
+    return {
+        method: req.body.signatureMethod,
+        mimeType: req.file ? detectSignatureMimeType(req.file.buffer) : null,
+        size: req.file ? req.file.size : 0,
+        file: req.file ? req.file.buffer : null,
+    };
+}
+
 // Phase 17.2: wewenang (role + status + tahap berjalan + cakupan plant
 // Koordinator) diputuskan domain/inspection-policy.js lewat approval-service,
 // bukan pemetaan role-per-tahap di route ini. Identitas selalu dari sesi.
-inspectionsRouter.post('/:id/approve', asyncHandler(async (req, res) => {
-    const result = await approvalService.approve(req.params.id, req.body.stageId, req.user);
+// Phase 17.4A: multipart/form-data — stageId, signatureMethod ('upload' |
+// 'canvas'), signature (berkas PNG/JPEG). Berkas hanya ditahan di memori;
+// ditulis ke disk oleh repository setelah seluruh pemeriksaan lolos.
+inspectionsRouter.post('/:id/approve', parseSignatureUpload, asyncHandler(async (req, res) => {
+    const result = await approvalService.approve(req.params.id, req.body.stageId, req.user, signatureFromRequest(req));
     sendResult(res, result);
 }));
 
 inspectionsRouter.post('/:id/reject', asyncHandler(async (req, res) => {
-    const result = await approvalService.reject(req.params.id, req.body.stageId, req.user, req.body.reason);
+    // Phase 17.4A: penolakan tidak bertanda tangan. Multipart tidak di-parse
+    // sama sekali (tidak ada berkas yang bisa tersimpan); field tanda tangan
+    // di body JSON ditolak service (SIGNATURE_NOT_ALLOWED), bukan diabaikan.
+    if (req.is('multipart/form-data')) return res.status(400).json({ error: 'SIGNATURE_NOT_ALLOWED', data: null });
+    const hasSignatureInput = req.body.signatureMethod !== undefined || req.body.signature !== undefined;
+    const result = await approvalService.reject(req.params.id, req.body.stageId, req.user, req.body.reason, hasSignatureInput ? req.body : null);
     sendResult(res, result);
+}));
+
+// Phase 17.4A: berkas tanda tangan satu keputusan. Sama seperti file foto:
+// butuh sesi, dan hanya bila inspeksinya boleh dilihat pengguna ini DAN
+// keputusan itu milik inspeksi tersebut — selain itu 404 identik dengan yang
+// tidak ada. Content-Type hanya dari daftar PNG/JPEG hasil verifikasi.
+const SIGNATURE_CONTENT_TYPES = new Set(['image/png', 'image/jpeg']);
+
+inspectionsRouter.get('/:id/approvals/:approvalId/signature', asyncHandler(async (req, res) => {
+    const signature = await inspectionRepository.findSignatureFile(req.params.id, req.params.approvalId, req.user);
+    if (!signature || !SIGNATURE_CONTENT_TYPES.has(signature.mimeType)) return res.status(404).json({ error: 'NOT_FOUND' });
+    res.set('X-Content-Type-Options', 'nosniff');
+    res.type(signature.mimeType).sendFile(signature.filePath, { root: UPLOAD_DIR }, (error) => {
+        if (error && !res.headersSent) res.status(404).json({ error: 'NOT_FOUND' });
+    });
 }));
 
 inspectionsRouter.post(

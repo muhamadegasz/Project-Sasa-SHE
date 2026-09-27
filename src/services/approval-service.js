@@ -19,6 +19,7 @@ import * as inspectionRepository from '#repositories/inspection-repository.js';
 import { buildDecisionRecord, checkRejectionReason, findStage } from '../domain/approval-rules.js';
 import { approvedState, rejectedState } from '../domain/workflow-rules.js';
 import { canApprove, canReject, canView } from '../domain/inspection-policy.js';
+import { checkSignature } from '../domain/signature-rules.js';
 import { APPROVAL_DECISION, INSPECTION_STATUS } from '../domain/statuses.js';
 import { ACCESS_ERROR, fail, ok } from './result.js';
 
@@ -31,12 +32,25 @@ export const APPROVAL_ERROR = {
     REJECTION_REASON_REQUIRED: 'REJECTION_REASON_REQUIRED',
     REJECTION_REASON_INVALID: 'REJECTION_REASON_INVALID',
     REJECTION_REASON_TOO_LONG: 'REJECTION_REASON_TOO_LONG',
+    // Phase 17.4A: tanda tangan (domain/signature-rules.js).
+    SIGNATURE_REQUIRED: 'SIGNATURE_REQUIRED',
+    SIGNATURE_METHOD_INVALID: 'SIGNATURE_METHOD_INVALID',
+    SIGNATURE_CONTENT_INVALID: 'SIGNATURE_CONTENT_INVALID',
+    SIGNATURE_TOO_LARGE: 'SIGNATURE_TOO_LARGE',
+    SIGNATURE_NOT_ALLOWED: 'SIGNATURE_NOT_ALLOWED',
 };
 
 const REASON_ERROR = {
     REQUIRED: APPROVAL_ERROR.REJECTION_REASON_REQUIRED,
     INVALID: APPROVAL_ERROR.REJECTION_REASON_INVALID,
     TOO_LONG: APPROVAL_ERROR.REJECTION_REASON_TOO_LONG,
+};
+
+const SIGNATURE_ERROR = {
+    REQUIRED: APPROVAL_ERROR.SIGNATURE_REQUIRED,
+    METHOD_INVALID: APPROVAL_ERROR.SIGNATURE_METHOD_INVALID,
+    CONTENT_INVALID: APPROVAL_ERROR.SIGNATURE_CONTENT_INVALID,
+    TOO_LARGE: APPROVAL_ERROR.SIGNATURE_TOO_LARGE,
 };
 
 /**
@@ -71,12 +85,13 @@ async function loadDecidable(inspectionId, stageId, reviewer, isAllowed) {
 }
 
 /**
- * Menyimpan satu keputusan + status barunya sebagai satu operasi. Repository
- * menolak (false) bila tahap sudah berubah sejak inspeksi dibaca — mis. dua
- * permintaan approve yang datang hampir bersamaan.
+ * Menyimpan satu keputusan + status barunya (+ berkas tanda tangan pada
+ * persetujuan) sebagai satu operasi. Repository menolak (false) bila tahap
+ * sudah berubah sejak inspeksi dibaca — mis. dua permintaan approve yang
+ * datang hampir bersamaan — dan dalam hal itu tidak menyimpan berkas apa pun.
  */
-async function commit(inspection, decision, nextState) {
-    const saved = await inspectionRepository.recordDecision(inspection.id, decision, nextState);
+async function commit(inspection, decision, nextState, signature = null) {
+    const saved = await inspectionRepository.recordDecision(inspection.id, decision, nextState, signature);
     if (!saved) return null;
     return {
         ...inspection,
@@ -89,15 +104,24 @@ async function commit(inspection, decision, nextState) {
  * Menyetujui tahap yang sedang berjalan. Setelah tahap terakhir, inspeksi
  * menjadi COMPLETED.
  *
+ * Phase 17.4A: tanda tangan WAJIB — `signature` ({ method, mimeType, size,
+ * file }, lihat domain/signature-rules.js checkSignature). Diperiksa SETELAH
+ * visibilitas & wewenang, supaya pengguna yang tidak berhak tidak mendapat
+ * petunjuk apa pun tentang inspeksinya. Tanda tangan milik keputusan ini;
+ * identitas penyetuju tetap dari `reviewer` (sesi), tidak pernah dari isian.
+ *
  * @returns ok({ inspection, stage, fullyApproved }) atau fail(APPROVAL_ERROR.*)
  */
-export async function approve(inspectionId, stageId, reviewer) {
+export async function approve(inspectionId, stageId, reviewer, signature) {
     const { inspection, stage, failure } = await loadDecidable(inspectionId, stageId, reviewer, canApprove);
     if (failure) return failure;
 
+    const checked = checkSignature(signature);
+    if (checked.error) return fail(SIGNATURE_ERROR[checked.error], { stage });
+
     const nextState = approvedState(inspection);
-    const decision = buildDecisionRecord(inspection, stage, APPROVAL_DECISION.APPROVED, reviewer);
-    const updated = await commit(inspection, decision, nextState);
+    const decision = buildDecisionRecord(inspection, stage, APPROVAL_DECISION.APPROVED, reviewer, null, checked.value.method);
+    const updated = await commit(inspection, decision, nextState, checked.value);
     if (!updated) return fail(APPROVAL_ERROR.STAGE_NOT_CURRENT, { stage });
 
     return ok({ inspection: updated, stage, fullyApproved: updated.status === INSPECTION_STATUS.COMPLETED });
@@ -108,11 +132,17 @@ export async function approve(inspectionId, stageId, reviewer) {
  * REVISION_REQUIRED dan tahapnya TETAP — setelah direvisi dan diajukan ulang,
  * inspeksi kembali ke tahap ini. Keputusan tahap sebelumnya tidak disentuh.
  *
+ * Phase 17.4A: penolakan tidak bertanda tangan. `signature` yang terisi
+ * (pemanggil mengirim data tanda tangan) ditolak SIGNATURE_NOT_ALLOWED —
+ * tidak diabaikan diam-diam, dan tidak pernah disimpan.
+ *
  * @returns ok({ inspection, stage }) atau fail(APPROVAL_ERROR.*)
  */
-export async function reject(inspectionId, stageId, reviewer, reason) {
+export async function reject(inspectionId, stageId, reviewer, reason, signature = null) {
     const { inspection, stage, failure } = await loadDecidable(inspectionId, stageId, reviewer, canReject);
     if (failure) return failure;
+
+    if (signature != null) return fail(APPROVAL_ERROR.SIGNATURE_NOT_ALLOWED, { stage });
 
     const checked = checkRejectionReason(reason);
     if (checked.error) return fail(REASON_ERROR[checked.error], { stage });

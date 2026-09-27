@@ -29,6 +29,7 @@ import path from 'node:path';
 import { unlink } from 'node:fs/promises';
 import { pool } from '../db/pool.js';
 import { UPLOAD_DIR } from '../config/upload.js';
+import { isStoredSignaturePath, removeSignatureFile, storeSignatureFile } from '../config/signature-storage.js';
 import { formatDate } from '../../src/shared/date.js';
 import { visibilityScope } from '../../src/domain/inspection-policy.js';
 import { buildInitialAction } from '../../src/domain/inspection-rules.js';
@@ -70,8 +71,9 @@ async function loadFull(row) {
         [numericId],
     );
     const [approvalRows] = await pool.query(
-        `SELECT stage, attempt, decision, reviewer_user_id, reviewer_name, rejection_reason,
-                signature_method, watermark_enabled, watermark_x, watermark_y, decided_at
+        `SELECT id, stage, attempt, decision, reviewer_user_id, reviewer_name, rejection_reason,
+                signature_method, signature_file_path IS NOT NULL AS has_signature,
+                watermark_enabled, watermark_x, watermark_y, decided_at
          FROM approvals WHERE inspection_id = ? ORDER BY id`,
         [numericId],
     );
@@ -99,8 +101,10 @@ async function loadFull(row) {
 
     // Riwayat append-only (Phase 17.2) — satu entri per keputusan, urut waktu.
     // Path file tanda tangan sengaja tidak ikut: penyajiannya butuh otorisasi
-    // sendiri (Phase 17.3), bukan dibocorkan lewat JSON detail inspeksi.
+    // sendiri (Phase 17.4A: GET .../approvals/:approvalId/signature, lewat `id`
+    // dan `hasSignature` di bawah), bukan dibocorkan lewat JSON detail inspeksi.
     const approvalHistory = approvalRows.map((row) => ({
+        id: row.id,
         stage: row.stage,
         attempt: row.attempt,
         decision: row.decision,
@@ -108,6 +112,7 @@ async function loadFull(row) {
         reviewerName: row.reviewer_name,
         rejectionReason: row.rejection_reason,
         signatureMethod: row.signature_method,
+        hasSignature: Boolean(row.has_signature),
         watermark: row.watermark_enabled
             ? { x: Number(row.watermark_x), y: Number(row.watermark_y) }
             : null,
@@ -293,11 +298,18 @@ export async function add(inspection) {
  * menunggu tahap `decision.stage` (keputusan lain masuk lebih dulu), tidak ada
  * baris yang berubah, transaksi dibatalkan, dan fungsi mengembalikan false.
  *
+ * Phase 17.4A: `signature` (persetujuan saja; sudah lolos checkSignature())
+ * ditulis ke disk SETELAH penjaga itu lolos — keputusan basi/bersamaan tidak
+ * pernah menulis berkas. Transaksi DB tidak membatalkan tulisan disk, jadi
+ * bila apa pun sesudahnya gagal (INSERT, commit), berkas yang BARU ditulis
+ * operasi ini dihapus; berkas keputusan lain tidak pernah disentuh.
+ *
  * @returns {Promise<boolean>} true bila tersimpan
  */
-export async function recordDecision(inspectionId, decision, nextState) {
+export async function recordDecision(inspectionId, decision, nextState, signature = null) {
     const numericId = toNumericId(inspectionId);
     const connection = await pool.getConnection();
+    let storedSignature = null;
     try {
         await connection.beginTransaction();
 
@@ -311,9 +323,12 @@ export async function recordDecision(inspectionId, decision, nextState) {
             return false;
         }
 
+        if (signature) storedSignature = await storeSignatureFile(signature.file, signature.mimeType);
+
         await connection.query(
-            `INSERT INTO approvals (inspection_id, stage, attempt, decision, reviewer_user_id, reviewer_name, rejection_reason, decided_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+            `INSERT INTO approvals (inspection_id, stage, attempt, decision, reviewer_user_id, reviewer_name, rejection_reason,
+                                    signature_method, signature_file_path, signature_mime_type, decided_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 numericId,
                 decision.stage,
@@ -322,6 +337,9 @@ export async function recordDecision(inspectionId, decision, nextState) {
                 decision.reviewerUserId,
                 decision.reviewerName,
                 decision.rejectionReason,
+                signature ? signature.method : null,
+                storedSignature,
+                signature ? signature.mimeType : null,
                 new Date(decision.decidedAt),
             ],
         );
@@ -330,6 +348,7 @@ export async function recordDecision(inspectionId, decision, nextState) {
         return true;
     } catch (error) {
         await connection.rollback();
+        if (storedSignature) await removeSignatureFile(storedSignature);
         throw error;
     } finally {
         connection.release();
@@ -563,4 +582,28 @@ export async function findPhotoFile(photoId, user) {
     );
     if (rows.length === 0) return undefined;
     return { filePath: rows[0].file_path, mimeType: rows[0].mime_type, originalName: rows[0].original_name };
+}
+
+/**
+ * Berkas tanda tangan satu keputusan (Phase 17.4A) — HANYA bila keputusan itu
+ * milik inspeksi `inspectionId` DAN inspeksinya boleh dilihat `user`.
+ * Mengetahui/menebak id keputusan tidak cukup, dan id keputusan inspeksi lain
+ * tidak bisa dipasangkan dengan id inspeksi yang terlihat. undefined untuk
+ * semua kasus "tidak ada" (termasuk keputusan tanpa tanda tangan dan path
+ * yang tidak sesuai pola penyimpanan).
+ */
+export async function findSignatureFile(inspectionId, approvalId, user) {
+    const numericId = toNumericId(inspectionId);
+    const numericApprovalId = Number(approvalId);
+    if (Number.isNaN(numericId) || !Number.isInteger(numericApprovalId)) return undefined;
+    const scope = visibilityWhere(user);
+    const [rows] = await pool.query(
+        `SELECT a.signature_file_path, a.signature_mime_type
+         FROM approvals a
+         JOIN inspections i ON i.id = a.inspection_id
+         WHERE a.id = ? AND a.inspection_id = ? AND a.signature_file_path IS NOT NULL AND ${scope.sql}`,
+        [numericApprovalId, numericId, ...scope.params],
+    );
+    if (rows.length === 0 || !isStoredSignaturePath(rows[0].signature_file_path)) return undefined;
+    return { filePath: rows[0].signature_file_path, mimeType: rows[0].signature_mime_type };
 }
