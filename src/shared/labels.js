@@ -42,13 +42,13 @@ export function formatInspectionStatus(status) {
 }
 
 /**
- * Ringkasan pengesahan: "✅ Lengkap (3/3)" atau "2/3".
+ * Ringkasan pengesahan: "(3/3)" atau "2/3".
  *
  * Dipakai di tabel inspeksi, modal perbaikan, dan ketiga jalur ekspor Excel.
  */
 export function formatApprovalStatus(inspection) {
     if (isFullyApproved(inspection)) {
-        return `✅ Lengkap (${totalStages()}/${totalStages()})`;
+        return `(${totalStages()}/${totalStages()})`;
     }
     return `${countApproved(inspection)}/${totalStages()}`;
 }

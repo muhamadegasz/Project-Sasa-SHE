@@ -62,6 +62,14 @@
     transform: translateY(0);
 }
 
+/* Selama halaman login tampil (.login-page, z-index 9999), notifikasi harus
+ * berada di atasnya — sebelumnya pesan di halaman login (mis. "Sesi
+ * berakhir") tertutup halaman login dan tidak pernah terlihat. Di luar
+ * halaman login z-index notifikasi tidak berubah. */
+#loginPage:not(.hidden) ~ .toast-msg {
+    z-index: 10001;
+}
+
 .toast-msg i {
     margin-right: 12px;
     color: #ffb0b0;

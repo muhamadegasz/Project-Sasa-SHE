@@ -263,38 +263,74 @@ function applyRoleGating(user) {
     if (!activeTab || activeTab.hidden) switchTab('dashboard');
 }
 
+const PESAN_SERVER_TIDAK_TERHUBUNG_SESI = '⚠️ Server tidak dapat dihubungi. Sesi Anda belum tentu berakhir. Muat ulang setelah server aktif kembali.';
+const PESAN_SERVER_TIDAK_TERHUBUNG_LOGIN = '⚠️ Server tidak dapat dihubungi. Silakan coba lagi setelah server aktif.';
+
+/**
+ * Server autentikasi tidak memberi jawaban yang bisa dipakai: jaringan gagal /
+ * server mati (fetch melempar, bukan ApiError), habis waktu, badan bukan JSON,
+ * atau galat server 5xx. 401 dan 4xx lain adalah jawaban sah server. HANYA
+ * dipakai untuk galat SATU panggilan apiGet/apiPost yang dibungkus sendiri —
+ * bukan untuk seluruh handler, supaya galat pemrograman tidak disangka server mati.
+ */
+function isAuthServerUnreachable(error) {
+    return !(error instanceof ApiError) || error.status >= 500;
+}
+
 async function handleLogin(event) {
     event.preventDefault();
 
     const username = document.getElementById('loginUsername').value.trim();
     const password = document.getElementById('loginPassword').value.trim();
 
+    let session;
     try {
-        const { user, csrfToken } = await apiPost('/auth/login', { username, password });
-        setSession(user, csrfToken);
-        showMainApp(user);
-        setTimeout(initApp, 300);
+        session = await apiPost('/auth/login', { username, password });
     } catch (error) {
-        // Sengaja tanpa toast pesan gagal (permintaan pengguna sebelumnya,
-        // lihat git log "remove error message notifications from login
-        // process") — cukup kosongkan password dan kembalikan fokus.
-        if (!(error instanceof ApiError)) reportError('login', error, '');
+        // Kredensial salah (401) sengaja tanpa toast (permintaan pengguna
+        // sebelumnya, lihat git log "remove error message notifications from
+        // login process") — cukup kosongkan password dan kembalikan fokus.
+        // Server tidak terjangkau BUKAN kredensial salah: diberi tahu, tanpa
+        // membocorkan pesan galat mentah (detailnya hanya ke console).
+        if (isAuthServerUnreachable(error)) {
+            reportError('login', error, '');
+            showToast(PESAN_SERVER_TIDAK_TERHUBUNG_LOGIN);
+        }
         document.getElementById('loginPassword').value = '';
         document.getElementById('loginPassword').focus();
+        return;
     }
+    setSession(session.user, session.csrfToken);
+    showMainApp(session.user);
+    setTimeout(initApp, 300);
 }
 
-/** Dipanggil saat startup (window load): memulihkan sesi lewat cookie yang masih berlaku, tanpa perlu login ulang setelah reload halaman. */
+/** Hasil pemulihan sesi saat startup. */
+const SESSION_RESTORE = {
+    AUTHENTICATED: 'authenticated', // /auth/me 200
+    LOGGED_OUT: 'logged_out', // /auth/me 401 (atau 4xx lain): memang tidak ada sesi
+    UNREACHABLE: 'unreachable', // server tidak menjawab: sesi tidak bisa diverifikasi
+};
+
+/**
+ * Dipanggil saat startup: memulihkan sesi lewat cookie yang masih berlaku,
+ * tanpa perlu login ulang setelah reload halaman. Server tidak terjangkau
+ * TIDAK disamakan dengan 401 — cookie & sesi di server tidak disentuh (bisa
+ * saja masih berlaku), notifySessionExpired() tidak dipanggil (api-client
+ * hanya memanggilnya untuk 401), dan #mainApp tetap tersembunyi karena sesi
+ * tidak bisa diverifikasi.
+ */
 async function restoreSession() {
+    let me;
     try {
-        const { user, csrfToken } = await apiGet('/auth/me');
-        setSession(user, csrfToken);
-        showMainApp(user);
-        initApp();
-        return true;
-    } catch {
-        return false;
+        me = await apiGet('/auth/me');
+    } catch (error) {
+        return isAuthServerUnreachable(error) ? SESSION_RESTORE.UNREACHABLE : SESSION_RESTORE.LOGGED_OUT;
     }
+    setSession(me.user, me.csrfToken);
+    showMainApp(me.user);
+    initApp();
+    return SESSION_RESTORE.AUTHENTICATED;
 }
 
 /** Dipanggil session.js saat server menolak permintaan dengan 401 di tengah sesi (kedaluwarsa/dihapus). */
@@ -363,7 +399,10 @@ document.addEventListener('DOMContentLoaded', async function() {
     // restoreSession() sudah menampilkan #mainApp; gagal -> #loginPage
     // tetap dalam keadaan default-nya) — aman menyingkap salah satunya.
     document.getElementById('authLoading').classList.add('hidden');
-    if (!restored) document.getElementById('loginUsername').focus();
+    if (restored !== SESSION_RESTORE.AUTHENTICATED) document.getElementById('loginUsername').focus();
+    // Tanpa sesi (401): halaman login bersih tanpa pesan (Phase 17.4C).
+    // Server tidak terjangkau: halaman login + penjelasan, bukan "Sesi berakhir".
+    if (restored === SESSION_RESTORE.UNREACHABLE) showToast(PESAN_SERVER_TIDAK_TERHUBUNG_SESI);
 });
 
 // Badge jam, status "Online", dan tanggal semuanya dihapus dari header

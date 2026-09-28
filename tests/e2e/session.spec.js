@@ -12,7 +12,7 @@
 
 import { API } from './support/env.js';
 import { test, expect } from './support/test.js';
-import { loginViaUi } from './support/ui.js';
+import { loginViaUi, expectToastOnTop } from './support/ui.js';
 
 test('sesi tetap ada setelah reload halaman (dipulihkan lewat GET /api/auth/me)', async ({ page }) => {
     await loginViaUi(page, 'andi');
@@ -86,7 +86,8 @@ test('sesi yang berakhir DI TENGAH pemakaian (tanpa reload): permintaan berikutn
         detailButton.click(),
     ]);
     expect(expired.status()).toBe(401);
-    await expect(page.locator('#toastMessage')).toContainText('Sesi berakhir, silakan login kembali');
+    // Release: pesan itu juga harus TERLIHAT di atas halaman login (dulu tertutup, z-index).
+    await expectToastOnTop(page, 'Sesi berakhir, silakan login kembali');
     await expect(page.getByTestId('user-name')).not.toBeVisible();
     await expect(page.getByLabel('Username')).toBeVisible();
     expect(pageErrors).toEqual([]);
@@ -107,4 +108,47 @@ test('regresi D-3: login-logout-login berulang tiga kali tidak melempar error JS
     }
 
     expect(pageErrors, `error JS tidak terduga selama siklus login-logout: ${pageErrors.join(' | ')}`).toEqual([]);
+});
+
+/**
+ * Mencatat opasitas #loginPage TEPAT saat #authLoading disembunyikan — dari
+ * MutationObserver yang dipasang sebelum dokumen dimuat, dijalankan sebelum
+ * frame berikutnya dilukis. Mengukur sesudahnya tidak cukup: transisi 0.6s
+ * sudah berjalan dan kilasannya terlewat.
+ */
+function recordLoginOpacityWhenAuthKnown() {
+    window.__authReady = null;
+    const observer = new MutationObserver(() => {
+        const loading = document.getElementById('authLoading');
+        const login = document.getElementById('loginPage');
+        if (!loading || !login || window.__authReady || !loading.classList.contains('hidden')) return;
+        window.__authReady = {
+            loginOpacity: getComputedStyle(login).opacity,
+            mainApp: getComputedStyle(document.getElementById('mainApp')).display,
+        };
+        observer.disconnect();
+    });
+    observer.observe(document, { attributes: true, subtree: true, attributeFilter: ['class'] });
+}
+
+test('reload dengan sesi yang masih berlaku: kartu login sudah tidak terlihat saat overlay pemuatan hilang (tanpa kilasan login di atas dashboard)', async ({ page }) => {
+    await loginViaUi(page, 'arif');
+    await page.addInitScript(recordLoginOpacityWhenAuthKnown);
+
+    await page.reload();
+    await expect(page.getByTestId('user-name')).toBeVisible();
+    await expect.poll(() => page.evaluate(() => window.__authReady)).not.toBeNull();
+    const atAuthReady = await page.evaluate(() => window.__authReady);
+    expect(atAuthReady.mainApp, 'sesi dipulihkan: dashboard tampil').toBe('block');
+    expect(atAuthReady.loginOpacity, 'kartu login tidak terlihat saat dashboard muncul').toBe('0');
+});
+
+test('kunjungan baru tanpa sesi: halaman login tetap muncul penuh setelah overlay pemuatan hilang', async ({ page }) => {
+    await page.addInitScript(recordLoginOpacityWhenAuthKnown);
+    await page.goto('/');
+    await expect(page.locator('#authLoading')).toHaveClass(/hidden/);
+    await expect(page.locator('#loginPage')).toHaveCSS('opacity', '1');
+    await expect(page.locator('#loginPage')).toHaveCSS('pointer-events', 'auto');
+    await expect(page.getByLabel('Username')).toBeFocused();
+    expect((await page.evaluate(() => window.__authReady)).mainApp).toBe('none');
 });

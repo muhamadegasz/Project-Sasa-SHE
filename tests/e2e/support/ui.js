@@ -66,3 +66,24 @@ export async function selectPlant(page, searchPlaceholder, plantName) {
     }
     throw lastError;
 }
+
+/**
+ * Release: notifikasi benar-benar TERLIHAT — berisi `text`, tampil (.show),
+ * DAN menjadi elemen teratas di posisinya. Memeriksa isi DOM saja tidak
+ * cukup: sebelumnya toast di halaman login tertutup halaman login (z-index).
+ */
+export async function expectToastOnTop(page, text) {
+    const toast = page.locator('#toastMessage');
+    await expect(toast).toContainText(text);
+    await expect(toast).toHaveClass(/show/);
+    await expect.poll(() => toast.evaluate((element) => {
+        // .toast-msg memakai pointer-events: none, dan elementFromPoint()
+        // melewati elemen seperti itu — diaktifkan sesaat hanya untuk uji-tumpuk.
+        const previous = element.style.pointerEvents;
+        element.style.pointerEvents = 'auto';
+        const rect = element.getBoundingClientRect();
+        const topmost = document.elementFromPoint(rect.left + rect.width / 2, rect.top + rect.height / 2);
+        element.style.pointerEvents = previous;
+        return element.contains(topmost);
+    }), { message: 'toast harus berada paling atas, tidak tertutup halaman login' }).toBe(true);
+}

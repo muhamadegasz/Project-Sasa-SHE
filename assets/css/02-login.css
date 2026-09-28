@@ -65,6 +65,16 @@
     display: none;
 }
 
+/* Selama status sesi belum diketahui (#authLoading masih tampil), halaman
+ * login tidak terlihat. Tanpa ini, sesi yang dipulihkan setelah reload
+ * menampilkan kartu login di atas dashboard selama transisi fade-out 0.6s
+ * .login-page.hidden. Tanpa sesi: begitu #authLoading disembunyikan, halaman
+ * login muncul lewat transisi yang sudah ada. */
+#authLoading:not(.hidden) ~ #loginPage {
+    opacity: 0;
+    pointer-events: none;
+}
+
 .login-container {
     background: rgba(255, 255, 255, 0.95);
     backdrop-filter: blur(20px);
