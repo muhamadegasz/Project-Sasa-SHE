@@ -27,6 +27,8 @@ test('login dengan password salah tetap di halaman login, field password dikoson
     await expect(page.getByTestId('user-name')).not.toBeVisible();
     await expect(page.getByLabel('Password')).toHaveValue('');
     await expect(page.getByRole('button', { name: 'Masuk' })).toBeVisible();
+    // Phase 17.4C: 401 kredensial salah bukan sesi yang kedaluwarsa.
+    await expect(page.locator('#toastMessage')).not.toContainText('Sesi berakhir');
 });
 
 test('login dengan kredensial benar masuk ke dashboard dengan identitas yang benar', async ({ page }) => {

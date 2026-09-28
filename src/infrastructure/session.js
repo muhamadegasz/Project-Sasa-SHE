@@ -47,8 +47,17 @@ export function onSessionExpired(handler) {
     onSessionExpiredHandler = handler;
 }
 
-/** Dipanggil oleh api-client.js begitu sebuah request mengembalikan 401. */
+/**
+ * Dipanggil oleh api-client.js begitu sebuah request mengembalikan 401.
+ *
+ * Phase 17.4C: "sesi berakhir" hanya bermakna bila halaman ini memang sedang
+ * punya sesi. 401 tanpa sesi — pemeriksaan GET /api/auth/me saat membuka
+ * halaman login (restoreSession) atau login dengan kredensial salah — bukan
+ * sesi yang kedaluwarsa, jadi handler tidak dipanggil. Beberapa 401 bersamaan
+ * dalam satu sesi juga hanya memicu handler sekali.
+ */
 export function notifySessionExpired() {
+    const hadSession = currentUser !== null;
     clearSession();
-    if (onSessionExpiredHandler) onSessionExpiredHandler();
+    if (hadSession && onSessionExpiredHandler) onSessionExpiredHandler();
 }
