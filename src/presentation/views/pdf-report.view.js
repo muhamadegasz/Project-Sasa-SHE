@@ -1,7 +1,8 @@
 /* pdf-report.view.js — markup laporan inspeksi yang dicetak ke PDF.
  *
- * Dipindah dari legacy-app.js (Phase 8). Fungsi murni: item masuk, HTML keluar,
- * tidak menyentuh DOM. Pemanggil (cetakPDF di legacy-app.js) yang menyuntikkannya
+ * Dipindah dari legacy-app.js (Phase 8). buildInspectionReportHtml murni: item masuk,
+ * HTML keluar, tidak menyentuh DOM (release: gambar tanda tangan disiapkan terpisah
+ * oleh prepareSignatureImages). Pemanggil (cetakPDF di legacy-app.js) yang menyuntikkannya
  * ke #pdfContent lalu memberikannya ke infrastructure/pdf-exporter.js.
  */
 
@@ -11,6 +12,8 @@ import { formatActionStatus, formatInspectionStatus } from '../../shared/labels.
 import { formatDate } from '../../shared/date.js';
 import { isStageApproved, latestDecision } from '../../domain/approval-rules.js';
 import { INSPECTION_STATUS } from '../../domain/statuses.js';
+import * as inspectionRepository from '../../repositories/inspection-repository.js';
+import { composeSignature } from '../components/watermark.js';
 
 function buildGalleryHtml(item) {
     const allPhotos = [...(item.fotoDekat || []), ...(item.fotoJauh || [])];
@@ -35,14 +38,33 @@ function buildPerbaikanRows(item) {
         '<tr><td colspan="4" style="text-align:center;color:#888;">Belum ada tindakan perbaikan</td></tr>';
 }
 
-/** Phase 17.2: satu blok per tahap pengesahan (tiga), dari keputusan terakhirnya. Gambar tanda tangan menyusul (Phase 17.3+). */
-function buildApprovalSignatures(item) {
+/**
+ * Gambar tanda tangan satu persetujuan di PDF (release): gambar yang sudah
+ * disiapkan prepareSignatureImages() (tanda tangan + watermark di posisi
+ * tersimpan), keterangan "data lama" untuk persetujuan tanpa tanda tangan,
+ * atau garis kosong bila gambar tidak disediakan pemanggil.
+ */
+function buildSignatureImage(approval, signatureImages) {
+    if (!approval.hasSignature || approval.id == null) {
+        return '<div class="pdf-signature-note" style="font-size:0.6rem;font-style:italic;color:#888;">Tanpa tanda tangan (data lama)</div>';
+    }
+    const src = signatureImages.get(approval.id);
+    if (!src) return '';
+    return `<img class="pdf-signature" src="${escapeHtml(src)}" alt="Tanda tangan ${escapeHtml(approval.reviewerName || '')}" style="display:block;max-width:170px;max-height:64px;margin:0.2rem auto;">`;
+}
+
+/**
+ * Phase 17.2: satu blok per tahap pengesahan (tiga), dari keputusan terakhirnya.
+ * Release: termasuk gambar tanda tangan keputusan itu (+ watermark bila ada).
+ */
+function buildApprovalSignatures(item, signatureImages) {
     return APPROVAL_STAGES.map(s => {
         if (isStageApproved(item, s.id)) {
             const approval = latestDecision(item, s.id);
             return `
-                <div class="sign-item">
+                <div class="sign-item" data-stage="${escapeHtml(s.id)}">
                     <div style="font-size:0.7rem;color:#888;">${escapeHtml(s.title)}</div>
+                    ${buildSignatureImage(approval, signatureImages)}
                     <div class="sign-name">${escapeHtml(approval.reviewerName || '-')}</div>
                     <div style="font-size:0.7rem;color:#666;">${escapeHtml(s.title)}</div>
                     <div class="sign-line"></div>
@@ -60,8 +82,43 @@ function buildApprovalSignatures(item) {
     }).join('');
 }
 
-/** Markup lengkap laporan inspeksi (header, info, temuan, perbaikan, foto, tanda tangan, footer). */
-export function buildInspectionReportHtml(item) {
+/**
+ * Menyiapkan gambar tanda tangan untuk PDF: untuk setiap tahap yang disetujui
+ * (keputusan terakhirnya, sama dengan yang dicetak), gambar diambil lewat
+ * endpoint terotorisasi lalu digabung dengan watermark di posisi tersimpan
+ * (components/watermark.js). Hasilnya URL blob: sementara — sumber sama
+ * dengan halaman, jadi html2canvas bisa merendernya tanpa masalah CORS.
+ * Persetujuan lama tanpa tanda tangan dilewati. Gagal memuat satu tanda
+ * tangan = error (PDF tidak dibuat setengah-setengah).
+ *
+ * @returns {Promise<{ images: Map<number, string>, release: () => void }>}
+ */
+export async function prepareSignatureImages(item) {
+    const urls = [];
+    const images = new Map();
+    try {
+        for (const stage of APPROVAL_STAGES) {
+            if (!isStageApproved(item, stage.id)) continue;
+            const approval = latestDecision(item, stage.id);
+            if (!approval.hasSignature || approval.id == null) continue;
+            const blob = await inspectionRepository.fetchSignatureImage(item.id, approval.id);
+            const url = URL.createObjectURL(await composeSignature(blob, approval.watermark || null));
+            urls.push(url);
+            images.set(approval.id, url);
+        }
+    } catch (error) {
+        urls.forEach((url) => URL.revokeObjectURL(url));
+        throw error;
+    }
+    return { images, release: () => urls.forEach((url) => URL.revokeObjectURL(url)) };
+}
+
+/**
+ * Markup lengkap laporan inspeksi (header, info, temuan, perbaikan, foto,
+ * tanda tangan, footer). `signatureImages`: hasil prepareSignatureImages()
+ * (id keputusan -> src gambar); tanpa itu blok pengesahan hanya berisi nama.
+ */
+export function buildInspectionReportHtml(item, signatureImages = new Map()) {
     const now = new Date();
     const allPhotos = [...(item.fotoDekat || []), ...(item.fotoJauh || [])];
 
@@ -146,7 +203,7 @@ export function buildInspectionReportHtml(item) {
                 <div class="section">
                     <div class="title"><i class="fas fa-stamp"></i> Lembar Pengesahan</div>
                     <div class="signature-block" style="display:flex;justify-content:space-around;flex-wrap:wrap;gap:1rem;margin-top:0.5rem;">
-                        ${buildApprovalSignatures(item)}
+                        ${buildApprovalSignatures(item, signatureImages)}
                     </div>
                 </div>
             </div>

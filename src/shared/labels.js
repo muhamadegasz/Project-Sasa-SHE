@@ -14,6 +14,20 @@
 
 import { countApproved, isFullyApproved, totalStages } from '../domain/approval-rules.js';
 import { ACTION_STATUS, INSPECTION_STATUS, REPAIR_STATUS } from '../domain/statuses.js';
+import { ROLE } from '../config/constants.js';
+
+const ROLE_LABELS = {
+    [ROLE.SAFETY_OFFICER]: 'Safety Officer',
+    [ROLE.KOORDINATOR_K3L]: 'Koordinator K3L',
+    [ROLE.MANAJER_BAGIAN]: 'Manajer Bagian',
+    [ROLE.KETUA_P2K3]: 'Ketua P2K3',
+    [ROLE.ADMIN]: 'Admin',
+};
+
+/** Label role pengguna (Phase 18) — tabel dan formulir pengelolaan akun. */
+export function formatRole(role) {
+    return ROLE_LABELS[role] || role;
+}
 
 const INSPECTION_STATUS_LABELS = {
     [INSPECTION_STATUS.DRAFT]: 'Draft',

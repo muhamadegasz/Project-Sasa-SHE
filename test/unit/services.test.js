@@ -683,3 +683,17 @@ test('penolakan tidak pernah membawa watermark', async () => {
     const [entry] = (await inspectionFake.findById('INS-002')).approvalHistory;
     assert.equal(entry.watermark, null);
 });
+
+// Phase 18: Admin menghapus inspeksi non-draft (inspection-policy canDelete).
+test('removeAsAdmin: Admin menghapus inspeksi non-draft; draft tidak terlihat -> NOT_FOUND; role lain -> FORBIDDEN/NOT_FOUND', async () => {
+    const draft = await createDraft();
+    assert.equal((await inspectionService.removeAsAdmin(draft.id, admin)).reason, IE.NOT_FOUND, 'draft tidak terlihat oleh Admin');
+    assert.equal((await inspectionService.removeAsAdmin('TIDAK-ADA', admin)).reason, IE.NOT_FOUND);
+    assert.equal((await inspectionService.removeAsAdmin('INS-002', owner)).reason, IE.FORBIDDEN, 'pemilik (Safety Officer) bukan Admin');
+    assert.equal((await inspectionService.removeAsAdmin('INS-002', dewiPlant9)).reason, IE.FORBIDDEN, 'Koordinator yang bisa melihat');
+
+    assert.deepEqual(await inspectionService.removeAsAdmin('INS-002', admin), { ok: true, data: { removed: true } });
+    assert.equal(await inspectionFake.findById('INS-002'), undefined);
+    assert.ok(await inspectionFake.findById('INS-001'), 'inspeksi lain tidak tersentuh');
+    assert.ok(await inspectionFake.findById(draft.id));
+});

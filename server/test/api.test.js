@@ -776,7 +776,8 @@ test('hapus draft: hanya pemilik & hanya DRAFT; file fotonya ikut dihapus dari d
     const filesWithDraft = readdirSync(UPLOAD_DIR).length;
 
     assert.equal((await deleteAs(tulus, draft.id)).status, 404, 'SO lain');
-    assert.equal((await deleteAs(admin, draft.id)).status, 403, 'Admin (penghapusan Admin fase lain)');
+    // Phase 18: Admin boleh menghapus inspeksi non-draft, tapi draft tidak terlihat olehnya -> 404.
+    assert.equal((await deleteAs(admin, draft.id)).status, 404, 'Admin tidak melihat draft');
     const submitted = await createInspection(arif, DRAFT_CONTENT);
     const notDraft = await deleteAs(arif, submitted.id);
     assert.equal(notDraft.status, 400);
@@ -1319,4 +1320,397 @@ test('constraint DB watermark: aktif tanpa posisi / di luar 0..1 / posisi saat n
         await connection.rollback();
         connection.release();
     }
+});
+
+// =========================================================================
+// Phase 18 — pengelolaan akun oleh Admin: /api/users (buat, ubah, aktif/nonaktif)
+// Akun uji dibuat baru di setiap test (password = username, supaya loginAs()
+// berlaku) — akun seed tidak pernah diubah, karena test lain memakainya.
+// =========================================================================
+
+let userSeq = 0;
+function uniqueUsername(prefix) {
+    userSeq += 1;
+    return `${prefix}${Date.now().toString(36)}${userSeq}`;
+}
+
+function postUser(session, body) {
+    return withCsrf(session.agent.post('/api/users'), session.csrfToken).send(body);
+}
+function putUser(session, id, body) {
+    return withCsrf(session.agent.put(`/api/users/${id}`), session.csrfToken).send(body);
+}
+function putActive(session, id, isActive) {
+    return withCsrf(session.agent.put(`/api/users/${id}/active`), session.csrfToken).send({ isActive });
+}
+async function userRow(id) {
+    const [[row]] = await pool.query('SELECT username, password_hash, display_name, role, plant_id, is_active FROM users WHERE id = ?', [id]);
+    return row;
+}
+async function createOfficer(admin, overrides = {}) {
+    const username = uniqueUsername('uji');
+    const res = await postUser(admin, { username, displayName: 'Uji', role: 'safety_officer', password: username, ...overrides });
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    return res.body.user;
+}
+
+test('users: hanya Admin — role lain 403, tanpa login 401, tanpa CSRF 403; tidak ada yang berubah', async () => {
+    const admin = await loginAs('admin');
+    const target = await createOfficer(admin);
+    const before = await userRow(target.id);
+    const [[{ total: countBefore }]] = await pool.query('SELECT COUNT(*) total FROM users');
+
+    for (const username of ['arif', 'dewi', 'andi', 'hadi']) {
+        const session = await loginAs(username);
+        const create = await postUser(session, { username: uniqueUsername('x'), displayName: 'X', role: 'admin', password: 'rahasia' });
+        assert.equal(create.status, 403, `${username} create`);
+        assert.equal((await putUser(session, target.id, { displayName: 'X', role: 'admin' })).status, 403, `${username} update`);
+        assert.equal((await putActive(session, target.id, false)).status, 403, `${username} deactivate`);
+        assert.equal((await session.agent.get('/api/users')).status, 403, `${username} list`);
+    }
+    assert.equal((await request(app).post('/api/users').send({ username: 'x' })).status, 401);
+    assert.equal((await admin.agent.post('/api/users').send({ username: uniqueUsername('x'), displayName: 'X', role: 'admin', password: 'rahasia' })).status, 403, 'tanpa CSRF');
+
+    assert.deepEqual(await userRow(target.id), before);
+    const [[{ total: countAfter }]] = await pool.query('SELECT COUNT(*) total FROM users');
+    assert.equal(countAfter, countBefore);
+});
+
+test('users: Admin membuat akun -> aktif, bisa login, password tersimpan sebagai hash bcrypt, hash tidak pernah dikirim', async () => {
+    const admin = await loginAs('admin');
+    const username = uniqueUsername('baru');
+    const res = await postUser(admin, { username: `  ${username}  `, displayName: '  Petugas Baru  ', role: 'safety_officer', plantId: 9, password: username });
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    assert.deepEqual(res.body.user, { id: res.body.user.id, username, displayName: 'Petugas Baru', role: 'safety_officer', plantId: null, isActive: true });
+
+    const row = await userRow(res.body.user.id);
+    assert.match(row.password_hash, /^\$2[aby]\$10\$/, 'hash bcrypt');
+    assert.notEqual(row.password_hash, username);
+    assert.equal(row.plant_id, null, 'plant dinormalisasi null untuk role selain koordinator');
+
+    const session = await loginAs(username);
+    assert.equal(session.user.role, 'safety_officer');
+    const list = await admin.agent.get('/api/users');
+    assert.ok(Array.isArray(list.body));
+    assert.ok(!JSON.stringify(list.body).includes('$2'), 'tidak ada hash di daftar');
+    assert.ok(!JSON.stringify(res.body).includes('$2'));
+});
+
+test('users: Koordinator wajib plant yang ada; isian tidak sah & username terpakai -> 400 tanpa akun tersimpan', async () => {
+    const admin = await loginAs('admin');
+    const [[{ total: countBefore }]] = await pool.query('SELECT COUNT(*) total FROM users');
+    const base = { username: uniqueUsername('koor'), displayName: 'Koor', role: 'koordinator_k3l', password: 'rahasia' };
+
+    for (const [label, body, error] of [
+        ['koordinator tanpa plant', base, 'PLANT_REQUIRED'],
+        ['plant bukan angka', { ...base, plantId: '1 OR 1=1' }, 'PLANT_INVALID'],
+        ['plant tidak ada (id 13 sengaja tidak ada)', { ...base, plantId: 13 }, 'PLANT_NOT_FOUND'],
+        ['role tidak dikenal', { ...base, role: 'superadmin' }, 'ROLE_INVALID'],
+        ['username berspasi', { ...base, username: 'a b' }, 'USERNAME_INVALID'],
+        ['password pendek', { ...base, plantId: 1, password: 'abc' }, 'PASSWORD_TOO_SHORT'],
+        ['username terpakai', { ...base, plantId: 1, username: 'arif' }, 'USERNAME_TAKEN'],
+    ]) {
+        const res = await postUser(admin, body);
+        assert.equal(res.status, 400, label);
+        assert.equal(res.body.error, error, label);
+    }
+    const [[{ total: countAfter }]] = await pool.query('SELECT COUNT(*) total FROM users');
+    assert.equal(countAfter, countBefore, 'tidak ada akun tersimpan');
+
+    const ok = await postUser(admin, { ...base, plantId: '9' });
+    assert.equal(ok.status, 201, JSON.stringify(ok.body));
+    assert.equal((await userRow(ok.body.user.id)).plant_id, 9);
+});
+
+test('users: ubah role Koordinator -> role lain melepas plant otomatis; ubah password; username tidak berubah', async () => {
+    const admin = await loginAs('admin');
+    const username = uniqueUsername('koor');
+    const created = await postUser(admin, { username, displayName: 'Koor', role: 'koordinator_k3l', plantId: 1, password: username });
+    const id = created.body.user.id;
+
+    const demoted = await putUser(admin, id, { displayName: 'Koor Lama', role: 'manajer_bagian', plantId: 1, username: 'diganti' });
+    assert.equal(demoted.status, 200, JSON.stringify(demoted.body));
+    assert.deepEqual([demoted.body.user.role, demoted.body.user.plantId, demoted.body.user.username], ['manajer_bagian', null, username]);
+    assert.deepEqual([(await userRow(id)).role, (await userRow(id)).plant_id], ['manajer_bagian', null]);
+
+    assert.equal((await putUser(admin, id, { displayName: 'Koor', role: 'koordinator_k3l' })).body.error, 'PLANT_REQUIRED');
+    assert.equal((await userRow(id)).role, 'manajer_bagian', 'penolakan tidak menyimpan apa pun');
+
+    const hashBefore = (await userRow(id)).password_hash;
+    assert.equal((await putUser(admin, id, { displayName: 'Koor', role: 'manajer_bagian', password: '' })).status, 200);
+    assert.equal((await userRow(id)).password_hash, hashBefore, 'password kosong = tidak diganti');
+    assert.equal((await putUser(admin, id, { displayName: 'Koor', role: 'manajer_bagian', password: 'sandibaru' })).status, 200);
+    assert.equal((await request(app).post('/api/auth/login').send({ username, password: username })).status, 401, 'password lama ditolak');
+    assert.equal((await request(app).post('/api/auth/login').send({ username, password: 'sandibaru' })).status, 200);
+
+    assert.equal((await putUser(admin, 999999, { displayName: 'X', role: 'admin' })).status, 404);
+});
+
+test('users: nonaktif -> tidak bisa login DAN sesi yang berjalan langsung 401; aktif lagi -> bisa login; Admin tidak bisa menonaktifkan / mengganti role dirinya', async () => {
+    const admin = await loginAs('admin');
+    const target = await createOfficer(admin);
+    const running = await loginAs(target.username);
+    assert.equal((await running.agent.get('/api/inspections')).status, 200);
+
+    const off = await putActive(admin, target.id, false);
+    assert.equal(off.status, 200, JSON.stringify(off.body));
+    assert.equal(off.body.user.isActive, false);
+    assert.equal((await running.agent.get('/api/inspections')).status, 401, 'sesi berjalan ditolak');
+    assert.equal((await request(app).post('/api/auth/login').send({ username: target.username, password: target.username })).status, 401);
+
+    assert.equal((await putActive(admin, target.id, 'false')).body.error, 'ACTIVE_INVALID');
+    assert.equal((await putActive(admin, target.id, true)).body.user.isActive, true);
+    await loginAs(target.username);
+
+    const self = await putActive(admin, admin.user.id, false);
+    assert.deepEqual([self.status, self.body.error], [400, 'CANNOT_DEACTIVATE_SELF']);
+    const ownRole = await putUser(admin, admin.user.id, { displayName: 'Administrator', role: 'safety_officer' });
+    assert.deepEqual([ownRole.status, ownRole.body.error], [400, 'CANNOT_CHANGE_OWN_ROLE']);
+    assert.deepEqual([(await userRow(admin.user.id)).is_active, (await userRow(admin.user.id)).role], [1, 'admin']);
+});
+
+function deleteUser(session, id) {
+    return withCsrf(session.agent.delete(`/api/users/${id}`), session.csrfToken);
+}
+
+test('users: hapus permanen — hanya akun nonaktif tanpa inspeksi belum selesai; riwayat bisnis tetap utuh, hanya tautan user menjadi NULL', async () => {
+    const admin = await loginAs('admin');
+    const andi = await loginAs('andi');
+    const hadi = await loginAs('hadi');
+    const officerName = uniqueUsername('ofc');
+    const coordName = uniqueUsername('kor');
+    const officerId = (await postUser(admin, { username: officerName, displayName: 'Petugas Dihapus', role: 'safety_officer', password: officerName })).body.user.id;
+    const coordId = (await postUser(admin, { username: coordName, displayName: 'Koordinator Dihapus', role: 'koordinator_k3l', plantId: 1, password: coordName })).body.user.id;
+
+    // Jejak bisnis: inspeksi + foto (pembuat), keputusan pengesahan (Koordinator), jadwal, dan satu draft.
+    let officer = await loginAs(officerName);
+    const coordinator = await loginAs(coordName);
+    const inspection = await createInspectionWithPhoto(officer, 1);
+    const draft = await createInspection(officer, DRAFT_CONTENT, { submit: false });
+    const schedule = await withCsrf(officer.agent.post('/api/schedules'), officer.csrfToken)
+        .send({ plantId: 1, officer: 'Petugas Dihapus', tahun: 2026, tanggalJadwal: '2026-11-01', periode: 4, minggu: 1 });
+    assert.equal(schedule.status, 201);
+    assert.equal((await approveWith(coordinator, inspection.id, 'koordinator_k3l')).status, 200);
+
+    // Pengaman.
+    assert.deepEqual([(await deleteUser(admin, officerId)).status, (await deleteUser(admin, officerId)).body.error], [400, 'USER_ACTIVE']);
+    assert.equal((await putActive(admin, officerId, false)).status, 200);
+    const open = await deleteUser(admin, officerId);
+    assert.deepEqual({ status: open.status, error: open.body.error, data: open.body.data }, { status: 400, error: 'USER_HAS_OPEN_INSPECTIONS', data: { openInspections: 2 } },
+        'draft + inspeksi yang sedang direview');
+    assert.equal((await deleteUser(andi, coordId)).status, 403, 'bukan Admin');
+    assert.deepEqual([(await deleteUser(admin, admin.user.id)).body.error], ['CANNOT_DELETE_SELF']);
+    assert.equal((await deleteUser(admin, 999999)).status, 404);
+
+    // Menuntaskan: pemilik (diaktifkan sebentar) menghapus draft-nya; inspeksi disetujui sampai selesai.
+    await putActive(admin, officerId, true);
+    officer = await loginAs(officerName);
+    assert.equal((await withCsrf(officer.agent.delete(`/api/inspections/${draft.id}`), officer.csrfToken)).status, 200);
+    await putActive(admin, officerId, false);
+    assert.equal((await deleteUser(admin, officerId)).body.error, 'USER_HAS_OPEN_INSPECTIONS', 'masih ada yang sedang direview');
+    assert.equal((await approveWith(andi, inspection.id, 'manajer')).status, 200);
+    assert.equal((await approveWith(hadi, inspection.id, 'ketua_p2k3')).status, 200);
+
+    const id = toNumeric(inspection.id);
+    const counts = async () => {
+        const [[row]] = await pool.query(
+            `SELECT (SELECT COUNT(*) FROM findings WHERE inspection_id = ?) findings,
+                    (SELECT COUNT(*) FROM corrective_actions WHERE inspection_id = ?) actions,
+                    (SELECT COUNT(*) FROM photos WHERE inspection_id = ?) photos,
+                    (SELECT COUNT(*) FROM approvals WHERE inspection_id = ?) approvals,
+                    (SELECT COUNT(*) FROM inspections) inspections,
+                    (SELECT COUNT(*) FROM schedules) schedules`,
+            [id, id, id, id],
+        );
+        return row;
+    };
+    const before = await counts();
+
+    // Hapus permanen kedua akun.
+    assert.deepEqual((await deleteUser(admin, officerId)).body, { removed: true });
+    await putActive(admin, coordId, false);
+    assert.equal((await deleteUser(admin, coordId)).status, 200);
+
+    assert.deepEqual(await counts(), before, 'tidak ada data bisnis yang ikut terhapus');
+    const [[userRows]] = await pool.query('SELECT COUNT(*) n FROM users WHERE id IN (?, ?)', [officerId, coordId]);
+    assert.equal(userRows.n, 0);
+    const [[inspectionRow]] = await pool.query('SELECT petugas, petugas_user_id, status FROM inspections WHERE id = ?', [id]);
+    assert.deepEqual(inspectionRow, { petugas: 'Petugas Dihapus', petugas_user_id: null, status: 'completed' });
+    const [photoRows] = await pool.query('SELECT uploaded_by FROM photos WHERE inspection_id = ?', [id]);
+    assert.ok(photoRows.length > 0 && photoRows.every((row) => row.uploaded_by === null));
+    const [[scheduleRow]] = await pool.query('SELECT officer, officer_user_id FROM schedules WHERE id = ?', [toNumeric(schedule.body.schedule.id)]);
+    assert.deepEqual(scheduleRow, { officer: 'Petugas Dihapus', officer_user_id: null });
+    const [approvalRowsAfter] = await pool.query('SELECT stage, reviewer_user_id, reviewer_name FROM approvals WHERE inspection_id = ? ORDER BY id', [id]);
+    assert.deepEqual(approvalRowsAfter.map((row) => [row.stage, row.reviewer_user_id, row.reviewer_name]), [
+        ['koordinator_k3l', null, 'Koordinator Dihapus'], ['manajer', andi.user.id, 'Andi'], ['ketua_p2k3', hadi.user.id, 'Hadi'],
+    ]);
+
+    // Riwayat tetap terbaca lewat API, termasuk tanda tangan keputusan milik akun yang dihapus.
+    const detail = await admin.agent.get(`/api/inspections/${inspection.id}`);
+    assert.equal(detail.status, 200);
+    assert.equal(detail.body.petugas, 'Petugas Dihapus');
+    assert.equal(detail.body.approvalHistory[0].reviewerName, 'Koordinator Dihapus');
+    assert.equal((await getSignature(admin, inspection.id, detail.body.approvalHistory[0].id)).status, 200);
+
+    // Sesi lama akun terhapus ditolak; login ditolak.
+    assert.equal((await coordinator.agent.get('/api/inspections')).status, 401);
+    assert.equal((await request(app).post('/api/auth/login').send({ username: officerName, password: officerName })).status, 401);
+});
+
+// =========================================================================
+// Phase 18 — Admin menghapus inspeksi non-draft (inspection-policy canDelete)
+// =========================================================================
+
+async function inspectionFootprint(id) {
+    const numericId = toNumeric(id);
+    const [[row]] = await pool.query(
+        `SELECT (SELECT COUNT(*) FROM inspections WHERE id = ?) inspections,
+                (SELECT COUNT(*) FROM findings WHERE inspection_id = ?) findings,
+                (SELECT COUNT(*) FROM corrective_actions WHERE inspection_id = ?) actions,
+                (SELECT COUNT(*) FROM approvals WHERE inspection_id = ?) approvals,
+                (SELECT COUNT(*) FROM photos WHERE inspection_id = ?) photos`,
+        [numericId, numericId, numericId, numericId, numericId],
+    );
+    const [files] = await pool.query(
+        `SELECT file_path AS p FROM photos WHERE inspection_id = ?
+         UNION ALL SELECT signature_file_path FROM approvals WHERE inspection_id = ? AND signature_file_path IS NOT NULL`,
+        [numericId, numericId],
+    );
+    return { counts: row, files: files.map((file) => file.p) };
+}
+
+test('Admin menghapus inspeksi non-draft: data turunan (CASCADE) + berkas foto & tanda tangannya ikut hilang; inspeksi lain, akun, jadwal tidak tersentuh', async () => {
+    const arif = await loginAs('arif');
+    const dewi = await loginAs('dewi');
+    const andi = await loginAs('andi');
+    const hadi = await loginAs('hadi');
+    const admin = await loginAs('admin');
+    const deleteAs = (session, id) => withCsrf(session.agent.delete(`/api/inspections/${id}`), session.csrfToken);
+
+    // Target: selesai disahkan (foto + 3 tanda tangan). Pembanding: inspeksi lain dengan foto + tanda tangan.
+    const target = await createInspectionWithPhoto(arif, 1);
+    for (const [session, stage] of [[dewi, 'koordinator_k3l'], [andi, 'manajer'], [hadi, 'ketua_p2k3']]) {
+        assert.equal((await approveWith(session, target.id, stage)).status, 200);
+    }
+    const sibling = await createInspectionWithPhoto(arif, 1);
+    assert.equal((await approveWith(dewi, sibling.id, 'koordinator_k3l')).status, 200);
+
+    const targetBefore = await inspectionFootprint(target.id);
+    const siblingBefore = await inspectionFootprint(sibling.id);
+    assert.ok(targetBefore.files.length >= 4, 'foto + 3 tanda tangan');
+    assert.ok(targetBefore.files.every((file) => existsSync(path.join(UPLOAD_DIR, file))));
+    const [[globalBefore]] = await pool.query('SELECT (SELECT COUNT(*) FROM users) users, (SELECT COUNT(*) FROM schedules) schedules, (SELECT COUNT(*) FROM plants) plants, (SELECT COUNT(*) FROM inspections) inspections');
+
+    // Selain Admin: tidak ada jalur penghapusan.
+    assert.equal((await deleteAs(dewi, sibling.id)).status, 403, 'Koordinator');
+    assert.equal((await deleteAs(andi, target.id)).status, 403, 'Manajer');
+    assert.equal((await deleteAs(hadi, target.id)).status, 403, 'Ketua P2K3');
+    assert.equal((await deleteAs(arif, target.id)).body.error, 'NOT_DELETABLE', 'pemilik: hanya draft');
+    assert.equal((await request(app).delete(`/api/inspections/${target.id}`)).status, 401);
+    assert.equal((await admin.agent.delete(`/api/inspections/${target.id}`)).status, 403, 'tanpa CSRF');
+    assert.deepEqual(await inspectionFootprint(target.id), targetBefore);
+
+    // Admin: selesai (COMPLETED) dan sedang direview (IN_REVIEW) sama-sama bisa dihapus.
+    assert.deepEqual((await deleteAs(admin, target.id)).body, { removed: true });
+    const targetAfter = await inspectionFootprint(target.id);
+    assert.deepEqual(targetAfter.counts, { inspections: 0, findings: 0, actions: 0, approvals: 0, photos: 0 });
+    assert.ok(targetBefore.files.every((file) => !existsSync(path.join(UPLOAD_DIR, file))), 'berkas foto & tanda tangan terhapus dari disk');
+    assert.equal((await admin.agent.get(`/api/inspections/${target.id}`)).status, 404);
+    assert.equal((await deleteAs(admin, target.id)).status, 404, 'sudah terhapus');
+
+    assert.deepEqual(await inspectionFootprint(sibling.id), siblingBefore, 'inspeksi lain utuh');
+    assert.ok(siblingBefore.files.every((file) => existsSync(path.join(UPLOAD_DIR, file))), 'berkas inspeksi lain tetap ada');
+    const [[globalAfter]] = await pool.query('SELECT (SELECT COUNT(*) FROM users) users, (SELECT COUNT(*) FROM schedules) schedules, (SELECT COUNT(*) FROM plants) plants, (SELECT COUNT(*) FROM inspections) inspections');
+    assert.deepEqual(globalAfter, { ...globalBefore, inspections: globalBefore.inspections - 1 });
+
+    assert.deepEqual((await deleteAs(admin, sibling.id)).body, { removed: true }, 'IN_REVIEW juga bisa dihapus Admin');
+});
+
+// =========================================================================
+// Release — status tindakan perbaikan: PUT /api/inspections/:id/corrective-actions/:actionId
+// Maju saja (open -> on-progress -> closed), tanpa foto, hanya Safety Officer pemilik,
+// terkunci setelah COMPLETED; status alur kerja inspeksi tidak berubah.
+// =========================================================================
+
+function putActionStatus(session, inspectionId, actionId, status) {
+    return withCsrf(session.agent.put(`/api/inspections/${inspectionId}/corrective-actions/${actionId}`), session.csrfToken).send({ status });
+}
+async function actionRow(actionId) {
+    const [[row]] = await pool.query('SELECT inspection_id, status FROM corrective_actions WHERE id = ?', [actionId]);
+    return row;
+}
+
+test('status tindakan perbaikan: pemilik memajukan tanpa foto; mundur/asing ditolak; status inspeksi tidak berubah', async () => {
+    const arif = await loginAs('arif');
+    const inspection = await createInspection(arif, DRAFT_CONTENT); // IN_REVIEW, dengan tindakan awal "open" per temuan
+    const detail = (await arif.agent.get(`/api/inspections/${inspection.id}`)).body;
+    const [first, second] = detail.perbaikan;
+    assert.deepEqual([first.status, second.status], ['open', 'open']);
+
+    const toProgress = await putActionStatus(arif, inspection.id, first.id, 'on-progress');
+    assert.equal(toProgress.status, 200, JSON.stringify(toProgress.body));
+    assert.equal(toProgress.body.action.status, 'on-progress');
+    assert.equal((await putActionStatus(arif, inspection.id, first.id, 'closed')).status, 200);
+    assert.equal((await putActionStatus(arif, inspection.id, second.id, 'closed')).status, 200, 'open -> closed langsung (maju)');
+    assert.deepEqual([(await actionRow(first.id)).status, (await actionRow(second.id)).status], ['closed', 'closed']);
+
+    for (const [label, actionId, status, error] of [
+        ['reopen closed -> open', first.id, 'open', 'ACTION_STATUS_NOT_FORWARD'],
+        ['closed -> on-progress', first.id, 'on-progress', 'ACTION_STATUS_NOT_FORWARD'],
+        ['sama', second.id, 'closed', 'ACTION_STATUS_NOT_FORWARD'],
+        ['nilai asing', second.id, 'selesai', 'ACTION_STATUS_INVALID'],
+        ['huruf besar', second.id, 'CLOSED', 'ACTION_STATUS_INVALID'],
+    ]) {
+        const res = await putActionStatus(arif, inspection.id, actionId, status);
+        assert.deepEqual([res.status, res.body.error], [400, error], label);
+    }
+    const missing = await withCsrf(arif.agent.put(`/api/inspections/${inspection.id}/corrective-actions/${first.id}`), arif.csrfToken).send({});
+    assert.deepEqual([missing.status, missing.body.error], [400, 'ACTION_STATUS_INVALID'], 'tanpa status');
+
+    const after = (await arif.agent.get(`/api/inspections/${inspection.id}`)).body;
+    assert.deepEqual([after.status, after.currentApprovalStage], ['in_review', 'koordinator_k3l'], 'alur kerja inspeksi tidak tersentuh');
+});
+
+test('status tindakan perbaikan: hanya pemilik — SO lain / reviewer / Admin / tanpa login / tanpa CSRF ditolak; tindakan inspeksi lain -> 404; COMPLETED terkunci', async () => {
+    const arif = await loginAs('arif');
+    const tulus = await loginAs('tulus');
+    const dewi = await loginAs('dewi');
+    const andi = await loginAs('andi');
+    const hadi = await loginAs('hadi');
+    const admin = await loginAs('admin');
+    const inspection = await createInspection(arif, DRAFT_CONTENT);
+    const other = await createInspection(arif, DRAFT_CONTENT);
+    const actionId = (await arif.agent.get(`/api/inspections/${inspection.id}`)).body.perbaikan[0].id;
+    const otherActionId = (await arif.agent.get(`/api/inspections/${other.id}`)).body.perbaikan[0].id;
+
+    assert.equal((await putActionStatus(tulus, inspection.id, actionId, 'closed')).status, 403, 'SO lain (melihat IN_REVIEW)');
+    assert.equal((await putActionStatus(dewi, inspection.id, actionId, 'closed')).status, 403, 'Koordinator');
+    assert.equal((await putActionStatus(admin, inspection.id, actionId, 'closed')).status, 403, 'Admin');
+    assert.equal((await request(app).put(`/api/inspections/${inspection.id}/corrective-actions/${actionId}`).send({ status: 'closed' })).status, 401);
+    assert.equal((await arif.agent.put(`/api/inspections/${inspection.id}/corrective-actions/${actionId}`).send({ status: 'closed' })).status, 403, 'tanpa CSRF');
+    const crossed = await putActionStatus(arif, inspection.id, otherActionId, 'closed');
+    assert.deepEqual({ status: crossed.status, body: crossed.body }, { status: 404, body: { error: 'NOT_FOUND' } }, 'id tindakan inspeksi lain');
+    assert.equal((await putActionStatus(arif, inspection.id, 999999, 'closed')).status, 404);
+    assert.deepEqual([(await actionRow(actionId)).status, (await actionRow(otherActionId)).status], ['open', 'open']);
+
+    for (const [session, stage] of [[dewi, 'koordinator_k3l'], [andi, 'manajer'], [hadi, 'ketua_p2k3']]) {
+        assert.equal((await approveWith(session, inspection.id, stage)).status, 200);
+    }
+    const locked = await putActionStatus(arif, inspection.id, actionId, 'closed');
+    assert.deepEqual([locked.status, locked.body.error], [400, 'INSPECTION_COMPLETED']);
+    assert.equal((await actionRow(actionId)).status, 'open');
+});
+
+test('status tindakan perbaikan: penjaga repository (satu UPDATE) — status lama basi, pemilik lain, atau inspeksi COMPLETED -> tidak disimpan', async () => {
+    const { updateCorrectiveActionStatus } = await import('../repositories/inspection-repository.js');
+    const arif = await loginAs('arif');
+    const tulus = await loginAs('tulus');
+    const inspection = await createInspection(arif, DRAFT_CONTENT);
+    const actionId = (await arif.agent.get(`/api/inspections/${inspection.id}`)).body.perbaikan[0].id;
+
+    assert.equal(await updateCorrectiveActionStatus(inspection.id, actionId, 'on-progress', 'closed', arif.user.id), false, 'status lama basi');
+    assert.equal(await updateCorrectiveActionStatus(inspection.id, actionId, 'open', 'closed', tulus.user.id), false, 'bukan pemilik');
+    await pool.query("UPDATE inspections SET status = 'completed', current_approval_stage = NULL WHERE id = ?", [toNumeric(inspection.id)]);
+    assert.equal(await updateCorrectiveActionStatus(inspection.id, actionId, 'open', 'closed', arif.user.id), false, 'inspeksi COMPLETED');
+    assert.equal((await actionRow(actionId)).status, 'open');
 });

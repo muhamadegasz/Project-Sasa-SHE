@@ -112,6 +112,14 @@ export async function removeDraft(inspectionId) {
     return true;
 }
 
+/** Phase 18: penjaga yang sama dengan versi MySQL — hanya inspeksi non-draft. */
+export async function removeAsAdmin(inspectionId) {
+    const index = inspections.findIndex((row) => row.id === inspectionId && row.status !== 'draft');
+    if (index === -1) return false;
+    inspections.splice(index, 1);
+    return true;
+}
+
 export async function recordDecision(inspectionId, decision, nextState, signature = null) {
     const inspection = inspections.find((row) => row.id === inspectionId);
     if (!inspection || inspection.status !== 'in_review' || inspection.currentApprovalStage !== decision.stage) {
@@ -123,6 +131,16 @@ export async function recordDecision(inspectionId, decision, nextState, signatur
     inspection.approvalHistory = [...(inspection.approvalHistory || []), { ...decision, hasSignature: Boolean(signature) }];
     inspection.status = nextState.status;
     inspection.currentApprovalStage = nextState.currentApprovalStage;
+    return true;
+}
+
+/** Release: penjaga yang sama dengan versi MySQL (status lama, pemilik, belum COMPLETED). */
+export async function updateCorrectiveActionStatus(inspectionId, actionId, fromStatus, toStatus, ownerId) {
+    const inspection = inspections.find((row) => row.id === inspectionId);
+    if (!inspection || inspection.status === 'completed' || Number(inspection.petugasUserId) !== Number(ownerId)) return false;
+    const action = (inspection.perbaikan || []).find((item) => String(item.id) === String(actionId));
+    if (!action || action.status !== fromStatus) return false;
+    action.status = toStatus;
     return true;
 }
 

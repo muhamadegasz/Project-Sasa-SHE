@@ -127,9 +127,14 @@ inspectionsRouter.post('/:id/submit', requireRole('safety_officer'), asyncHandle
     sendResult(res, await inspectionService.submit(req.params.id, req.user));
 }));
 
-// Menghapus draft milik sendiri — BUKAN penghapusan inspeksi oleh Admin.
-inspectionsRouter.delete('/:id', requireRole('safety_officer'), asyncHandler(async (req, res) => {
-    sendResult(res, await inspectionService.removeDraft(req.params.id, req.user));
+// Safety Officer: menghapus draft milik sendiri. Phase 18: Admin menghapus
+// inspeksi non-draft (inspection-service.js removeAsAdmin). Jalurnya dipilih
+// dari role sesi, tidak pernah dari isian permintaan.
+inspectionsRouter.delete('/:id', requireRole('safety_officer', 'admin'), asyncHandler(async (req, res) => {
+    const result = req.user.role === 'admin'
+        ? await inspectionService.removeAsAdmin(req.params.id, req.user)
+        : await inspectionService.removeDraft(req.params.id, req.user);
+    sendResult(res, result);
 }));
 
 /**
@@ -223,6 +228,15 @@ inspectionsRouter.post(
         }
     }),
 );
+
+// Release: mengubah status tindakan perbaikan yang sudah ada — { status }. Maju
+// saja (open -> on-progress -> closed), tanpa foto; wewenang sama dengan
+// menambah (Safety Officer pemilik, inspeksi belum COMPLETED). Status alur
+// kerja inspeksi tidak disentuh.
+inspectionsRouter.put('/:id/corrective-actions/:actionId', requireRole('safety_officer'), asyncHandler(async (req, res) => {
+    const body = req.body || {};
+    sendResult(res, await correctiveActionService.changeActionStatus(req.params.id, req.params.actionId, body.status, req.user));
+}));
 
 // GET, jadi tidak butuh CSRF (requireCsrf mengecualikan method aman, lihat
 // server/middleware/csrf.js) — tapi tetap butuh sesi login seperti seluruh

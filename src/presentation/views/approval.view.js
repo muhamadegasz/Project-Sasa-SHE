@@ -19,11 +19,13 @@ import { escapeHtml } from '../../shared/html.js';
 import { formatDate } from '../../shared/date.js';
 import { formatInspectionStatus } from '../../shared/labels.js';
 import { APPROVAL_STAGES } from '../../config/constants.js';
-import { isStageApproved, latestDecision, totalStages } from '../../domain/approval-rules.js';
+import { isStageApproved, latestDecision, stageDecisions, totalStages } from '../../domain/approval-rules.js';
 import { isAwaitingStage } from '../../domain/workflow-rules.js';
-import { INSPECTION_STATUS } from '../../domain/statuses.js';
+import { APPROVAL_DECISION, INSPECTION_STATUS } from '../../domain/statuses.js';
 import * as inspectionRepository from '../../repositories/inspection-repository.js';
 import { signatureUrl } from '../../infrastructure/api-client.js';
+import { getCurrentUser } from '../../infrastructure/session.js';
+import { canApprove, canReject } from '../../domain/inspection-policy.js';
 import { bindModalClose, openModal } from '../components/modal.js';
 import { showToast } from '../components/toast.js';
 
@@ -50,7 +52,48 @@ function renderStageSignature(item, decision) {
         </a>`;
 }
 
-export function renderApprovalStages(item) {
+/**
+ * Release: seluruh attempt satu tahap, urut attempt (riwayat append-only).
+ * Ditampilkan bila tahap punya keputusan yang BELUM terwakili ringkasan
+ * kartunya — mis. ditolak lalu disetujui pada attempt berikutnya, atau
+ * ditolak lalu diajukan ulang dan kini menunggu lagi (penolakan itu dulu
+ * tidak terlihat sama sekali). Tahap dengan satu keputusan yang sudah
+ * diringkas kartu tidak diulang. Hanya membaca item.approvalHistory.
+ */
+function renderStageHistory(item, stage, summarizedLatest) {
+    const decisions = stageDecisions(item, stage.id);
+    if (decisions.length <= (summarizedLatest ? 1 : 0)) return '';
+    const attempts = decisions.map((decision) => {
+        const approved = decision.decision === APPROVAL_DECISION.APPROVED;
+        const reason = !approved
+            ? `<div class="stage-attempt-reason">Alasan: ${escapeHtml(decision.rejectionReason || '-')}</div>`
+            : '';
+        return `
+            <li class="stage-attempt ${approved ? 'approved' : 'rejected'}" data-testid="stage-attempt" data-decision="${escapeHtml(decision.decision)}">
+                <span class="stage-attempt-round">Percobaan ${escapeHtml(decision.attempt)}</span>
+                ${approved ? '✅ Disetujui' : '❌ Ditolak'} · ${escapeHtml(decision.reviewerName || '-')} · ${escapeHtml(formatDate(decision.decidedAt))}
+                ${reason}
+            </li>`;
+    }).join('');
+    return `<ol class="stage-history" data-testid="stage-history" aria-label="Riwayat ${escapeHtml(stage.title)}">${attempts}</ol>`;
+}
+
+/**
+ * Release: apakah `user` boleh memutuskan tahap yang sedang berjalan — aturan
+ * domain yang sama dengan server (role + tahap + plant Koordinator). Hanya
+ * menentukan TAMPILAN; server tetap otoritatif.
+ */
+export function canDecideCurrentStage(user, item) {
+    return canApprove(user, item) || canReject(user, item);
+}
+
+/**
+ * `user` (bawaan: pengguna login) menentukan apakah tombol Setujui/Tolak
+ * dirender. Selain peninjau yang berwenang atas tahap yang sedang berjalan —
+ * termasuk Safety Officer pembuat inspeksi, yang BUKAN tahap pengesahan —
+ * tahap itu tampil hanya-baca.
+ */
+export function renderApprovalStages(item, user = getCurrentUser()) {
     return `
         <div class="approval-stages">
             ${APPROVAL_STAGES.map((stage) => {
@@ -74,6 +117,12 @@ export function renderApprovalStages(item) {
                 } else if (isRejectedAwaitingRevision) {
                     statusText = '❌ Ditolak';
                     detail = `${escapeHtml(latest.reviewerName || '-')}: ${escapeHtml(latest.rejectionReason || '-')} · menunggu revisi Safety Officer`;
+                } else if (isAwaiting && !canDecideCurrentStage(user, item)) {
+                    // Release: hanya informasi — tanpa tombol aksi untuk yang tidak berwenang.
+                    statusClass = 'in-progress';
+                    statusText = '⏳ Menunggu Persetujuan';
+                    detail = `Menunggu persetujuan ${escapeHtml(stage.title)}
+                        <span class="stage-readonly-note" data-testid="stage-readonly"><i class="fas fa-eye"></i> Hanya informasi — keputusan diambil oleh ${escapeHtml(stage.title)}</span>`;
                 } else if (isAwaiting) {
                     statusClass = 'in-progress';
                     statusText = '⏳ Menunggu Persetujuan';
@@ -97,6 +146,7 @@ export function renderApprovalStages(item) {
                             <div class="stage-title">${escapeHtml(stage.title)}</div>
                             <div class="stage-detail">${detail}</div>
                             ${signatureHtml}
+                            ${renderStageHistory(item, stage, isCompleted || isRejectedAwaitingRevision)}
                         </div>
                         <span class="stage-status ${statusClass}">${statusText}</span>
                         ${actionHtml}
@@ -112,6 +162,11 @@ export async function openApprovalModal(inspeksiId) {
     if (!item) { showToast('⚠️ Data tidak ditemukan'); return; }
 
     const content = document.getElementById('approvalContent');
+    // Release: judul mengikuti peran — hanya peninjau yang berwenang atas
+    // tahap berjalan yang melihat "Pengesahan"; yang lain melihat status.
+    document.getElementById('approvalModalTitleText').textContent = canDecideCurrentStage(getCurrentUser(), item)
+        ? 'Pengesahan Inspeksi'
+        : 'Status Persetujuan Inspeksi';
 
     content.innerHTML = `
         <div class="detail-container">

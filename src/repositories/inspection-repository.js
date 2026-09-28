@@ -20,7 +20,7 @@
  * docs/DECISIONS.md entri Phase 14.
  */
 
-import { apiDelete, apiGet, apiPost, apiPut } from '../infrastructure/api-client.js';
+import { apiDelete, apiGet, apiGetBlob, apiPost, apiPut } from '../infrastructure/api-client.js';
 import { APPROVAL_DECISION } from '../domain/statuses.js';
 import { localDateToIso } from '../shared/date.js';
 
@@ -112,6 +112,16 @@ export async function removeDraft(inspectionId) {
 }
 
 /**
+ * Phase 18: Admin menghapus inspeksi non-draft — endpoint yang sama; server
+ * memilih jalur Admin dari sesi dan menjalankan ulang seluruh pemeriksaan.
+ * @returns {Promise<boolean>}
+ */
+export async function removeAsAdmin(inspectionId) {
+    await apiDelete(`/inspections/${encodeURIComponent(inspectionId)}`);
+    return true;
+}
+
+/**
  * Menyetujui/menolak tahap yang sedang berjalan — memicu endpoint aksi bisnis
  * penuh di backend (approve() atau reject() dijalankan LAGI di sana, dengan
  * data server yang terbaru). Hanya tahap (sebagai penjaga "layar basi"),
@@ -155,6 +165,29 @@ export async function addCorrectiveAction(inspectionId, action) {
 
     const { action: created } = await apiPost(`/inspections/${encodeURIComponent(inspectionId)}/corrective-actions`, formData);
     return created;
+}
+
+/**
+ * Release: mengubah status satu tindakan perbaikan. Server menjalankan ulang
+ * seluruh pemeriksaan (pemilik, belum selesai, maju saja); hanya status
+ * tujuan yang dikirim. Penolakan (4xx) dilempar sebagai ApiError.
+ * @returns {Promise<boolean>} true — sama dengan kontrak versi MySQL
+ */
+export async function updateCorrectiveActionStatus(inspectionId, actionId, _fromStatus, toStatus) {
+    await apiPut(
+        `/inspections/${encodeURIComponent(inspectionId)}/corrective-actions/${encodeURIComponent(actionId)}`,
+        { status: toStatus },
+    );
+    return true;
+}
+
+/**
+ * Release: gambar tanda tangan satu keputusan (Blob), lewat endpoint
+ * terotorisasi yang sama dengan riwayat pengesahan
+ * (GET /inspections/:id/approvals/:approvalId/signature). Dipakai PDF.
+ */
+export async function fetchSignatureImage(inspectionId, approvalId) {
+    return apiGetBlob(`/inspections/${encodeURIComponent(inspectionId)}/approvals/${encodeURIComponent(approvalId)}/signature`);
 }
 
 /** Jumlah inspeksi. Tidak ada endpoint hitung khusus — dihitung dari panjang array. */

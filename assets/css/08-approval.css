@@ -327,3 +327,45 @@
     font-style: italic;
     color: #8a6a6a;
 }
+
+/* Release: seluruh attempt satu tahap (riwayat append-only), urut attempt. */
+.stage-history {
+    margin: 0.35rem 0 0;
+    padding: 0.3rem 0 0 0.9rem;
+    border-top: 1px dashed #e8d8d8;
+    font-size: 0.6rem;
+    color: #6a5050;
+}
+
+.stage-attempt {
+    margin-bottom: 0.2rem;
+}
+
+.stage-attempt.rejected {
+    color: #b71c1c;
+}
+
+.stage-attempt-round {
+    font-weight: 600;
+}
+
+.stage-attempt-reason {
+    font-style: italic;
+    color: #8a5a5a;
+    overflow-wrap: anywhere;
+}
+
+/* Release: tahap yang menunggu, dilihat oleh yang tidak berwenang memutuskannya — hanya informasi. */
+.stage-readonly-note {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-left: 0.3rem;
+    padding: 0.05rem 0.45rem;
+    border: 1px solid #e0d0d0;
+    border-radius: 60px;
+    background: #faf6f6;
+    font-size: 0.55rem;
+    font-style: italic;
+    color: #8a6a6a;
+}

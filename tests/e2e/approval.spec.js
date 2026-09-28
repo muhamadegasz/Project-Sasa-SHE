@@ -102,31 +102,84 @@ test('koordinator K3L bisa menolak dengan alasan — inspeksi perlu revisi, taha
     expect(body.approvalHistory[0]).toMatchObject({ stage: 'koordinator_k3l', decision: 'rejected', rejectionReason: 'Foto area kurang jelas' });
 });
 
-test('role yang tidak berwenang tidak bisa menyetujui — ditolak di UI DAN oleh server', async ({ page }) => {
+test('Safety Officer: modal status hanya-baca (tanpa Setujui/Tolak) dengan riwayat; persetujuan/penolakan langsung tetap ditolak server', async ({ page }) => {
     const arif = await apiLogin('arif');
+    const dewi = await apiLogin('dewi');
     const inspection = await createInspectionFixture(arif);
+    // Riwayat: Koordinator menolak, pemilik mengajukan ulang -> kembali menunggu Koordinator.
+    const reject = await dewi.context.post(`/api/inspections/${inspection.id}/reject`, {
+        headers: { 'X-CSRF-Token': dewi.csrfToken }, data: { stageId: 'koordinator_k3l', reason: 'Lengkapi foto area' },
+    });
+    expect(reject.status()).toBe(200);
+    const resubmit = await arif.context.post(`/api/inspections/${inspection.id}/submit`, { headers: { 'X-CSRF-Token': arif.csrfToken } });
+    expect(resubmit.status()).toBe(200);
 
-    // arif (safety_officer) — pembuat inspeksi, bukan tahap pengesahan. UI
-    // sendiri belum menyembunyikan tombol berdasar role (UI Phase 17.3).
+    // arif (safety_officer) — pembuat inspeksi, BUKAN tahap pengesahan.
     await loginViaUi(page, 'arif');
     await openApprovalModalFor(page, inspection.id);
+    const content = page.locator('#approvalContent');
+    await expect(page.locator('#approvalModalTitle')).toHaveText(/Status Persetujuan Inspeksi/);
+    await expect(content.getByRole('button', { name: /Setujui|Tolak/ })).toHaveCount(0);
+    await expect(content.locator('[data-action="approveStage"], [data-action="rejectStage"]')).toHaveCount(0);
+    await expect(content.getByTestId('stage-readonly')).toHaveCount(1);
+    await expect(content).toContainText('Menunggu persetujuan Koordinator K3L Bagian');
+    await expect(content.getByTestId('stage-attempt')).toHaveCount(1);
+    await expect(content.getByTestId('stage-attempt')).toContainText('Alasan: Lengkapi foto area');
+    await page.keyboard.press('Escape');
 
-    await page.locator('#approvalContent').getByRole('button', { name: /Setujui/ }).click();
-    await expect(page.locator('#toastMessage')).toContainText('tidak berwenang');
-    await expect(page.locator('#signatureModal'), 'modal tanda tangan tidak dibuka untuk yang tidak berwenang').not.toHaveClass(/show/);
+    // Modal detail memakai tampilan tahap yang sama: juga tanpa tombol aksi.
+    await goToTab(page, 'Dashboard');
+    await page.locator('#inspeksiTableBody').getByRole('row', { name: inspection.id }).getByTestId('row-detail-btn').click();
+    await expect(page.locator('#detailModal')).toHaveClass(/show/);
+    await expect(page.locator('#detailModal').locator('[data-action="approveStage"], [data-action="rejectStage"]')).toHaveCount(0);
 
     // Pemeriksaan di browser bukan otorisasi: kirim langsung ke server dengan
-    // sesi arif sendiri — server yang harus menolak.
+    // sesi arif sendiri — server yang harus menolak, tanpa perubahan apa pun.
     const { csrfToken } = await (await page.request.get(`${API}/auth/me`)).json();
-    const direct = await page.request.post(`${API}/inspections/${inspection.id}/approve`, {
+    const directApprove = await page.request.post(`${API}/inspections/${inspection.id}/approve`, {
         headers: { 'X-CSRF-Token': csrfToken },
         data: { stageId: 'koordinator_k3l' },
     });
-    expect(direct.status()).toBe(403);
+    expect(directApprove.status()).toBe(403);
+    const directReject = await page.request.post(`${API}/inspections/${inspection.id}/reject`, {
+        headers: { 'X-CSRF-Token': csrfToken },
+        data: { stageId: 'koordinator_k3l', reason: 'Menolak inspeksi sendiri' },
+    });
+    expect(directReject.status()).toBe(403);
 
     const body = await fetchInspection(page.request, inspection.id);
-    expect(body.approvalHistory, 'tetap belum ada keputusan — permintaan sungguhan ditolak server').toHaveLength(0);
-    expect(body.currentApprovalStage).toBe('koordinator_k3l');
+    expect(body.approvalHistory, 'hanya penolakan Koordinator — permintaan pemilik ditolak server').toHaveLength(1);
+    expect([body.status, body.currentApprovalStage]).toEqual(['in_review', 'koordinator_k3l']);
+    await arif.context.dispose();
+    await dewi.context.dispose();
+});
+
+test('peninjau berwenang: Koordinator plant-nya melihat "Pengesahan Inspeksi" dengan Setujui DAN Tolak di tahapnya saja; Admin hanya-baca', async ({ page }) => {
+    const arif = await apiLogin('arif');
+    const inspection = await createInspectionFixture(arif);
+
+    await loginViaUi(page, 'dewi');
+    await openApprovalModalFor(page, inspection.id);
+    const content = page.locator('#approvalContent');
+    await expect(page.locator('#approvalModalTitle')).toHaveText(/Pengesahan Inspeksi/);
+    await expect(page.locator('#approvalModalTitle')).not.toHaveText(/Status Persetujuan/);
+    await expect(content.locator('[data-action="approveStage"]')).toHaveCount(1);
+    await expect(content.locator('[data-action="rejectStage"]')).toHaveCount(1);
+    await expect(content.locator('[data-action="approveStage"]')).toHaveAttribute('data-stage', 'koordinator_k3l');
+    await expect(content.locator('[data-action="rejectStage"]')).toHaveAttribute('data-stage', 'koordinator_k3l');
+    await expect(content.getByTestId('stage-readonly')).toHaveCount(0);
+    await page.keyboard.press('Escape');
+
+    // Admin melihat inspeksi yang sedang direview, tapi bukan tahap pengesahan.
+    page.once('dialog', (dialog) => dialog.accept());
+    await page.getByRole('button', { name: 'Logout' }).click();
+    await expect(page.getByTestId('user-name')).not.toBeVisible();
+    await loginViaUi(page, 'admin');
+    await openApprovalModalFor(page, inspection.id);
+    await expect(page.locator('#approvalModalTitle')).toHaveText(/Status Persetujuan Inspeksi/);
+    await expect(content.locator('[data-action="approveStage"], [data-action="rejectStage"]')).toHaveCount(0);
+    await expect(content.getByTestId('stage-readonly')).toHaveCount(1);
+    await arif.context.dispose();
 });
 
 test('alur pengesahan tidak bisa dilompati lewat UI — hanya tahap yang sedang berjalan yang punya tombol aksi', async ({ page }) => {

@@ -31,6 +31,15 @@ test('login dengan password salah tetap di halaman login, field password dikoson
     await expect(page.locator('#toastMessage')).not.toContainText('Sesi berakhir');
 });
 
+// Release: halaman login tidak boleh membocorkan akun/password uji (SECURITY.md S-01).
+test('halaman login tidak menampilkan petunjuk akun atau password', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.getByRole('button', { name: 'Masuk' })).toBeVisible();
+    const loginText = await page.locator('#loginPage').innerText();
+    expect(loginText).not.toMatch(/akun uji|password sama|arif\s*\/\s*arif/i);
+    expect(await page.content()).not.toContain('seed.js');
+});
+
 test('login dengan kredensial benar masuk ke dashboard dengan identitas yang benar', async ({ page }) => {
     await loginViaUi(page, 'arif');
 

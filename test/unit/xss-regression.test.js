@@ -124,10 +124,12 @@ test('highlight: query itu sendiri berisi payload HTML tidak menghasilkan tag ak
 
 test('renderApprovalStages: id inspeksi jahat di data-id tidak memutus atribut', () => {
     // Phase 17.2: tombol (dengan data-id) hanya ada di tahap yang sedang menunggu.
+    // Release: dan hanya untuk peninjau yang berwenang — Koordinator plant-nya.
     const item = {
-        id: XSS_ATTR, status: 'in_review', currentApprovalStage: 'koordinator_k3l', approvalHistory: [],
+        id: XSS_ATTR, plantId: 1, status: 'in_review', currentApprovalStage: 'koordinator_k3l', approvalHistory: [],
     };
-    const html = renderApprovalStages(item);
+    const html = renderApprovalStages(item, { id: 5, role: 'koordinator_k3l', plantId: 1 });
+    assert.ok(html.includes('data-action="approveStage"'), 'tombol dirender, jadi data-id benar-benar diuji');
     assert.ok(!html.includes('<script>'));
     assert.ok(html.includes('data-id="&quot;&gt;&lt;script&gt;alert(2)&lt;/script&gt;"'));
 });
@@ -248,4 +250,86 @@ test('renderApprovalStages: watermark (Phase 17.4D) hanya dari angka posisi — 
     assert.ok(!html.includes('<script>'));
     const styles = [...html.matchAll(/data-testid="stage-watermark"[^>]*style="([^"]*)"/g)].map((match) => match[1]);
     assert.deepEqual(styles, ['left:25%;top:75%', 'left:0%;top:100%'], 'satu watermark per persetujuan yang memilikinya, posisi dipaksa ke 0..1');
+});
+
+// Release: seluruh attempt per tahap (riwayat append-only), hanya dari item.approvalHistory.
+const attempt = (id, stage, n, decision, extra = {}) => ({
+    id, stage, attempt: n, decision, reviewerName: 'Dewi', hasSignature: decision === 'approved',
+    rejectionReason: decision === 'rejected' ? 'Foto kurang jelas' : null, decidedAt: `2026-01-0${id}`, ...extra,
+});
+const historyOf = (html, stageTitle) => {
+    const block = html.split('<div class="approval-stage').find((part) => part.includes(`>${stageTitle}<`)) || '';
+    return [...block.matchAll(/data-decision="(\w+)"[\s\S]*?Percobaan (\d+)/g)].map((m) => [Number(m[2]), m[1]]);
+};
+
+test('riwayat pengesahan: ditolak lalu disetujui pada attempt berikutnya -> kedua attempt urut, alasan penolakan tampil; kartu tetap "Disetujui"', () => {
+    const item = { id: 'INS-001', status: 'in_review', currentApprovalStage: 'manajer', approvalHistory: [
+        attempt(1, 'koordinator_k3l', 1, 'rejected'),
+        attempt(2, 'koordinator_k3l', 2, 'approved'),
+    ] };
+    const html = renderApprovalStages(item);
+    assert.deepEqual(historyOf(html, 'Koordinator K3L Bagian'), [[1, 'rejected'], [2, 'approved']]);
+    assert.ok(html.includes('Alasan: Foto kurang jelas'));
+    assert.ok(html.includes('✅ Disetujui'));
+    assert.equal((html.match(/data-testid="stage-history"/g) || []).length, 1, 'hanya tahap dengan attempt yang belum terwakili');
+});
+
+test('riwayat pengesahan: ditolak Ketua lalu diajukan ulang -> tahap Ketua kembali menunggu, penolakan sebelumnya tetap terlihat; tahap lain tanpa daftar berlebih', () => {
+    const item = { id: 'INS-002', status: 'in_review', currentApprovalStage: 'ketua_p2k3', approvalHistory: [
+        attempt(1, 'koordinator_k3l', 1, 'approved'),
+        attempt(2, 'manajer', 1, 'approved', { reviewerName: 'Andi' }),
+        attempt(3, 'ketua_p2k3', 1, 'rejected', { reviewerName: 'Hadi', rejectionReason: 'Lengkapi bukti' }),
+    ] };
+    const html = renderApprovalStages(item);
+    assert.deepEqual(historyOf(html, 'Ketua P2K3'), [[1, 'rejected']]);
+    assert.ok(html.includes('Alasan: Lengkapi bukti'));
+    assert.ok(html.includes('Menunggu Persetujuan'), 'status tahap berjalan tidak berubah');
+    assert.deepEqual(historyOf(html, 'Koordinator K3L Bagian'), []);
+    assert.deepEqual(historyOf(html, 'Manajer Bagian'), []);
+});
+
+test('riwayat pengesahan: satu penolakan yang menunggu revisi sudah diringkas kartu -> tidak diulang; alasan jahat di-escape', () => {
+    const single = { id: 'INS-003', status: 'revision_required', currentApprovalStage: 'koordinator_k3l', approvalHistory: [attempt(1, 'koordinator_k3l', 1, 'rejected')] };
+    assert.ok(!renderApprovalStages(single).includes('data-testid="stage-history"'));
+
+    const hostile = { id: 'INS-004', status: 'in_review', currentApprovalStage: 'koordinator_k3l', approvalHistory: [
+        attempt(1, 'koordinator_k3l', 1, 'rejected', { rejectionReason: XSS_TAG, reviewerName: XSS_ATTR }),
+    ] };
+    const html = renderApprovalStages(hostile);
+    assert.ok(html.includes('data-testid="stage-history"'));
+    assert.ok(!html.includes('<img src=x onerror'));
+    assert.ok(!html.includes('<script>'));
+});
+
+// Release: tombol Setujui/Tolak hanya untuk peninjau yang berwenang atas tahap berjalan.
+const buttonsFor = (html) => [...html.matchAll(/data-action="(approveStage|rejectStage)"[^>]*data-stage="([^"]+)"/g)].map((m) => `${m[1]}:${m[2]}`);
+const awaiting = (stage) => ({ id: 'INS-010', plantId: 1, petugasUserId: 1, status: 'in_review', currentApprovalStage: stage, approvalHistory: [] });
+const ROLES = {
+    officer: { id: 1, role: 'safety_officer' },
+    dewi: { id: 5, role: 'koordinator_k3l', plantId: 1 },
+    rina: { id: 6, role: 'koordinator_k3l', plantId: 9 },
+    andi: { id: 7, role: 'manajer_bagian' },
+    hadi: { id: 8, role: 'ketua_p2k3' },
+    admin: { id: 9, role: 'admin' },
+};
+
+test('tombol aksi pengesahan: hanya role pemilik tahap berjalan (Koordinator plant-nya / Manajer / Ketua); Safety Officer & Admin hanya-baca', () => {
+    for (const [stage, actor] of [['koordinator_k3l', 'dewi'], ['manajer', 'andi'], ['ketua_p2k3', 'hadi']]) {
+        const item = awaiting(stage);
+        assert.deepEqual(buttonsFor(renderApprovalStages(item, ROLES[actor])), [`approveStage:${stage}`, `rejectStage:${stage}`], `${actor} @ ${stage}`);
+        for (const other of Object.keys(ROLES).filter((name) => name !== actor)) {
+            const html = renderApprovalStages(item, ROLES[other]);
+            assert.deepEqual(buttonsFor(html), [], `${other} @ ${stage}: tanpa tombol`);
+            assert.ok(html.includes('data-testid="stage-readonly"'), `${other} @ ${stage}: penanda hanya-baca`);
+        }
+    }
+});
+
+test('tampilan hanya-baca Safety Officer: "Menunggu persetujuan <tahap>" + riwayat attempt tetap tampil', () => {
+    const item = { ...awaiting('koordinator_k3l'), approvalHistory: [attempt(1, 'koordinator_k3l', 1, 'rejected')] };
+    const html = renderApprovalStages(item, ROLES.officer);
+    assert.ok(html.includes('Menunggu persetujuan Koordinator K3L Bagian'));
+    assert.ok(html.includes('Hanya informasi'));
+    assert.ok(html.includes('data-testid="stage-history"'), 'riwayat penolakan sebelumnya tetap tampil');
+    assert.deepEqual(buttonsFor(html), []);
 });

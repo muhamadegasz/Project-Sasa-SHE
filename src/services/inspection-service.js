@@ -15,8 +15,9 @@ import * as plantRepository from '#repositories/plant-repository.js';
 import { submittedState } from '../domain/workflow-rules.js';
 import { buildInitialAction } from '../domain/inspection-rules.js';
 import {
-    canDeleteDraft, canEdit, canRevise, canSubmit, canView, isOwningOfficer,
+    canDelete, canDeleteDraft, canEdit, canRevise, canSubmit, canView, isOwningOfficer,
 } from '../domain/inspection-policy.js';
+import { ROLE } from '../config/constants.js';
 import { INSPECTION_STATUS } from '../domain/statuses.js';
 import { formatDate } from '../shared/date.js';
 import { ACCESS_ERROR, fail, ok } from './result.js';
@@ -192,7 +193,7 @@ export async function submit(inspectionId, actor) {
 
 /**
  * Menghapus draft milik sendiri (Safety Officer pemilik, hanya selama DRAFT).
- * Bukan penghapusan inspeksi oleh Admin — itu fase lain.
+ * Penghapusan oleh Admin: removeAsAdmin() di bawah.
  *
  * @returns ok({ removed: true }) atau fail(INSPECTION_ERROR.*)
  */
@@ -201,6 +202,26 @@ export async function removeDraft(inspectionId, actor) {
     if (failure) return failure;
 
     const removed = await inspectionRepository.removeDraft(inspection.id);
+    if (!removed) return fail(INSPECTION_ERROR.STATE_CHANGED);
+    return ok({ removed: true });
+}
+
+/**
+ * Phase 18: Admin menghapus inspeksi non-draft (sedang direview, perlu
+ * revisi, atau selesai) beserta data turunannya — aturan
+ * domain/inspection-policy.js canDelete, yang sudah ada sejak Phase 17.2.
+ * Tanpa alasan wajib; konfirmasi di UI bukan pengaman — pemeriksaan ini yang
+ * otoritatif. Draft tidak pernah terlihat oleh Admin -> NOT_FOUND, sama
+ * dengan id yang tidak ada.
+ *
+ * @returns ok({ removed: true }) atau fail(INSPECTION_ERROR.*)
+ */
+export async function removeAsAdmin(inspectionId, actor) {
+    const inspection = await inspectionRepository.findById(inspectionId);
+    if (!inspection || !canView(actor, inspection)) return fail(INSPECTION_ERROR.NOT_FOUND);
+    if (actor.role !== ROLE.ADMIN || !canDelete(actor, inspection)) return fail(INSPECTION_ERROR.FORBIDDEN);
+
+    const removed = await inspectionRepository.removeAsAdmin(inspection.id);
     if (!removed) return fail(INSPECTION_ERROR.STATE_CHANGED);
     return ok({ removed: true });
 }

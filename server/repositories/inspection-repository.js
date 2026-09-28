@@ -510,13 +510,36 @@ export async function submit(inspectionId, expectedStatus, nextState, initialAct
  * @returns {Promise<boolean>}
  */
 export async function removeDraft(inspectionId) {
+    return deleteInspectionWhere(inspectionId, "status = 'draft'");
+}
+
+/**
+ * Phase 18: Admin menghapus inspeksi NON-draft (aturan: domain/inspection-policy.js
+ * canDelete, diperiksa inspection-service.js removeAsAdmin). Sama seperti
+ * removeDraft: hanya inspeksi ini dan data turunannya (CASCADE) — inspeksi
+ * lain, akun, jadwal, dan plant tidak tersentuh.
+ *
+ * @returns {Promise<boolean>} false bila sudah tidak ada / sudah menjadi draft
+ */
+export async function removeAsAdmin(inspectionId) {
+    return deleteInspectionWhere(inspectionId, "status <> 'draft'");
+}
+
+/**
+ * Menghapus satu inspeksi yang (terkunci FOR UPDATE) masih memenuhi
+ * `statusCondition` — literal SQL tetap dari kedua pemanggil di atas, tidak
+ * pernah dari isian. Berkas foto dan tanda tangan (Phase 18: inspeksi non-draft
+ * bisa punya tanda tangan pengesahan) dihapus dari disk SETELAH commit.
+ */
+async function deleteInspectionWhere(inspectionId, statusCondition) {
     const numericId = toNumericId(inspectionId);
     const connection = await pool.getConnection();
     let filePaths = [];
+    let signaturePaths = [];
     try {
         await connection.beginTransaction();
         const [locked] = await connection.query(
-            "SELECT id FROM inspections WHERE id = ? AND status = 'draft' FOR UPDATE",
+            `SELECT id FROM inspections WHERE id = ? AND ${statusCondition} FOR UPDATE`,
             [numericId],
         );
         if (locked.length === 0) {
@@ -530,6 +553,11 @@ export async function removeDraft(inspectionId) {
             [numericId, numericId],
         );
         filePaths = photoRows.map((row) => row.file_path);
+        const [signatureRows] = await connection.query(
+            'SELECT signature_file_path FROM approvals WHERE inspection_id = ? AND signature_file_path IS NOT NULL',
+            [numericId],
+        );
+        signaturePaths = signatureRows.map((row) => row.signature_file_path);
         await connection.query('DELETE FROM inspections WHERE id = ?', [numericId]);
         await connection.commit();
     } catch (error) {
@@ -544,6 +572,8 @@ export async function removeDraft(inspectionId) {
         const target = path.resolve(root, filePath);
         if (target.startsWith(root + path.sep)) await unlink(target).catch(() => {});
     }
+    // removeSignatureFile hanya menyentuh path berpola signatures/<uuid>.png|jpg.
+    for (const signaturePath of signaturePaths) await removeSignatureFile(signaturePath);
     return true;
 }
 
@@ -566,6 +596,25 @@ export async function addCorrectiveAction(inspectionId, action) {
     }
 
     return { id: actionId, ...action };
+}
+
+/**
+ * Release: mengubah status satu tindakan perbaikan (maju saja — divalidasi
+ * corrective-action-service.js). Satu UPDATE terjaga: tindakan milik
+ * inspeksi ini, statusnya masih `fromStatus`, inspeksinya masih milik
+ * `ownerId` dan belum COMPLETED. Status inspeksi tidak disentuh.
+ * @returns {Promise<boolean>} false bila salah satu syarat sudah berubah
+ */
+export async function updateCorrectiveActionStatus(inspectionId, actionId, fromStatus, toStatus, ownerId) {
+    const [result] = await pool.query(
+        `UPDATE corrective_actions ca
+         JOIN inspections i ON i.id = ca.inspection_id
+         SET ca.status = ?
+         WHERE ca.id = ? AND ca.inspection_id = ? AND ca.status = ?
+           AND i.petugas_user_id = ? AND i.status <> 'completed'`,
+        [toStatus, Number(actionId), toNumericId(inspectionId), fromStatus, ownerId],
+    );
+    return result.affectedRows > 0;
 }
 
 /**

@@ -12,6 +12,30 @@
 
 import { ACTION_STATUS, REPAIR_STATUS } from './statuses.js';
 
+/**
+ * Urutan siklus hidup satu tindakan perbaikan (release): hanya MAJU —
+ * open -> on-progress -> closed. Tidak ada pembukaan kembali (closed -> open).
+ */
+const ACTION_STATUS_ORDER = [ACTION_STATUS.OPEN, ACTION_STATUS.ON_PROGRESS, ACTION_STATUS.CLOSED];
+
+/** Status yang boleh dituju dari `current` (maju saja; boleh melompati on-progress). */
+export function nextActionStatuses(current) {
+    const index = ACTION_STATUS_ORDER.indexOf(current);
+    return index === -1 ? [] : ACTION_STATUS_ORDER.slice(index + 1);
+}
+
+/**
+ * Memeriksa perubahan status sebuah tindakan perbaikan dari `current` ke `next`.
+ * @returns {{ value: string } | { error: 'INVALID' | 'NOT_FORWARD' }}
+ *   INVALID     — `next` bukan open/on-progress/closed
+ *   NOT_FORWARD — mundur, sama, atau dari status yang sudah final (closed)
+ */
+export function checkActionStatusChange(current, next) {
+    if (typeof next !== 'string' || !ACTION_STATUS_ORDER.includes(next)) return { error: 'INVALID' };
+    if (!nextActionStatuses(current).includes(next)) return { error: 'NOT_FORWARD' };
+    return { value: next };
+}
+
 /** Apakah inspeksi punya minimal satu tindakan perbaikan. */
 function hasActions(inspection) {
     return Boolean(inspection && inspection.perbaikan && inspection.perbaikan.length > 0);

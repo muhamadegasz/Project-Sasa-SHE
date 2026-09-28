@@ -7,7 +7,7 @@
 
 import { escapeHtml, jsArg } from '../../shared/html.js';
 import { isOverdue } from '../../shared/date.js';
-import { getProgress, getRepairStatus } from '../../domain/inspection-rules.js';
+import { getProgress, getRepairStatus, nextActionStatuses } from '../../domain/inspection-rules.js';
 import { isFullyApproved } from '../../domain/approval-rules.js';
 import { formatApprovalStatus, formatActionStatus, formatInspectionStatus, formatRepairStatus } from '../../shared/labels.js';
 import { ACTION_STATUS } from '../../domain/statuses.js';
@@ -26,6 +26,17 @@ export async function openPerbaikanModal(id) {
     const progress = getProgress(item);
     const statusPerbaikan = getRepairStatus(item);
 
+    // Release: pemilik bisa memajukan status tindakan yang sudah ada
+    // (open -> on-progress -> closed, tanpa foto). Server tetap memeriksa ulang.
+    const canChangeStatus = canEditCorrectiveAction(getCurrentUser(), item);
+    const statusButtons = (p) => {
+        if (!canChangeStatus || p.id == null) return '';
+        return nextActionStatuses(p.status).map((next) => `
+            <button class="btn-sm ${next === ACTION_STATUS.CLOSED ? 'success' : 'info'}" data-action="ubahStatusPerbaikan"
+                data-id="${escapeHtml(item.id)}" data-action-id="${escapeHtml(p.id)}" data-status="${escapeHtml(next)}"
+                data-testid="action-status-btn" style="font-size:0.6rem;padding:0.1rem 0.5rem;">→ ${escapeHtml(formatActionStatus(next))}</button>`).join('');
+    };
+
     let timelineHtml = '';
     if (item.perbaikan && item.perbaikan.length > 0) {
         timelineHtml = item.perbaikan.map(p => {
@@ -38,11 +49,12 @@ export async function openPerbaikanModal(id) {
                 `).join('') :
                 '<span style="font-size:0.6rem;color:#c62828;">⚠️ Belum ada foto</span>';
             return `
-                    <div class="perbaikan-item">
+                    <div class="perbaikan-item" data-testid="perbaikan-item" data-action-id="${escapeHtml(p.id ?? '')}">
                         <span class="date">${escapeHtml(p.tgl)}</span>
                         <span class="action">${escapeHtml(p.action)}</span>
                         <span class="status-mini ${escapeHtml(p.status)}">${escapeHtml(formatActionStatus(p.status))}</span>
                         <span class="pic-name">- ${escapeHtml(p.pic)}</span>
+                        ${statusButtons(p)}
                         <div class="foto-thumbs">${galleryHtml}</div>
                     </div>
                 `;

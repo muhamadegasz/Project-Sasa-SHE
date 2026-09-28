@@ -1,0 +1,36 @@
+/* 17-admin.css — Phase 18: panel Admin (pengelolaan akun) dan gating per role.
+ *
+ * Tabel, tombol, badge status, modal, dan formulir memakai kelas yang sudah
+ * ada (05-tables, 06-forms, 07-feedback). Berkas ini hanya menambahkan yang
+ * belum ada.
+ */
+
+/* `hidden` harus benar-benar menyembunyikan: .nav-tab dan .form-group punya
+   display sendiri yang mengalahkan aturan bawaan browser untuk [hidden]. */
+.nav-tab[hidden],
+.form-group[hidden] {
+    display: none;
+}
+
+.user-row-inactive td {
+    color: #9a8a8a;
+}
+
+.user-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.3rem;
+}
+
+.user-self-note {
+    font-size: 0.65rem;
+    font-style: italic;
+    color: #8a6a6a;
+}
+
+.user-form-hint {
+    display: block;
+    margin-top: 0.2rem;
+    font-size: 0.65rem;
+    color: #8a6a6a;
+}

@@ -30,7 +30,8 @@ import * as scheduleRules from '../../domain/schedule-rules.js';
 import * as scheduleRepository from '../../repositories/schedule-repository.js';
 import * as inspectionRepository from '../../repositories/inspection-repository.js';
 import * as plantRepository from '../../repositories/plant-repository.js';
-import { canDeleteDraft, canEdit, canRevise, canSubmit } from '../../domain/inspection-policy.js';
+import { canDelete, canDeleteDraft, canEdit, canRevise, canSubmit } from '../../domain/inspection-policy.js';
+import { ROLE } from '../../config/constants.js';
 import { getCurrentUser } from '../../infrastructure/session.js';
 
 // Dipakai ketiga tabel di berkas ini (inspeksi, jadwal, perbaikan).
@@ -58,6 +59,17 @@ function ownerLifecycleButtons(item) {
         buttons.push(`<button class="btn-sm danger" data-action="hapusDraftInspeksi" data-id="${id}" data-testid="row-delete-draft-btn" title="Hapus draft"><i class="fas fa-trash"></i></button>`);
     }
     return buttons.join(' ');
+}
+
+/**
+ * Phase 18: tombol hapus inspeksi untuk Admin (domain/inspection-policy.js
+ * canDelete — non-draft). Hanya dirender untuk Admin; server tetap
+ * otoritatif (DELETE /api/inspections/:id, inspection-service removeAsAdmin).
+ */
+function adminDeleteButton(item) {
+    const user = getCurrentUser();
+    if (!user || user.role !== ROLE.ADMIN || !canDelete(user, item)) return '';
+    return `<button class="btn-sm danger" data-action="hapusInspeksiAdmin" data-id="${escapeHtml(item.id)}" data-testid="row-admin-delete-btn" title="Hapus inspeksi (Admin)"><i class="fas fa-trash-alt"></i></button>`;
 }
 
 /** Badge status alur kerja inspeksi — dipakai kedua varian tabel inspeksi. */
@@ -137,7 +149,7 @@ function renderInspeksiTable(data, tbodyId, isFull, highlightQuery = '') {
                             <span class="status-badge ${approvalColor}">${approvalStatus}</span>
                             <button class="btn-sm info" data-action="openApprovalModal" data-id="${escapeHtml(item.id)}" data-testid="row-approve-btn" style="margin-top:0.2rem;"><i class="fas fa-stamp"></i></button>
                         </td>
-                        <td>${ownerLifecycleButtons(item)} ${exportBtn} ${pdfBtn}</td>
+                        <td>${ownerLifecycleButtons(item)} ${adminDeleteButton(item)} ${exportBtn} ${pdfBtn}</td>
                     </tr>
                 `;
         } else {
@@ -167,6 +179,8 @@ export async function renderJadwalTable(data = null, highlightQuery = '') {
     if (!tbody) return;
     const displayData = data !== null ? data : await scheduleRepository.getAll();
     let notifCount = 0;
+    // Phase 18: hapus jadwal khusus Admin (DELETE /api/schedules/:id requireRole('admin')) — tombolnya pun hanya untuk Admin.
+    const canDeleteSchedules = getCurrentUser()?.role === ROLE.ADMIN;
 
     if (displayData.length === 0) {
         tbody.innerHTML =
@@ -211,7 +225,7 @@ export async function renderJadwalTable(data = null, highlightQuery = '') {
                     <td><span class="status-badge ${statusClass}">${statusText}</span></td>
                     <td>
                         <button class="btn-sm warning" data-action="editJadwal" data-id="${escapeHtml(item.id)}"><i class="fas fa-edit"></i></button>
-                        <button class="btn-sm danger" data-action="hapusJadwal" data-id="${escapeHtml(item.id)}"><i class="fas fa-trash"></i></button>
+                        ${canDeleteSchedules ? `<button class="btn-sm danger" data-action="hapusJadwal" data-id="${escapeHtml(item.id)}" data-testid="schedule-delete-btn"><i class="fas fa-trash"></i></button>` : ''}
                     </td>
                 </tr>
             `;

@@ -81,6 +81,25 @@ async function request(path, { method = 'GET', body } = {}) {
     return data;
 }
 
+/**
+ * Release: isi BINER dari endpoint terotorisasi (gambar tanda tangan untuk
+ * PDF). Cookie sesi, timeout, dan penanganan 401/4xx sama dengan request();
+ * bedanya hanya hasilnya Blob, bukan JSON.
+ */
+export async function apiGetBlob(path) {
+    const res = await fetch(`${BASE_URL}${path}`, {
+        credentials: 'include',
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    if (!res.ok) {
+        if (res.status === 401) notifySessionExpired();
+        let data = null;
+        try { data = await res.json(); } catch { /* badan bukan JSON */ }
+        throw new ApiError(res.status, data);
+    }
+    return res.blob();
+}
+
 export const apiGet = (path) => request(path);
 export const apiPost = (path, body) => request(path, { method: 'POST', body });
 export const apiPut = (path, body) => request(path, { method: 'PUT', body });

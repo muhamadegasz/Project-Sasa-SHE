@@ -27,6 +27,11 @@
       "test": "./test/fakes/plant-repository.js",
       "server": "./server/repositories/plant-repository.js",
       "default": "./src/repositories/plant-repository.js"
+    },
+    "#repositories/user-repository.js": {
+      "test": "./test/fakes/user-repository.js",
+      "server": "./server/repositories/user-repository.js",
+      "default": "./src/repositories/user-repository.js"
     }
   },
   "dependencies": {

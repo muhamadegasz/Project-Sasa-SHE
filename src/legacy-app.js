@@ -19,7 +19,7 @@ import * as scheduleRepository from './repositories/schedule-repository.js';
 import * as plantRepository from './repositories/plant-repository.js';
 
 import { apiPost, apiGet, ApiError } from './infrastructure/api-client.js';
-import { setSession, clearSession, getCurrentUser, onSessionExpired } from './infrastructure/session.js';
+import { setSession, clearSession, getCsrfToken, getCurrentUser, onSessionExpired } from './infrastructure/session.js';
 
 import { allActionsClosed, countAllFindings } from './domain/inspection-rules.js';
 import { findStage, isFullyApproved, latestDecision } from './domain/approval-rules.js';
@@ -27,12 +27,14 @@ import { canApprove, canEdit, canRevise } from './domain/inspection-policy.js';
 import { isAwaitingStage } from './domain/workflow-rules.js';
 import { INSPECTION_STATUS } from './domain/statuses.js';
 import { localDateToIso } from './shared/date.js';
+import { formatActionStatus } from './shared/labels.js';
 import * as scheduleRules from './domain/schedule-rules.js';
 
 import * as approvalService from './services/approval-service.js';
 import * as correctiveActionService from './services/corrective-action-service.js';
 import * as inspectionService from './services/inspection-service.js';
 import * as scheduleService from './services/schedule-service.js';
+import * as userService from './services/user-service.js';
 import * as excelExporter from './infrastructure/excel-exporter.js';
 import * as pdfExporter from './infrastructure/pdf-exporter.js';
 
@@ -49,6 +51,7 @@ import {
     closeSignatureModal, getPendingApproval, openSignatureModal, setSignatureSubmitting, showSignatureError,
 } from './presentation/views/signature-modal.view.js';
 import { openDetailModal } from './presentation/views/detail-modal.view.js';
+import { closeUserModal, openUserModal, readUserForm, renderUsersTable } from './presentation/views/users.view.js';
 import { openPerbaikanModal } from './presentation/views/perbaikan-modal.view.js';
 import {
     renderJadwalTable,
@@ -58,7 +61,7 @@ import {
     renderPerbaikanWithSearch,
 } from './presentation/views/tables.view.js';
 import { initCharts, renderTemuanPlantChart, updatePerbaikanChart } from './presentation/views/charts.view.js';
-import { buildInspectionReportHtml } from './presentation/views/pdf-report.view.js';
+import { buildInspectionReportHtml, prepareSignatureImages } from './presentation/views/pdf-report.view.js';
 import { registerAction, initActionDispatcher } from './presentation/controllers/action-dispatcher.js';
 
 // ========================================================================
@@ -156,10 +159,33 @@ const PESAN_GAGAL = {
     ACTION_REQUIRED: '⚠️ Masukkan deskripsi tindakan',
     PHOTO_REQUIRED: '⚠️ Wajib upload foto sebagai bukti progres!',
     INSPECTION_COMPLETED: '🔒 Inspeksi sudah selesai — tindakan perbaikan tidak bisa diubah lagi',
+    ACTION_STATUS_INVALID: '⚠️ Status tindakan tidak dikenal',
+    ACTION_STATUS_NOT_FORWARD: '⚠️ Status tindakan hanya bisa maju: Open → On Progress → Closed',
     PLANT_REQUIRED: '⚠️ Silakan pilih Plant terlebih dahulu!',
     OFFICER_REQUIRED: '⚠️ Safety Officer wajib diisi!',
     YEAR_REQUIRED: '⚠️ Tahun wajib diisi!',
     DATE_REQUIRED: '⚠️ Tanggal Jadwal wajib diisi!',
+    // Phase 18: pengelolaan akun (user-service.js).
+    USERNAME_REQUIRED: '⚠️ ID login wajib diisi',
+    USERNAME_INVALID: '⚠️ ID login hanya boleh berisi huruf, angka, titik, garis bawah, dan tanda hubung',
+    USERNAME_TOO_LONG: '⚠️ ID login maksimal 50 karakter',
+    USERNAME_TAKEN: '⚠️ ID login sudah dipakai akun lain',
+    DISPLAY_NAME_REQUIRED: '⚠️ Nama tampilan wajib diisi',
+    DISPLAY_NAME_INVALID: '⚠️ Nama tampilan tidak valid',
+    DISPLAY_NAME_TOO_LONG: '⚠️ Nama tampilan maksimal 100 karakter',
+    ROLE_REQUIRED: '⚠️ Role wajib dipilih',
+    ROLE_INVALID: '⚠️ Role tidak dikenal',
+    PASSWORD_REQUIRED: '⚠️ Kata sandi wajib diisi',
+    PASSWORD_INVALID: '⚠️ Kata sandi tidak valid',
+    PASSWORD_TOO_SHORT: '⚠️ Kata sandi minimal 4 karakter',
+    PASSWORD_TOO_LONG: '⚠️ Kata sandi maksimal 72 karakter',
+    PLANT_INVALID: '⚠️ Plant tidak valid',
+    ACTIVE_INVALID: '⚠️ Status akun tidak valid',
+    CANNOT_DEACTIVATE_SELF: '⛔ Anda tidak bisa menonaktifkan akun Anda sendiri',
+    CANNOT_CHANGE_OWN_ROLE: '⛔ Anda tidak bisa mengganti role akun Anda sendiri',
+    CANNOT_DELETE_SELF: '⛔ Anda tidak bisa menghapus akun Anda sendiri',
+    USER_ACTIVE: '⚠️ Nonaktifkan akun terlebih dahulu sebelum menghapusnya secara permanen',
+    USER_HAS_OPEN_INSPECTIONS: '⚠️ Akun ini masih memiliki inspeksi yang belum selesai — tidak bisa dihapus permanen. Biarkan tetap nonaktif.',
 };
 
 function pesanGagal(reason) {
@@ -219,6 +245,22 @@ function showMainApp(user) {
     // apa yang benar-benar tersimpan.
     const formPetugas = document.getElementById('formPetugas');
     if (formPetugas) formPetugas.value = user.displayName;
+    applyRoleGating(user);
+}
+
+/**
+ * Phase 18: tab yang hanya untuk role tertentu (data-roles di index.html:
+ * "Buat Inspeksi" untuk Safety Officer, "Admin" untuk Admin). Kenyamanan UI
+ * saja — server menolak aksi di luar wewenang, apa pun yang tampil di sini.
+ * Tab aktif yang tidak lagi berhak dilihat (mis. Admin logout lalu Safety
+ * Officer login di halaman yang sama) diganti ke Dashboard.
+ */
+function applyRoleGating(user) {
+    document.querySelectorAll('[data-roles]').forEach((element) => {
+        element.hidden = !element.dataset.roles.split(',').includes(user.role);
+    });
+    const activeTab = document.querySelector('.nav-tab.active');
+    if (!activeTab || activeTab.hidden) switchTab('dashboard');
 }
 
 async function handleLogin(event) {
@@ -346,6 +388,7 @@ function switchTab(tabName) {
     if (tab) tab.classList.add('active');
     const panel = document.getElementById(`panel-${tabName}`);
     if (panel) panel.classList.add('active');
+    if (tabName === 'admin') loadAdminPanel();
     setTimeout(() => {
         const activePanel = document.querySelector('.panel.active');
         if (activePanel) {
@@ -485,10 +528,27 @@ async function cetakPDF(id) {
         return;
     }
 
-    const pdfContainer = document.getElementById('pdfContent');
-    pdfContainer.innerHTML = buildInspectionReportHtml(item);
-
     showToast('📄 Sedang membuat PDF...');
+
+    // Release: tanda tangan (+ watermark di posisi tersimpan) diambil lewat
+    // endpoint terotorisasi SEBELUM render. Gagal memuat -> PDF tidak dibuat,
+    // bukan PDF "bertanda tangan" dengan tanda tangan yang hilang diam-diam.
+    releasePdfSignatures();
+    let prepared;
+    try {
+        prepared = await prepareSignatureImages(item);
+    } catch (error) {
+        if (!(error instanceof ApiError && error.status === 401)) {
+            showToast(reportError('siapkan tanda tangan PDF ' + item.id, error, '⚠️ Tanda tangan pengesahan gagal dimuat — PDF tidak dibuat. Coba ulangi beberapa saat lagi.'));
+        }
+        return;
+    }
+    releasePdfSignatures = prepared.release;
+
+    const pdfContainer = document.getElementById('pdfContent');
+    pdfContainer.innerHTML = buildInspectionReportHtml(item, prepared.images);
+    // html2canvas memotret apa yang sudah termuat — tunggu seluruh gambar siap.
+    await Promise.all([...pdfContainer.querySelectorAll('img')].map((img) => img.decode().catch(() => {})));
 
     pdfExporter.savePdf(pdfContainer, pdfExporter.reportFilename(item.id)).then(() => {
         showToast(`✅ PDF Laporan ${item.id} berhasil dicetak!`);
@@ -496,6 +556,9 @@ async function cetakPDF(id) {
         showToast(reportError('cetak PDF ' + item.id, err, '⚠️ Gagal membuat PDF. Coba ulangi beberapa saat lagi.'));
     });
 }
+
+/** URL blob: gambar tanda tangan PDF terakhir — dilepas saat PDF berikutnya disiapkan. */
+let releasePdfSignatures = () => {};
 
 // ========================================================================
 // ========== EXPORT FUNCTIONS ==========
@@ -635,6 +698,26 @@ async function tambahPerbaikanCustom(id) {
     document.getElementById('newFoto').value = '';
     document.getElementById('newFotoCount').textContent = 'Belum ada file';
     await openPerbaikanModal(id);
+}
+
+/** Release: memajukan status satu tindakan perbaikan (maju saja, tanpa foto). */
+async function ubahStatusPerbaikan(inspectionId, actionId, status) {
+    let result;
+    try {
+        result = await correctiveActionService.changeActionStatus(inspectionId, actionId, status, getCurrentUser());
+    } catch (error) {
+        // Penolakan server (4xx) -> kode alasannya; 401 ditangani session.js.
+        if (error instanceof ApiError && error.status !== 401 && error.body?.error) {
+            showToast(pesanGagal(error.body.error));
+            await openPerbaikanModal(inspectionId);
+            return;
+        }
+        throw error;
+    }
+    if (!result.ok) { showToast(pesanGagal(result.reason)); return; }
+    await refreshAll();
+    showToast(`✅ Status tindakan diubah menjadi ${formatActionStatus(status)}`);
+    await openPerbaikanModal(inspectionId);
 }
 
 // ========================================================================
@@ -870,6 +953,109 @@ document.getElementById('submitAjukanInspeksi').addEventListener('click', (e) =>
 });
 document.getElementById('batalEditInspeksi').addEventListener('click', () => resetInspeksiForm());
 
+/**
+ * Phase 18: Admin menghapus inspeksi non-draft beserta temuan, tindakan
+ * perbaikan, foto, dan riwayat pengesahannya. Konfirmasi di sini hanya
+ * mencegah salah klik — wewenangnya diperiksa server.
+ */
+async function hapusInspeksiAdmin(id) {
+    if (!confirm(`Hapus inspeksi ${id} secara permanen?\n\nSeluruh temuan, tindakan perbaikan, foto, dan riwayat pengesahan (termasuk tanda tangan) inspeksi ini ikut terhapus. Tindakan ini tidak bisa dibatalkan.`)) return;
+    const data = await runAdminAction('hapus inspeksi', () => inspectionService.removeAsAdmin(id, getCurrentUser()));
+    if (!data) return;
+    await refreshAll();
+    showToast(`🗑️ Inspeksi ${id} dihapus`);
+}
+
+// ========================================================================
+// ========== ADMIN: PENGELOLAAN AKUN (Phase 18) ==========
+// ========================================================================
+
+let adminUsers = [];
+let adminPlants = [];
+let savingUser = false;
+
+/**
+ * Menjalankan satu aksi Admin: kegagalan dari service (browser) atau
+ * penolakan server (ApiError 4xx) menjadi toast; 401 sudah ditangani
+ * session.js. @returns data hasil, atau null bila gagal.
+ */
+async function runAdminAction(label, action) {
+    try {
+        const result = await action();
+        if (!result.ok) { showToast(pesanGagal(result.reason)); return null; }
+        return result.data;
+    } catch (error) {
+        if (error instanceof ApiError && error.status === 401) return null;
+        if (error instanceof ApiError && error.body?.error) { showToast(pesanGagal(error.body.error)); return null; }
+        showToast(reportError(label, error, '⚠️ Terjadi kesalahan. Coba ulangi beberapa saat lagi.'));
+        return null;
+    }
+}
+
+async function loadAdminPanel() {
+    const data = await runAdminAction('muat daftar pengguna', async () => {
+        const [result, plants] = await Promise.all([userService.list(getCurrentUser()), plantRepository.getAll()]);
+        adminPlants = plants;
+        return result;
+    });
+    if (!data) return;
+    adminUsers = data.users;
+    renderUsersTable(adminUsers, adminPlants, getCurrentUser());
+}
+
+function editUser(id) {
+    const user = adminUsers.find((item) => Number(item.id) === Number(id));
+    if (!user) { showToast(pesanGagal('NOT_FOUND')); return; }
+    openUserModal(user, adminPlants);
+}
+
+async function submitUser() {
+    if (savingUser) return;
+    const { id, input } = readUserForm();
+    const actor = getCurrentUser();
+    savingUser = true;
+    document.getElementById('submitUser').disabled = true;
+    try {
+        const data = await runAdminAction('simpan pengguna', () => (id ? userService.update(actor, id, input) : userService.create(actor, input)));
+        if (!data) return;
+        closeUserModal();
+        // Nama tampilan sendiri diubah: header ikut diperbarui.
+        if (Number(data.user.id) === Number(actor.id)) {
+            setSession({ ...actor, displayName: data.user.displayName }, getCsrfToken());
+            showMainApp(getCurrentUser());
+        }
+        showToast(id ? `✅ Pengguna ${data.user.username} diperbarui` : `✅ Pengguna ${data.user.username} dibuat`);
+        await loadAdminPanel();
+    } finally {
+        savingUser = false;
+        document.getElementById('submitUser').disabled = false;
+    }
+}
+
+async function setUserActive(id, active, username) {
+    if (!active && !confirm(`Nonaktifkan akun ${username}?\n\nAkun ini tidak bisa login, dan sesi yang sedang berjalan langsung berakhir. Datanya tetap tersimpan dan akun bisa diaktifkan lagi.`)) return;
+    const data = await runAdminAction('ubah status pengguna', () => userService.setActive(getCurrentUser(), id, active));
+    if (!data) return;
+    showToast(active ? `✅ Akun ${username} diaktifkan` : `🔒 Akun ${username} dinonaktifkan`);
+    await loadAdminPanel();
+}
+
+/** Hapus permanen: konfirmasi dengan mengetik ulang username (aksi yang tidak bisa dibatalkan). */
+async function hapusUserPermanen(id, username) {
+    const typed = prompt(`HAPUS PERMANEN akun "${username}"?\n\nAkun dihapus dan tidak bisa dipulihkan. Riwayat inspeksi, pengesahan, jadwal, dan foto tetap tersimpan dengan nama yang tercatat saat itu.\n\nKetik username "${username}" untuk mengonfirmasi:`);
+    if (typed === null) return;
+    if (typed.trim() !== username) { showToast('⚠️ Username tidak cocok — akun tidak dihapus'); return; }
+    const data = await runAdminAction('hapus pengguna', () => userService.remove(getCurrentUser(), id));
+    if (!data) return;
+    showToast(`🗑️ Akun ${username} dihapus permanen`);
+    await loadAdminPanel();
+}
+
+document.getElementById('submitUser').addEventListener('click', (e) => {
+    e.preventDefault();
+    submitUser();
+});
+
 // ========================================================================
 // ========== STATS & REFRESH ==========
 // ========================================================================
@@ -1074,12 +1260,18 @@ registerAction('openPerbaikanModal', (el) => openPerbaikanModal(el.dataset.id));
 registerAction('editJadwal', (el) => editJadwal(el.dataset.id));
 registerAction('hapusJadwal', (el) => hapusJadwal(el.dataset.id));
 registerAction('tambahPerbaikanCustom', (el) => tambahPerbaikanCustom(el.dataset.id));
+registerAction('ubahStatusPerbaikan', (el) => ubahStatusPerbaikan(el.dataset.id, el.dataset.actionId, el.dataset.status));
 registerAction('hapusTemuan', (el) => hapusTemuan(Number(el.dataset.index)));
 registerAction('editInspeksi', (el) => editInspeksi(el.dataset.id));
 registerAction('ajukanInspeksi', (el) => ajukanInspeksi(el.dataset.id));
 registerAction('hapusDraftInspeksi', (el) => hapusDraftInspeksi(el.dataset.id));
 registerAction('confirmReject', () => confirmReject());
 registerAction('confirmApprove', () => confirmApprove());
+registerAction('hapusInspeksiAdmin', (el) => hapusInspeksiAdmin(el.dataset.id));
+registerAction('openUserModal', () => openUserModal(null, adminPlants));
+registerAction('editUser', (el) => editUser(el.dataset.id));
+registerAction('setUserActive', (el) => setUserActive(el.dataset.id, el.dataset.active === 'true', el.dataset.username));
+registerAction('hapusUserPermanen', (el) => hapusUserPermanen(el.dataset.id, el.dataset.username));
 initActionDispatcher();
 
 /* Ekspor murni untuk pengujian (lihat scratchpad test-*.mjs) — BUKAN untuk
