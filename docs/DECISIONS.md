@@ -1547,3 +1547,14 @@ test dijalankan.
   `npm run db:seed` dengan `.env` biasa selalu ditolak.
 - Diverifikasi: `she_sasa` identik (jumlah baris + `CHECKSUM TABLE`) sebelum dan sesudah seluruh run
   API dan E2E. Tersisa: folder `uploads/` masih dipakai bersama backend pengembangan dan backend uji.
+
+## K-30: Phase 17.4B.1 — Isolasi database pengujian
+- Watermark pada tanda tangan persetujuan bersifat opsional dan dikendalikan melalui tiga field pada approval: `watermarkEnabled`, `watermarkX`, dan `watermarkY`.
+
+-  Ketika watermark diaktifkan, posisi watermark disimpan sebagai koordinat ternormalisasi dalam rentang 0–1, dengan titik `(0, 0)` berada di kiri atas area tanda tangan. Ukuran dan opacity watermark bersifat tetap; pengguna hanya dapat memindahkan posisinya menggunakan mouse, touch, atau pointer.
+
+-  Watermark menggunakan teks produk `SHE Sasa` dan dirender sebagai elemen visual pada UI. Watermark tidak dibakar ke dalam file gambar tanda tangan. File tanda tangan tetap disimpan byte-for-byte seperti file hasil upload atau PNG hasil canvas, sedangkan posisi dan status watermark disimpan sebagai metadata pada approval.
+
+- Watermark ditampilkan kembali pada approval history menggunakan metadata posisi yang tersimpan.
+
+- Watermark pada PDF atau output cetak belum termasuk dalam scope Phase 17.4D.
