@@ -234,3 +234,18 @@ test('renderApprovalStages: tanda tangan lewat endpoint API terotorisasi; id jah
     assert.ok(sources[0].includes('%22%3E%3Cscript%3E'), 'id inspeksi di-encode di path');
     assert.ok(html.includes('Tanpa tanda tangan (data lama)'));
 });
+
+test('renderApprovalStages: watermark (Phase 17.4D) hanya dari angka posisi — nilai jahat/di luar 0..1 tidak menjadi markup', () => {
+    const item = {
+        id: 'INS-001', status: 'completed', currentApprovalStage: null,
+        approvalHistory: [
+            { id: 1, stage: 'koordinator_k3l', attempt: 1, decision: 'approved', reviewerName: 'Dewi', hasSignature: true, watermark: { x: 0.25, y: 0.75 }, decidedAt: '2026-01-01' },
+            { id: 2, stage: 'manajer', attempt: 1, decision: 'approved', reviewerName: 'Andi', hasSignature: true, watermark: { x: XSS_ATTR, y: 7 }, decidedAt: '2026-01-02' },
+            { id: 3, stage: 'ketua_p2k3', attempt: 1, decision: 'approved', reviewerName: 'Hadi', hasSignature: true, watermark: null, decidedAt: '2026-01-03' },
+        ],
+    };
+    const html = renderApprovalStages(item);
+    assert.ok(!html.includes('<script>'));
+    const styles = [...html.matchAll(/data-testid="stage-watermark"[^>]*style="([^"]*)"/g)].map((match) => match[1]);
+    assert.deepEqual(styles, ['left:25%;top:75%', 'left:0%;top:100%'], 'satu watermark per persetujuan yang memilikinya, posisi dipaksa ke 0..1');
+});

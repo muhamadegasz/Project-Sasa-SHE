@@ -134,6 +134,12 @@ export async function recordDecision(inspectionId, decision, _nextState, signatu
             formData.append('signatureMethod', signature.method);
             formData.append('signature', signature.file);
         }
+        // Phase 17.4D: posisi watermark hanya dikirim bila aktif.
+        formData.append('watermarkEnabled', decision.watermark ? 'true' : 'false');
+        if (decision.watermark) {
+            formData.append('watermarkX', String(decision.watermark.x));
+            formData.append('watermarkY', String(decision.watermark.y));
+        }
         await apiPost(`${base}/approve`, formData);
     }
     return true;

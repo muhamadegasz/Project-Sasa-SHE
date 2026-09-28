@@ -62,3 +62,55 @@ export function checkSignature(signature) {
 
     return { value: { method, mimeType: signature.mimeType, size, file: signature.file } };
 }
+
+/*
+ * Watermark (Phase 17.4D) — opsional, terpisah dari sah/tidaknya tanda tangan.
+ * Teks "SHE Sasa" yang digambar UI di atas gambar tanda tangan; yang disimpan
+ * hanya posisinya (approvals.watermark_*), berkas tanda tangan tidak diubah.
+ * Posisi = titik TENGAH watermark, ternormalisasi 0..1 terhadap lebar/tinggi
+ * gambar tanda tangan ((0,0) kiri atas). Ukuran dan opacity tetap dari sistem.
+ * Watermark hanya penanda visual, bukan tanda tangan elektronik tersertifikasi.
+ */
+
+/** Posisi awal saat watermark diaktifkan: tengah tanda tangan. */
+export const WATERMARK_DEFAULT_POSITION = Object.freeze({ x: 0.5, y: 0.5 });
+
+/** Kolom watermark_x/y DECIMAL(5,4): posisi dibulatkan ke 4 desimal. */
+const WATERMARK_PRECISION = 10000;
+
+/** Angka desimal biasa dari field multipart — bukan '', spasi, '1e-1', '0x1', 'Infinity'. */
+const DECIMAL_TEXT = /^\d+(\.\d+)?$/;
+
+function toWatermarkCoordinate(value) {
+    let number = null;
+    if (typeof value === 'number') number = value;
+    else if (typeof value === 'string' && DECIMAL_TEXT.test(value)) number = Number(value);
+    if (!Number.isFinite(number) || number < 0 || number > 1) return null;
+    return Math.round(number * WATERMARK_PRECISION) / WATERMARK_PRECISION;
+}
+
+/**
+ * Memeriksa watermark sebuah persetujuan.
+ *
+ * `watermark`: { enabled, x, y } dari isian, atau null/undefined (= tidak aktif).
+ *   enabled — true/false, atau 'true'/'false' (field multipart)
+ *   x, y    — angka atau teks desimal, 0..1; wajib bila aktif, tidak boleh
+ *             diisi bila tidak aktif (tidak diabaikan diam-diam)
+ *
+ * @returns {{ value: { x, y } | null }
+ *         | { error: 'INVALID' | 'POSITION_REQUIRED' | 'POSITION_INVALID' }}
+ */
+export function checkWatermark(watermark) {
+    if (watermark == null) return { value: null };
+    const { enabled, x, y } = watermark;
+
+    if (enabled === undefined || enabled === false || enabled === 'false') {
+        return x == null && y == null ? { value: null } : { error: 'INVALID' };
+    }
+    if (enabled !== true && enabled !== 'true') return { error: 'INVALID' };
+
+    if (x == null || y == null || x === '' || y === '') return { error: 'POSITION_REQUIRED' };
+    const position = { x: toWatermarkCoordinate(x), y: toWatermarkCoordinate(y) };
+    if (position.x === null || position.y === null) return { error: 'POSITION_INVALID' };
+    return { value: position };
+}

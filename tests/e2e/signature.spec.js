@@ -199,3 +199,195 @@ test('Ketua menyetujui lewat UI -> COMPLETED tanpa aksi Setujui lagi; tanda tang
     const rina = await apiLogin('rina');
     expect((await rina.context.get(signatureSrc)).status()).toBe(404);
 });
+
+// =========================================================================
+// Phase 17.4D — watermark opsional di atas pratinjau tanda tangan
+// =========================================================================
+
+/**
+ * Keadaan watermark di pratinjau: posisi 0..1 (dari left/top %), titik
+ * tengahnya di layar, apakah kotaknya utuh di dalam area tanda tangan, dan
+ * apakah area itu tepat sama dengan gambar tanda tangan.
+ */
+async function watermarkState(page) {
+    return page.evaluate(() => {
+        const stage = document.getElementById('signatureStage');
+        const mark = document.getElementById('signatureWatermark').getBoundingClientRect();
+        const image = document.getElementById('signaturePreview').getBoundingClientRect();
+        const outer = stage.getBoundingClientRect();
+        const left = outer.left + stage.clientLeft;
+        const top = outer.top + stage.clientTop;
+        const tolerance = 0.5;
+        return {
+            x: parseFloat(document.getElementById('signatureWatermark').style.left) / 100,
+            y: parseFloat(document.getElementById('signatureWatermark').style.top) / 100,
+            centre: { x: mark.left + mark.width / 2, y: mark.top + mark.height / 2 },
+            inside: mark.left >= left - tolerance && mark.top >= top - tolerance
+                && mark.right <= left + stage.clientWidth + tolerance && mark.bottom <= top + stage.clientHeight + tolerance,
+            areaIsImage: Math.abs(image.left - left) < 1 && Math.abs(image.top - top) < 1
+                && Math.abs(image.width - stage.clientWidth) < 1 && Math.abs(image.height - stage.clientHeight) < 1,
+        };
+    });
+}
+
+async function dragWithMouse(page, from, to) {
+    await page.mouse.move(from.x, from.y);
+    await page.mouse.down();
+    await page.mouse.move(to.x, to.y, { steps: 8 });
+    await page.mouse.up();
+}
+
+/** Sentuhan sungguhan (CDP) — Chromium meneruskannya sebagai Pointer Events pointerType 'touch'. */
+async function dragWithTouch(cdp, from, to, steps = 8) {
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: from.x, y: from.y }] });
+    for (let i = 1; i <= steps; i++) {
+        const x = from.x + ((to.x - from.x) * i) / steps;
+        const y = from.y + ((to.y - from.y) * i) / steps;
+        await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x, y }] });
+    }
+    await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+}
+
+test('watermark (mouse): nonaktif bawaan; diaktifkan -> tengah; digeser & dibatasi di dalam tanda tangan; posisi ternormalisasi tersimpan, berkas tetap asli, tampil di riwayat', async ({ page, browser }) => {
+    const arif = await apiLogin('arif');
+    const inspection = await createInspectionFixture(arif);
+
+    await loginViaUi(page, 'dewi');
+    const modal = await openSignatureModalFor(page, inspection.id);
+    await modal.getByRole('radio', { name: 'Upload Tanda Tangan' }).check();
+    await page.locator('#signatureFile').setInputFiles({ name: 'ttd.png', mimeType: 'image/png', buffer: PNG_BYTES });
+
+    const toggle = modal.getByLabel('Tambahkan watermark');
+    const watermark = page.getByTestId('signature-watermark');
+    await expect(toggle).not.toBeChecked();
+    await expect(watermark).toBeHidden();
+
+    await toggle.check();
+    await expect(watermark).toBeVisible();
+    let state = await watermarkState(page);
+    expect(state).toMatchObject({ x: 0.5, y: 0.5, inside: true, areaIsImage: true });
+
+    // Ditarik jauh melewati pojok kiri atas -> berhenti di tepi, tetap utuh di dalam.
+    const stage = await page.locator('#signatureStage').boundingBox();
+    await dragWithMouse(page, state.centre, { x: stage.x - 300, y: stage.y - 300 });
+    state = await watermarkState(page);
+    expect(state.inside).toBe(true);
+    expect(state.x).toBeLessThan(0.5);
+    expect(state.y).toBeLessThan(0.5);
+
+    // Nonaktif lalu aktif lagi: posisi terakhir dipertahankan selama modal terbuka.
+    const beforeToggle = { x: state.x, y: state.y };
+    await toggle.uncheck();
+    await expect(watermark).toBeHidden();
+    await toggle.check();
+    expect(await watermarkState(page)).toMatchObject(beforeToggle);
+
+    // Digeser ke kanan bawah.
+    await dragWithMouse(page, state.centre, { x: stage.x + stage.width * 0.7, y: stage.y + stage.height * 0.7 });
+    state = await watermarkState(page);
+    expect(state.inside).toBe(true);
+    expect(state.x).toBeGreaterThan(0.5);
+    expect(state.y).toBeGreaterThan(0.5);
+    const chosen = { x: state.x, y: state.y };
+
+    await modal.getByRole('button', { name: 'Setujui' }).click();
+    await expect(page.locator('#toastMessage')).toContainText('menyetujui inspeksi');
+
+    const saved = await fetchInspection(arif, inspection.id);
+    expect(saved.currentApprovalStage).toBe('manajer');
+    expect(saved.approvalHistory[0].watermark.x).toBeCloseTo(chosen.x, 4);
+    expect(saved.approvalHistory[0].watermark.y).toBeCloseTo(chosen.y, 4);
+    // Watermark hanya metadata: berkas tanda tangan tersimpan byte-demi-byte sama dengan yang dipilih.
+    const stored = await fetchStoredSignature(arif, inspection.id, saved.approvalHistory[0].id);
+    expect(Buffer.compare(stored.bytes, PNG_BYTES)).toBe(0);
+
+    // Pemilik membuka detail: watermark tampil di atas tanda tangan, di posisi yang sama.
+    const ownerPage = await newIsolatedPage(browser);
+    await loginViaUi(ownerPage, 'arif');
+    await goToTab(ownerPage, 'Dashboard');
+    await ownerPage.locator('#inspeksiTableBody').getByRole('row', { name: inspection.id }).getByTestId('row-detail-btn').click();
+    const overlay = ownerPage.locator('#detailModal').getByTestId('stage-watermark');
+    await expect(overlay).toHaveCount(1);
+    const shown = await overlay.evaluate((node) => ({ x: parseFloat(node.style.left) / 100, y: parseFloat(node.style.top) / 100 }));
+    expect(shown.x).toBeCloseTo(chosen.x, 4);
+    expect(shown.y).toBeCloseTo(chosen.y, 4);
+    // Area watermark di riwayat = gambar tanda tangan itu sendiri (bingkai tidak melebar).
+    const thumb = ownerPage.locator('#detailModal').getByTestId('stage-signature');
+    await expect.poll(() => thumb.locator('img').evaluate((img) => img.complete && img.naturalWidth)).toBeGreaterThan(0);
+    const fit = await thumb.evaluate((link) => {
+        const img = link.querySelector('img').getBoundingClientRect();
+        return { dw: Math.abs(img.width - link.clientWidth), dh: Math.abs(img.height - link.clientHeight) };
+    });
+    expect(fit.dw).toBeLessThan(1);
+    expect(fit.dh).toBeLessThan(1);
+    await ownerPage.close();
+});
+
+test('tanpa watermark: persetujuan tetap sah, watermark tersimpan null', async ({ page }) => {
+    const arif = await apiLogin('arif');
+    const inspection = await createInspectionFixture(arif);
+
+    await loginViaUi(page, 'dewi');
+    const modal = await openSignatureModalFor(page, inspection.id);
+    await modal.getByRole('radio', { name: 'Upload Tanda Tangan' }).check();
+    await page.locator('#signatureFile').setInputFiles({ name: 'ttd.png', mimeType: 'image/png', buffer: PNG_BYTES });
+    await expect(modal.getByLabel('Tambahkan watermark')).not.toBeChecked();
+    await modal.getByRole('button', { name: 'Setujui' }).click();
+    await expect(page.locator('#toastMessage')).toContainText('menyetujui inspeksi');
+
+    const saved = await fetchInspection(arif, inspection.id);
+    expect(saved.approvalHistory[0]).toMatchObject({ stage: 'koordinator_k3l', hasSignature: true, watermark: null });
+});
+
+test.describe('layar sentuh 390px', () => {
+    test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+    test('watermark (sentuh): kanvas digambar & watermark digeser dengan jari; tanpa scroll horizontal/terpotong; posisi tersimpan', async ({ page }) => {
+        const arif = await apiLogin('arif');
+        const inspection = await createInspectionFixture(arif);
+        await approveViaApi(await apiLogin('dewi'), inspection.id, 'koordinator_k3l');
+
+        await loginViaUi(page, 'andi');
+        const modal = await openSignatureModalFor(page, inspection.id);
+        await modal.getByRole('radio', { name: 'Gambar Tanda Tangan' }).check();
+        const cdp = await page.context().newCDPSession(page);
+
+        await page.locator('#signatureCanvas').scrollIntoViewIfNeeded();
+        const canvas = await page.locator('#signatureCanvas').boundingBox();
+        await dragWithTouch(cdp, { x: canvas.x + 20, y: canvas.y + canvas.height / 2 },
+            { x: canvas.x + canvas.width - 20, y: canvas.y + canvas.height / 3 }, 12);
+        await expect(page.locator('#signaturePreview')).toBeVisible();
+
+        await modal.getByLabel('Tambahkan watermark').check();
+        await expect(page.getByTestId('signature-watermark')).toBeVisible();
+        await page.evaluate(() => {
+            window.__watermarkPointerTypes = [];
+            document.getElementById('signatureStage').addEventListener('pointerdown', (event) => window.__watermarkPointerTypes.push(event.pointerType));
+        });
+        await page.locator('#signatureStage').scrollIntoViewIfNeeded();
+        let state = await watermarkState(page);
+        expect(state).toMatchObject({ x: 0.5, y: 0.5, inside: true, areaIsImage: true });
+        const stage = await page.locator('#signatureStage').boundingBox();
+
+        await dragWithTouch(cdp, state.centre, { x: stage.x + stage.width + 100, y: stage.y + stage.height * 0.8 });
+        expect(await page.evaluate(() => window.__watermarkPointerTypes)).toEqual(['touch']);
+        state = await watermarkState(page);
+        expect(state.inside, 'dibatasi di tepi kanan').toBe(true);
+        expect(state.x).toBeGreaterThan(0.5);
+        expect(state.y).toBeGreaterThan(0.5);
+
+        // Tidak ada scroll horizontal; kotak modal tidak terpotong di sisi kiri/kanan.
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+        const box = await page.locator('#signatureModal .modal-box').boundingBox();
+        expect(box.x).toBeGreaterThanOrEqual(0);
+        expect(box.x + box.width).toBeLessThanOrEqual(390);
+
+        await modal.getByRole('button', { name: 'Setujui' }).click();
+        await expect(page.locator('#toastMessage')).toContainText('menyetujui inspeksi');
+        const saved = await fetchInspection(arif, inspection.id);
+        const entry = saved.approvalHistory.find((item) => item.stage === 'manajer');
+        expect(entry).toMatchObject({ signatureMethod: 'canvas', hasSignature: true });
+        expect(entry.watermark.x).toBeCloseTo(state.x, 4);
+        expect(entry.watermark.y).toBeCloseTo(state.y, 4);
+    });
+});

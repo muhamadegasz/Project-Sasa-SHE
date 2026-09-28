@@ -88,9 +88,10 @@ export function isFullyApproved(inspection) {
  * ({id, displayName}). `reason` hanya untuk penolakan, `signatureMethod`
  * hanya untuk persetujuan (Phase 17.4A) — kewajiban keduanya diperiksa
  * approval-service.js, bukan di sini. Berkas tanda tangannya tidak ikut di
- * entri ini.
+ * entri ini. `watermark` ({x, y} atau null, Phase 17.4D) juga hanya untuk
+ * persetujuan — bentuknya sama dengan `watermark` di detail inspeksi.
  */
-export function buildDecisionRecord(inspection, stage, decision, reviewer, reason = null, signatureMethod = null) {
+export function buildDecisionRecord(inspection, stage, decision, reviewer, reason = null, signatureMethod = null, watermark = null) {
     return {
         stage: stage.id,
         attempt: nextAttempt(inspection, stage.id),
@@ -99,6 +100,7 @@ export function buildDecisionRecord(inspection, stage, decision, reviewer, reaso
         reviewerName: reviewer ? reviewer.displayName : null,
         rejectionReason: decision === APPROVAL_DECISION.REJECTED ? reason : null,
         signatureMethod: decision === APPROVAL_DECISION.APPROVED ? signatureMethod : null,
+        watermark: decision === APPROVAL_DECISION.APPROVED ? watermark : null,
         decidedAt: new Date().toISOString(),
     };
 }

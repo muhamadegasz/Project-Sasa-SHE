@@ -546,7 +546,12 @@
             </div>
             <div class="signature-preview" id="signaturePreviewBox" hidden>
                 <span class="signature-preview-label">Pratinjau tanda tangan yang akan dikirim:</span>
-                <img id="signaturePreview" alt="Pratinjau tanda tangan">
+                <div class="signature-stage" id="signatureStage">
+                    <img id="signaturePreview" alt="Pratinjau tanda tangan">
+                    <svg class="signature-watermark" id="signatureWatermark" data-testid="signature-watermark" viewBox="0 0 120 28" aria-hidden="true" hidden><rect x="2" y="2" width="116" height="24" rx="6"/><text x="60" y="20">SHE Sasa</text></svg>
+                </div>
+                <label class="signature-watermark-toggle"><input type="checkbox" id="signatureWatermarkToggle"> Tambahkan watermark</label>
+                <span class="signature-watermark-hint" id="signatureWatermarkHint" hidden>Geser watermark di atas pratinjau untuk memindahkannya. Watermark hanya penanda visual, bukan tanda tangan elektronik tersertifikasi.</span>
                 <button type="button" class="btn-sm outline" id="signatureRemoveFile" hidden><i class="fas fa-trash"></i> Hapus berkas</button>
             </div>
             <p id="signatureError" class="signature-error" role="alert"></p>

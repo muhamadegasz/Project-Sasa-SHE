@@ -27,6 +27,17 @@ import { signatureUrl } from '../../infrastructure/api-client.js';
 import { bindModalClose, openModal } from '../components/modal.js';
 import { showToast } from '../components/toast.js';
 
+/**
+ * Watermark tersimpan (Phase 17.4D) di atas gambar tanda tangan, di posisi
+ * tengah yang sama dengan pratinjau saat menyetujui. Teks tetap dari sistem;
+ * dari server hanya angka posisi, dipaksa ke 0..1.
+ */
+function renderStageWatermark(watermark) {
+    if (!watermark) return '';
+    const percent = (value) => Math.min(Math.max(Number(value) || 0, 0), 1) * 100;
+    return `<svg class="signature-watermark" data-testid="stage-watermark" viewBox="0 0 120 28" aria-hidden="true" style="left:${percent(watermark.x)}%;top:${percent(watermark.y)}%"><rect x="2" y="2" width="116" height="24" rx="6"/><text x="60" y="20">SHE Sasa</text></svg>`;
+}
+
 /** Tanda tangan sebuah persetujuan: gambar dari API (tautan membuka ukuran penuh), atau keterangan data lama. */
 function renderStageSignature(item, decision) {
     if (!decision.hasSignature || decision.id == null) {
@@ -35,7 +46,7 @@ function renderStageSignature(item, decision) {
     const url = escapeHtml(signatureUrl(item.id, decision.id));
     return `
         <a class="stage-signature" href="${url}" target="_blank" rel="noopener noreferrer" data-testid="stage-signature" title="Buka tanda tangan">
-            <img src="${url}" alt="Tanda tangan ${escapeHtml(decision.reviewerName || '')}" loading="lazy">
+            <img src="${url}" alt="Tanda tangan ${escapeHtml(decision.reviewerName || '')}" loading="lazy">${renderStageWatermark(decision.watermark)}
         </a>`;
 }
 

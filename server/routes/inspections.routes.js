@@ -149,14 +149,27 @@ function signatureFromRequest(req) {
     };
 }
 
+/**
+ * Watermark dari permintaan approve (Phase 17.4D), atau null bila tidak ada
+ * field watermark sama sekali (= tidak aktif). Nilai diteruskan mentah —
+ * seluruh validasinya di domain/signature-rules.js checkWatermark.
+ */
+function watermarkFromRequest(req) {
+    const { watermarkEnabled, watermarkX, watermarkY } = req.body;
+    if (watermarkEnabled === undefined && watermarkX === undefined && watermarkY === undefined) return null;
+    return { enabled: watermarkEnabled, x: watermarkX, y: watermarkY };
+}
+
 // Phase 17.2: wewenang (role + status + tahap berjalan + cakupan plant
 // Koordinator) diputuskan domain/inspection-policy.js lewat approval-service,
 // bukan pemetaan role-per-tahap di route ini. Identitas selalu dari sesi.
 // Phase 17.4A: multipart/form-data — stageId, signatureMethod ('upload' |
 // 'canvas'), signature (berkas PNG/JPEG). Berkas hanya ditahan di memori;
 // ditulis ke disk oleh repository setelah seluruh pemeriksaan lolos.
+// Phase 17.4D: opsional watermarkEnabled ('true' | 'false'), watermarkX,
+// watermarkY (0..1, wajib bila aktif).
 inspectionsRouter.post('/:id/approve', parseSignatureUpload, asyncHandler(async (req, res) => {
-    const result = await approvalService.approve(req.params.id, req.body.stageId, req.user, signatureFromRequest(req));
+    const result = await approvalService.approve(req.params.id, req.body.stageId, req.user, signatureFromRequest(req), watermarkFromRequest(req));
     sendResult(res, result);
 }));
 

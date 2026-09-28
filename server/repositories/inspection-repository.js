@@ -327,8 +327,9 @@ export async function recordDecision(inspectionId, decision, nextState, signatur
 
         await connection.query(
             `INSERT INTO approvals (inspection_id, stage, attempt, decision, reviewer_user_id, reviewer_name, rejection_reason,
-                                    signature_method, signature_file_path, signature_mime_type, decided_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+                                    signature_method, signature_file_path, signature_mime_type,
+                                    watermark_enabled, watermark_x, watermark_y, decided_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 numericId,
                 decision.stage,
@@ -340,6 +341,11 @@ export async function recordDecision(inspectionId, decision, nextState, signatur
                 signature ? signature.method : null,
                 storedSignature,
                 signature ? signature.mimeType : null,
+                // Phase 17.4D: posisi watermark sudah diperiksa checkWatermark(); CHECK
+                // chk_approvals_watermark_position tetap jadi penjaga terakhir.
+                decision.watermark ? 1 : 0,
+                decision.watermark ? decision.watermark.x : null,
+                decision.watermark ? decision.watermark.y : null,
                 new Date(decision.decidedAt),
             ],
         );

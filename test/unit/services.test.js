@@ -636,3 +636,50 @@ test('dua persetujuan bersamaan bertanda tangan -> tepat satu keputusan, tepat s
     assert.equal((await inspectionFake.findById('INS-002')).approvalHistory.length, 1);
     assert.equal(inspectionFake.__storedSignatures().length, 1);
 });
+
+// Phase 17.4D: watermark opsional pada persetujuan, independen dari tanda tangan.
+test('approve tanpa watermark -> riwayat watermark null; dengan watermark -> posisi ternormalisasi tercatat', async () => {
+    const first = await approvalService.approve('INS-002', 'koordinator_k3l', dewiPlant9, SIGNATURE);
+    assert.equal(first.ok, true);
+    const second = await approvalService.approve('INS-002', 'manajer', andi, SIGNATURE, { enabled: 'true', x: '0.25', y: '0.8' });
+    assert.equal(second.ok, true);
+    const third = await approvalService.approve('INS-002', 'ketua_p2k3', hadi, SIGNATURE, { enabled: false });
+    assert.equal(third.ok, true);
+
+    const history = (await inspectionFake.findById('INS-002')).approvalHistory;
+    assert.deepEqual(history.map((entry) => [entry.stage, entry.watermark]), [
+        ['koordinator_k3l', null], ['manajer', { x: 0.25, y: 0.8 }], ['ketua_p2k3', null],
+    ]);
+});
+
+test('approve dengan watermark tidak sah -> ditolak, tidak ada keputusan/tanda tangan tersimpan', async () => {
+    for (const [watermark, expected] of [
+        [{ enabled: 'true' }, AE.WATERMARK_POSITION_REQUIRED],
+        [{ enabled: 'true', x: '1.5', y: '0.5' }, AE.WATERMARK_POSITION_INVALID],
+        [{ enabled: 'true', x: '0.5', y: 'abc' }, AE.WATERMARK_POSITION_INVALID],
+        [{ enabled: 'ya', x: '0.5', y: '0.5' }, AE.WATERMARK_INVALID],
+        [{ enabled: 'false', x: '0.5', y: '0.5' }, AE.WATERMARK_INVALID],
+    ]) {
+        const result = await approvalService.approve('INS-002', 'koordinator_k3l', dewiPlant9, SIGNATURE, watermark);
+        assert.equal(result.reason, expected, JSON.stringify(watermark));
+    }
+    const stored = await inspectionFake.findById('INS-002');
+    assert.equal(stored.currentApprovalStage, 'koordinator_k3l');
+    assert.equal(stored.approvalHistory.length, 0);
+    assert.equal(inspectionFake.__storedSignatures().length, 0);
+});
+
+test('watermark tidak menggantikan tanda tangan; wewenang & visibilitas diputuskan sebelum watermark diperiksa', async () => {
+    const watermark = { enabled: true, x: 0.5, y: 0.5 };
+    assert.equal((await approvalService.approve('INS-002', 'koordinator_k3l', dewiPlant9, null, watermark)).reason, AE.SIGNATURE_REQUIRED);
+    const invalid = { enabled: true, x: 9, y: 9 };
+    assert.equal((await approvalService.approve('INS-002', 'koordinator_k3l', koordinatorPlant3, SIGNATURE, invalid)).reason, AE.NOT_FOUND);
+    assert.equal((await approvalService.approve('INS-002', 'koordinator_k3l', owner, SIGNATURE, invalid)).reason, AE.FORBIDDEN);
+    assert.equal((await approvalService.approve('INS-002', 'manajer', andi, SIGNATURE, invalid)).reason, AE.NOT_FOUND);
+});
+
+test('penolakan tidak pernah membawa watermark', async () => {
+    assert.equal((await approvalService.reject('INS-002', 'koordinator_k3l', dewiPlant9, 'Foto kurang jelas')).ok, true);
+    const [entry] = (await inspectionFake.findById('INS-002')).approvalHistory;
+    assert.equal(entry.watermark, null);
+});

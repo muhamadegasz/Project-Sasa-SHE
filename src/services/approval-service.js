@@ -19,7 +19,7 @@ import * as inspectionRepository from '#repositories/inspection-repository.js';
 import { buildDecisionRecord, checkRejectionReason, findStage } from '../domain/approval-rules.js';
 import { approvedState, rejectedState } from '../domain/workflow-rules.js';
 import { canApprove, canReject, canView } from '../domain/inspection-policy.js';
-import { checkSignature } from '../domain/signature-rules.js';
+import { checkSignature, checkWatermark } from '../domain/signature-rules.js';
 import { APPROVAL_DECISION, INSPECTION_STATUS } from '../domain/statuses.js';
 import { ACCESS_ERROR, fail, ok } from './result.js';
 
@@ -38,6 +38,10 @@ export const APPROVAL_ERROR = {
     SIGNATURE_CONTENT_INVALID: 'SIGNATURE_CONTENT_INVALID',
     SIGNATURE_TOO_LARGE: 'SIGNATURE_TOO_LARGE',
     SIGNATURE_NOT_ALLOWED: 'SIGNATURE_NOT_ALLOWED',
+    // Phase 17.4D: watermark opsional (domain/signature-rules.js checkWatermark).
+    WATERMARK_INVALID: 'WATERMARK_INVALID',
+    WATERMARK_POSITION_REQUIRED: 'WATERMARK_POSITION_REQUIRED',
+    WATERMARK_POSITION_INVALID: 'WATERMARK_POSITION_INVALID',
 };
 
 const REASON_ERROR = {
@@ -51,6 +55,12 @@ const SIGNATURE_ERROR = {
     METHOD_INVALID: APPROVAL_ERROR.SIGNATURE_METHOD_INVALID,
     CONTENT_INVALID: APPROVAL_ERROR.SIGNATURE_CONTENT_INVALID,
     TOO_LARGE: APPROVAL_ERROR.SIGNATURE_TOO_LARGE,
+};
+
+const WATERMARK_ERROR = {
+    INVALID: APPROVAL_ERROR.WATERMARK_INVALID,
+    POSITION_REQUIRED: APPROVAL_ERROR.WATERMARK_POSITION_REQUIRED,
+    POSITION_INVALID: APPROVAL_ERROR.WATERMARK_POSITION_INVALID,
 };
 
 /**
@@ -110,17 +120,23 @@ async function commit(inspection, decision, nextState, signature = null) {
  * petunjuk apa pun tentang inspeksinya. Tanda tangan milik keputusan ini;
  * identitas penyetuju tetap dari `reviewer` (sesi), tidak pernah dari isian.
  *
+ * Phase 17.4D: `watermark` ({ enabled, x, y } atau null) opsional dan tidak
+ * memengaruhi sah/tidaknya tanda tangan; diperiksa setelah tanda tangan.
+ *
  * @returns ok({ inspection, stage, fullyApproved }) atau fail(APPROVAL_ERROR.*)
  */
-export async function approve(inspectionId, stageId, reviewer, signature) {
+export async function approve(inspectionId, stageId, reviewer, signature, watermark = null) {
     const { inspection, stage, failure } = await loadDecidable(inspectionId, stageId, reviewer, canApprove);
     if (failure) return failure;
 
     const checked = checkSignature(signature);
     if (checked.error) return fail(SIGNATURE_ERROR[checked.error], { stage });
 
+    const position = checkWatermark(watermark);
+    if (position.error) return fail(WATERMARK_ERROR[position.error], { stage });
+
     const nextState = approvedState(inspection);
-    const decision = buildDecisionRecord(inspection, stage, APPROVAL_DECISION.APPROVED, reviewer, null, checked.value.method);
+    const decision = buildDecisionRecord(inspection, stage, APPROVAL_DECISION.APPROVED, reviewer, null, checked.value.method, position.value);
     const updated = await commit(inspection, decision, nextState, checked.value);
     if (!updated) return fail(APPROVAL_ERROR.STAGE_NOT_CURRENT, { stage });
 

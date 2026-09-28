@@ -145,6 +145,9 @@ const PESAN_GAGAL = {
     SIGNATURE_CONTENT_INVALID: '⚠️ Tanda tangan harus berupa gambar PNG atau JPG',
     SIGNATURE_TOO_LARGE: '⚠️ Ukuran gambar tanda tangan maksimal 1 MB',
     SIGNATURE_NOT_ALLOWED: '⚠️ Penolakan tidak memerlukan tanda tangan',
+    WATERMARK_INVALID: '⚠️ Isian watermark tidak valid',
+    WATERMARK_POSITION_REQUIRED: '⚠️ Posisi watermark wajib diisi',
+    WATERMARK_POSITION_INVALID: '⚠️ Posisi watermark harus berada di dalam area tanda tangan',
     FORBIDDEN: '⛔ Anda tidak berwenang untuk aksi ini',
     NOT_EDITABLE: '⚠️ Inspeksi ini tidak bisa diubah pada status sekarang',
     NOT_SUBMITTABLE: '⚠️ Inspeksi ini tidak bisa diajukan pada status sekarang',
@@ -376,14 +379,14 @@ async function approveStage(inspeksiId, stageId) {
 let approving = false;
 
 /**
- * Kegagalan persetujuan. Masalah tanda tangan -> modal tetap terbuka dengan
- * tanda tangan yang sama, supaya bisa diperbaiki. Selain itu (tahap sudah
+ * Kegagalan persetujuan. Masalah tanda tangan/watermark -> modal tetap terbuka
+ * dengan tanda tangan yang sama, supaya bisa diperbaiki. Selain itu (tahap sudah
  * berubah, akses hilang, dst) tanda tangannya tidak lagi berguna -> modal
  * tanda tangan ditutup.
  */
 function handleApproveFailure(reason) {
     const message = pesanGagal(reason);
-    if (String(reason).startsWith('SIGNATURE_')) { showSignatureError(message); return; }
+    if (/^(SIGNATURE|WATERMARK)_/.test(String(reason))) { showSignatureError(message); return; }
     closeSignatureModal();
     showToast(message);
 }
@@ -396,7 +399,7 @@ async function confirmApprove() {
     try {
         let result;
         try {
-            result = await approvalService.approve(pending.inspectionId, pending.stageId, getCurrentUser(), pending.signature);
+            result = await approvalService.approve(pending.inspectionId, pending.stageId, getCurrentUser(), pending.signature, pending.watermark);
         } catch (error) {
             // Penolakan server (4xx) dari repository browser -> kode alasannya.
             if (error instanceof ApiError && error.status !== 401 && error.body?.error) {

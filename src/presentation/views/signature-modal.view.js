@@ -10,9 +10,14 @@
  * (PNG). Tanda tangan yang siap dikirim SELALU berkas yang sama persis
  * dengan pratinjaunya. Berganti cara membuang data cara sebelumnya.
  * Tidak ada innerHTML di sini — seluruh teks lewat textContent.
+ *
+ * Phase 17.4D: watermark opsional ("Tambahkan watermark") di atas pratinjau,
+ * digeser dengan mouse/sentuh (Pointer Events). Yang dikirim hanya posisi
+ * tengahnya, ternormalisasi 0..1 terhadap gambar tanda tangan (lihat
+ * domain/signature-rules.js checkWatermark); berkas tanda tangan tidak diubah.
  */
 
-import { SIGNATURE_MAX_BYTES, SIGNATURE_MIME_TYPES } from '../../domain/signature-rules.js';
+import { SIGNATURE_MAX_BYTES, SIGNATURE_MIME_TYPES, WATERMARK_DEFAULT_POSITION } from '../../domain/signature-rules.js';
 import { SIGNATURE_METHOD } from '../../domain/statuses.js';
 import { bindModalClose, closeModal, openModal } from '../components/modal.js';
 import { createSignaturePad, detectImageType } from '../components/signature-pad.js';
@@ -28,6 +33,10 @@ const el = {
     canvas: document.getElementById('signatureCanvas'),
     previewBox: document.getElementById('signaturePreviewBox'),
     preview: document.getElementById('signaturePreview'),
+    stage: document.getElementById('signatureStage'),
+    watermark: document.getElementById('signatureWatermark'),
+    watermarkToggle: document.getElementById('signatureWatermarkToggle'),
+    watermarkHint: document.getElementById('signatureWatermarkHint'),
     removeFile: document.getElementById('signatureRemoveFile'),
     error: document.getElementById('signatureError'),
     confirm: document.getElementById('confirmApproveBtn'),
@@ -38,6 +47,7 @@ const state = {
     method: null,
     signature: null, // { method, file, mimeType, size } — siap dikirim
     previewUrl: null,
+    watermark: { enabled: false, ...WATERMARK_DEFAULT_POSITION },
     submitting: false,
     messageFor: (reason) => reason,
     // Menandai hasil pemeriksaan async (baca berkas, ekspor kanvas) yang sudah
@@ -76,11 +86,104 @@ async function showPreview(file) {
     el.previewBox.hidden = false;
     try {
         await el.preview.decode();
+        // Ukuran gambar bisa berubah: watermark tetap utuh di dalamnya.
+        if (state.watermark.enabled) keepWatermarkInside();
         return true;
     } catch {
         return false;
     }
 }
+
+/** 4 desimal — sama dengan kolom watermark_x/y DECIMAL(5,4). */
+const roundPosition = (value) => Math.round(value * 10000) / 10000;
+
+function placeWatermark() {
+    el.watermark.style.left = `${state.watermark.x * 100}%`;
+    el.watermark.style.top = `${state.watermark.y * 100}%`;
+}
+
+/**
+ * Posisi tengah watermark (0..1) untuk titik layar (clientX, clientY), dibatasi
+ * supaya watermark tetap utuh di dalam gambar tanda tangan (area = gambar,
+ * bingkainya di .signature-stage). Watermark yang lebih besar dari gambar
+ * (gambar sangat pipih) ditaruh di tengah sumbu itu.
+ */
+function positionAt(clientX, clientY) {
+    const area = el.stage.getBoundingClientRect();
+    const mark = el.watermark.getBoundingClientRect();
+    const axis = (point, start, size, markSize) => {
+        const half = Math.min(markSize, size) / 2;
+        const centre = Math.min(Math.max(point - start, half), size - half);
+        return roundPosition(centre / size);
+    };
+    return {
+        x: axis(clientX, area.left + el.stage.clientLeft, el.stage.clientWidth, mark.width),
+        y: axis(clientY, area.top + el.stage.clientTop, el.stage.clientHeight, mark.height),
+    };
+}
+
+function moveWatermarkTo(clientX, clientY) {
+    Object.assign(state.watermark, positionAt(clientX, clientY));
+    placeWatermark();
+}
+
+function keepWatermarkInside() {
+    const area = el.stage.getBoundingClientRect();
+    moveWatermarkTo(
+        area.left + el.stage.clientLeft + state.watermark.x * el.stage.clientWidth,
+        area.top + el.stage.clientTop + state.watermark.y * el.stage.clientHeight,
+    );
+}
+
+function setWatermarkEnabled(enabled) {
+    state.watermark.enabled = enabled;
+    el.watermarkToggle.checked = enabled;
+    // <svg> tidak punya properti .hidden seperti elemen HTML.
+    el.watermark.toggleAttribute('hidden', !enabled);
+    el.watermarkHint.hidden = !enabled;
+    el.stage.classList.toggle('watermark-on', enabled);
+    if (enabled && !el.previewBox.hidden) keepWatermarkInside();
+}
+
+function resetWatermark() {
+    Object.assign(state.watermark, WATERMARK_DEFAULT_POSITION);
+    placeWatermark();
+    setWatermarkEnabled(false);
+}
+
+// Menggeser: menggenggam watermark mempertahankan titik genggamnya; mengetuk
+// di luar watermark memindahkan tengahnya ke titik itu.
+let drag = null; // { pointerId, dx, dy }
+
+el.stage.addEventListener('pointerdown', (event) => {
+    if (!state.watermark.enabled || (event.pointerType === 'mouse' && event.button !== 0)) return;
+    event.preventDefault();
+    el.stage.setPointerCapture(event.pointerId);
+    const mark = el.watermark.getBoundingClientRect();
+    const onMark = event.clientX >= mark.left && event.clientX <= mark.right
+        && event.clientY >= mark.top && event.clientY <= mark.bottom;
+    drag = {
+        pointerId: event.pointerId,
+        dx: onMark ? event.clientX - (mark.left + mark.width / 2) : 0,
+        dy: onMark ? event.clientY - (mark.top + mark.height / 2) : 0,
+    };
+    el.stage.classList.add('watermark-dragging');
+    moveWatermarkTo(event.clientX - drag.dx, event.clientY - drag.dy);
+});
+
+el.stage.addEventListener('pointermove', (event) => {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    event.preventDefault();
+    moveWatermarkTo(event.clientX - drag.dx, event.clientY - drag.dy);
+});
+
+function endDrag(event) {
+    if (!drag || event.pointerId !== drag.pointerId) return;
+    drag = null;
+    el.stage.classList.remove('watermark-dragging');
+}
+el.stage.addEventListener('pointerup', endDrag);
+el.stage.addEventListener('pointercancel', endDrag);
 
 function resetSignatureData() {
     state.version++;
@@ -155,6 +258,7 @@ for (const input of el.methods) {
 }
 el.fileInput.addEventListener('change', handleFileChange);
 el.removeFile.addEventListener('click', () => resetSignatureData());
+el.watermarkToggle.addEventListener('change', () => setWatermarkEnabled(el.watermarkToggle.checked));
 document.getElementById('signatureClearCanvas').addEventListener('click', () => pad.clear());
 bindModalClose(MODAL_ID, 'closeSignatureModal');
 
@@ -172,14 +276,19 @@ export function openSignatureModal({ inspectionId, stage, messageFor }) {
     el.uploadPanel.hidden = true;
     el.canvasPanel.hidden = true;
     resetSignatureData();
+    resetWatermark();
     el.info.textContent = `${stage.title} menyetujui inspeksi ${inspectionId}. Pilih cara tanda tangan, periksa pratinjaunya, lalu tekan Setujui.`;
     openModal(MODAL_ID);
 }
 
-/** Persetujuan yang siap dikirim, atau null bila tanda tangan belum sah. */
+/**
+ * Persetujuan yang siap dikirim, atau null bila tanda tangan belum sah.
+ * Watermark tidak aktif -> tanpa posisi.
+ */
 export function getPendingApproval() {
     if (!state.pending || !state.signature) return null;
-    return { ...state.pending, signature: state.signature };
+    const { enabled, x, y } = state.watermark;
+    return { ...state.pending, signature: state.signature, watermark: enabled ? { enabled, x, y } : { enabled: false } };
 }
 
 /** Mengunci tombol selama pengiriman (mencegah persetujuan ganda). */

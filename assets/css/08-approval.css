@@ -216,14 +216,75 @@
     cursor: crosshair;
 }
 
+/* Phase 17.4D: bingkai ada di .signature-stage, bukan di gambar — area
+   watermark (posisi ternormalisasi 0..1) tepat sama dengan gambar tanda tangan. */
+.signature-stage {
+    position: relative;
+    max-width: 100%;
+    background: #fff;
+    border: 1px solid #f0e0e0;
+    border-radius: 8px;
+    overflow: hidden;
+}
+
 .signature-preview img {
     display: block;
     max-width: 100%;
     max-height: 140px;
-    padding: 0.3rem;
-    background: #fff;
-    border: 1px solid #f0e0e0;
-    border-radius: 8px;
+}
+
+/* touch-action: none hanya saat watermark aktif — menggeser watermark dengan
+   jari tidak ikut menggulir halaman. */
+.signature-stage.watermark-on {
+    touch-action: none;
+    cursor: grab;
+}
+
+.signature-stage.watermark-dragging {
+    cursor: grabbing;
+}
+
+/* Ukuran (45% lebar tanda tangan) dan opacity tetap — sama di pratinjau dan riwayat. */
+.signature-watermark {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: 45%;
+    height: auto;
+    aspect-ratio: 120 / 28;
+    transform: translate(-50%, -50%);
+    opacity: 0.35;
+    color: #d42a2a;
+    pointer-events: none;
+}
+
+.signature-watermark[hidden] {
+    display: none;
+}
+
+.signature-watermark rect {
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+}
+
+.signature-watermark text {
+    fill: currentColor;
+    font-family: 'Segoe UI', Roboto, system-ui, sans-serif;
+    font-size: 18px;
+    font-weight: 700;
+    text-anchor: middle;
+}
+
+.signature-watermark-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    cursor: pointer;
+}
+
+.signature-watermark-hint {
+    color: #8a6a6a;
 }
 
 .signature-error {
@@ -242,15 +303,23 @@
     cursor: not-allowed;
 }
 
+/* Bingkai di tautan, bukan gambar — watermark diposisikan terhadap gambar (Phase 17.4D). */
+.stage-signature {
+    position: relative;
+    display: inline-block;
+    align-self: flex-start; /* .stage-info adalah flex kolom: tanpa ini bingkai melebar selebar baris */
+    vertical-align: top;
+    margin-top: 0.3rem;
+    background: #fff;
+    border: 1px solid #e0d0d0;
+    border-radius: 6px;
+    overflow: hidden;
+}
+
 .stage-signature img {
     display: block;
     max-width: 140px;
     max-height: 44px;
-    margin-top: 0.3rem;
-    padding: 0.15rem;
-    background: #fff;
-    border: 1px solid #e0d0d0;
-    border-radius: 6px;
 }
 
 .stage-signature-note {

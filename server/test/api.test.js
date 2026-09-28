@@ -1202,3 +1202,121 @@ test('constraint DB: persetujuan tanpa tanda tangan, CANVAS non-PNG, tipe selain
         connection.release();
     }
 });
+
+// =========================================================================
+// Phase 17.4D — watermark persetujuan: watermarkEnabled / watermarkX / watermarkY
+// pada POST /approve yang sama; hanya metadata posisi, berkas tanda tangan tidak diubah
+// =========================================================================
+
+async function watermarkRows(id) {
+    const [rows] = await pool.query(
+        'SELECT stage, watermark_enabled, watermark_x, watermark_y FROM approvals WHERE inspection_id = ? ORDER BY id',
+        [toNumeric(id)],
+    );
+    return rows.map((row) => [row.stage, row.watermark_enabled, row.watermark_x, row.watermark_y]);
+}
+
+test('watermark: tanpa field / nonaktif -> tersimpan nonaktif tanpa posisi; aktif -> posisi tersimpan & dikembalikan detail; berkas tanda tangan tetap byte asli', async () => {
+    const arif = await loginAs('arif');
+    const dewi = await loginAs('dewi');
+    const andi = await loginAs('andi');
+    const hadi = await loginAs('hadi');
+    const inspection = await createInspection(arif, DRAFT_CONTENT);
+
+    assert.equal((await approveWith(dewi, inspection.id, 'koordinator_k3l')).status, 200, 'tanpa field watermark (klien lama)');
+    const withWatermark = await approveWith(andi, inspection.id, 'manajer', {
+        method: 'canvas', extraFields: { watermarkEnabled: 'true', watermarkX: '0.25', watermarkY: '0.8123' },
+    });
+    assert.equal(withWatermark.status, 200, JSON.stringify(withWatermark.body));
+    assert.equal((await approveWith(hadi, inspection.id, 'ketua_p2k3', { extraFields: { watermarkEnabled: 'false' } })).status, 200);
+
+    assert.deepEqual(await watermarkRows(inspection.id), [
+        ['koordinator_k3l', 0, null, null],
+        ['manajer', 1, '0.2500', '0.8123'],
+        ['ketua_p2k3', 0, null, null],
+    ]);
+    const detail = await arif.agent.get(`/api/inspections/${inspection.id}`);
+    assert.deepEqual(detail.body.approvalHistory.map((entry) => [entry.stage, entry.watermark]), [
+        ['koordinator_k3l', null], ['manajer', { x: 0.25, y: 0.8123 }], ['ketua_p2k3', null],
+    ]);
+    // Watermark hanya metadata: berkas tanda tangan yang tersimpan = berkas yang dikirim.
+    const stored = await getSignature(arif, inspection.id, detail.body.approvalHistory[1].id);
+    assert.deepEqual(Buffer.from(stored.body), PNG_BYTES);
+});
+
+test('watermark tidak sah -> 400, tidak ada keputusan/berkas; batas 0 dan 1 diterima', async () => {
+    const arif = await loginAs('arif');
+    const dewi = await loginAs('dewi');
+    const inspection = await createInspection(arif, DRAFT_CONTENT);
+    const before = signatureFiles();
+
+    for (const [label, fields, error] of [
+        ['aktif tanpa posisi', { watermarkEnabled: 'true' }, 'WATERMARK_POSITION_REQUIRED'],
+        ['aktif tanpa Y', { watermarkEnabled: 'true', watermarkX: '0.5' }, 'WATERMARK_POSITION_REQUIRED'],
+        ['X kosong', { watermarkEnabled: 'true', watermarkX: '', watermarkY: '0.5' }, 'WATERMARK_POSITION_REQUIRED'],
+        ['X > 1', { watermarkEnabled: 'true', watermarkX: '1.0001', watermarkY: '0.5' }, 'WATERMARK_POSITION_INVALID'],
+        ['Y < 0', { watermarkEnabled: 'true', watermarkX: '0.5', watermarkY: '-0.1' }, 'WATERMARK_POSITION_INVALID'],
+        ['X bukan angka', { watermarkEnabled: 'true', watermarkX: 'kiri', watermarkY: '0.5' }, 'WATERMARK_POSITION_INVALID'],
+        ['Y notasi eksponen', { watermarkEnabled: 'true', watermarkX: '0.5', watermarkY: '5e-1' }, 'WATERMARK_POSITION_INVALID'],
+        ['X piksel', { watermarkEnabled: 'true', watermarkX: '120', watermarkY: '40' }, 'WATERMARK_POSITION_INVALID'],
+        ['penanda tidak dikenal', { watermarkEnabled: 'on', watermarkX: '0.5', watermarkY: '0.5' }, 'WATERMARK_INVALID'],
+        ['posisi saat nonaktif', { watermarkEnabled: 'false', watermarkX: '0.5', watermarkY: '0.5' }, 'WATERMARK_INVALID'],
+        ['posisi tanpa penanda', { watermarkX: '0.5', watermarkY: '0.5' }, 'WATERMARK_INVALID'],
+    ]) {
+        const res = await approveWith(dewi, inspection.id, 'koordinator_k3l', { extraFields: fields });
+        assert.equal(res.status, 400, label);
+        assert.equal(res.body.error, error, label);
+    }
+    assert.equal((await approvalRows(inspection.id)).length, 0);
+    assert.deepEqual(signatureFiles(), before, 'tidak ada berkas tertulis');
+
+    const edge = await approveWith(dewi, inspection.id, 'koordinator_k3l', { extraFields: { watermarkEnabled: 'true', watermarkX: '0', watermarkY: '1' } });
+    assert.equal(edge.status, 200, JSON.stringify(edge.body));
+    assert.deepEqual(await watermarkRows(inspection.id), [['koordinator_k3l', 1, '0.0000', '1.0000']]);
+});
+
+test('watermark lewat permintaan langsung oleh peninjau yang tidak berwenang -> ditolak seperti biasa, tidak ada yang tersimpan', async () => {
+    const arif = await loginAs('arif');
+    const rina = await loginAs('rina'); // Koordinator plant lain
+    const andi = await loginAs('andi'); // Manajer, tahapnya belum berjalan
+    const inspection = await createInspection(arif, DRAFT_CONTENT);
+    const fields = { watermarkEnabled: 'true', watermarkX: '0.5', watermarkY: '0.5' };
+
+    const byOtherPlant = await approveWith(rina, inspection.id, 'koordinator_k3l', { extraFields: fields });
+    assert.deepEqual({ status: byOtherPlant.status, body: byOtherPlant.body }, { status: 404, body: { error: 'NOT_FOUND' } });
+    assert.equal((await approveWith(andi, inspection.id, 'koordinator_k3l', { extraFields: fields })).status, 404);
+    assert.equal((await approveWith(arif, inspection.id, 'koordinator_k3l', { extraFields: fields })).status, 403, 'pemilik: terlihat tapi tidak berwenang');
+    // Posisi tidak sah pun tidak membocorkan apa-apa sebelum wewenang diputuskan.
+    const invalidByOtherPlant = await approveWith(rina, inspection.id, 'koordinator_k3l', { extraFields: { watermarkEnabled: 'true', watermarkX: '9', watermarkY: '9' } });
+    assert.equal(invalidByOtherPlant.status, 404);
+    assert.equal((await approvalRows(inspection.id)).length, 0);
+});
+
+test('constraint DB watermark: aktif tanpa posisi / di luar 0..1 / posisi saat nonaktif -> ditolak MariaDB', async () => {
+    const arif = await loginAs('arif');
+    const inspection = await createInspection(arif, DRAFT_CONTENT);
+    const connection = await pool.getConnection();
+    const insert = (attempt, enabled, x, y) => connection.query(
+        `INSERT INTO approvals (inspection_id, stage, attempt, decision, signature_method, signature_file_path, signature_mime_type,
+                                watermark_enabled, watermark_x, watermark_y)
+         VALUES (?, 'koordinator_k3l', ?, 'approved', 'upload', ?, 'image/png', ?, ?, ?)`,
+        [toNumeric(inspection.id), attempt, `signatures/uji-watermark-${attempt}.png`, enabled, x, y],
+    );
+    try {
+        await connection.beginTransaction();
+        for (const [label, values] of [
+            ['aktif tanpa posisi', [81, 1, null, null]],
+            ['aktif tanpa Y', [82, 1, 0.5, null]],
+            ['X > 1', [83, 1, 1.5, 0.5]],
+            ['Y < 0', [84, 1, 0.5, -0.5]],
+            ['posisi saat nonaktif', [85, 0, 0.5, 0.5]],
+        ]) {
+            // MariaDB ER_CONSTRAINT_FAILED (errno 4025), seperti constraint tanda tangan di atas.
+            await assert.rejects(insert(...values), (error) => error.errno === 4025 && /chk_approvals_watermark_position/.test(error.message), label);
+        }
+        await insert(86, 1, 0, 1);
+    } finally {
+        await connection.rollback();
+        connection.release();
+    }
+});
