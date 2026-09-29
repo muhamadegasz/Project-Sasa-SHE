@@ -107,7 +107,7 @@
             <!-- HEADER -->
             <header class="app-header no-print">
                 <div class="logo-area">
-                    <div class="logo-icon"><i class="fas fa-hard-hat"></i></div>
+                    <img class="logo-company" src="src/asset/company_logo.png" alt="Logo Sasa" width="91" height="48" data-testid="navbar-logo">
                     <div>
                         <div class="logo-text">SHE <span>Sasa</span></div>
                         <div class="logo-sub">SISTEM INFORMASI K3</div>
@@ -618,7 +618,8 @@
                 <span class="signature-preview-label">Pratinjau tanda tangan yang akan dikirim:</span>
                 <div class="signature-stage" id="signatureStage">
                     <img id="signaturePreview" alt="Pratinjau tanda tangan">
-                    <svg class="signature-watermark" id="signatureWatermark" data-testid="signature-watermark" viewBox="0 0 120 28" aria-hidden="true" hidden><rect x="2" y="2" width="116" height="24" rx="6"/><text x="60" y="20">SHE Sasa</text></svg>
+                    <!-- src logo diisi signature-modal.view.js dari components/watermark.js (satu sumber). -->
+                    <img class="signature-watermark" id="signatureWatermark" data-testid="signature-watermark" alt="" aria-hidden="true" draggable="false" hidden>
                 </div>
                 <label class="signature-watermark-toggle"><input type="checkbox" id="signatureWatermarkToggle"> Tambahkan watermark</label>
                 <span class="signature-watermark-hint" id="signatureWatermarkHint" hidden>Geser watermark di atas pratinjau untuk memindahkannya. Watermark hanya penanda visual, bukan tanda tangan elektronik tersertifikasi.</span>

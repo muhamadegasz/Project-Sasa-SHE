@@ -28,6 +28,9 @@ function expectRenderedPdf(bytes) {
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures');
 const PNG_BYTES = readFileSync(path.join(FIXTURES, 'signature.png'));
 const JPEG_BYTES = readFileSync(path.join(FIXTURES, 'signature.jpg'));
+// Rasio aspek SESUNGGUHNYA dari aset logo watermark (header PNG), bukan asumsi.
+const LOGO_BYTES = readFileSync(path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', 'src', 'asset', 'company_logo.png'));
+const LOGO_ASPECT = LOGO_BYTES.readUInt32BE(16) / LOGO_BYTES.readUInt32BE(20);
 
 async function approve(session, inspectionId, stageId, { buffer, mimeType, method = 'upload' }, watermark = null) {
     const multipart = {
@@ -73,6 +76,7 @@ async function measureSignatures(page) {
                 src: img.getAttribute('src'), width: canvas.width, height: canvas.height, red: count,
                 centerX: (minX + maxX) / 2 / canvas.width, centerY: (minY + maxY) / 2 / canvas.height,
                 widthRatio: (maxX - minX + 1) / canvas.width,
+                heightRatio: (maxY - minY + 1) / canvas.height,
             };
         }
         return out;
@@ -89,6 +93,9 @@ test('PDF inspeksi selesai: tanda tangan ketiga tahap tertanam; watermark di pos
     expect(saved.status).toBe('completed');
     const byStage = Object.fromEntries(saved.approvalHistory.map((entry) => [entry.stage, entry]));
 
+    const logoFailures = [];
+    page.on('requestfailed', (req) => { if (req.url().includes('company_logo.png')) logoFailures.push(req.url()); });
+    page.on('response', (res) => { if (res.url().includes('company_logo.png') && res.status() >= 400) logoFailures.push(`${res.status()} ${res.url()}`); });
     await loginViaUi(page, 'arif');
     await goToTab(page, 'Inspeksi');
     const row = page.locator('#allInspeksiTable').getByRole('row', { name: inspection.id });
@@ -111,12 +118,17 @@ test('PDF inspeksi selesai: tanda tangan ketiga tahap tertanam; watermark di pos
     }
     for (const stage of ['koordinator_k3l', 'ketua_p2k3']) {
         const { x, y } = byStage[stage].watermark;
-        expect(measured[stage].red, `${stage}: watermark tergambar`).toBeGreaterThan(50);
-        expect(Math.abs(measured[stage].centerX - x), `${stage}: tengah X = ${x}`).toBeLessThan(0.03);
-        expect(Math.abs(measured[stage].centerY - y), `${stage}: tengah Y = ${y}`).toBeLessThan(0.06);
-        expect(measured[stage].widthRatio, `${stage}: lebar watermark 45%`).toBeGreaterThan(0.42);
-        expect(measured[stage].widthRatio).toBeLessThan(0.47);
+        const m = measured[stage];
+        expect(m.red, `${stage}: watermark tergambar`).toBeGreaterThan(50);
+        expect(Math.abs(m.centerX - x), `${stage}: tengah X = ${x}`).toBeLessThan(0.03);
+        expect(Math.abs(m.centerY - y), `${stage}: tengah Y = ${y}`).toBeLessThan(0.06);
+        // Ukuran = logo (aturan "contain" 35% lebar / 65% tinggi, rasio aspek aset asli) —
+        // bukan teks lama yang jauh lebih pipih; juga utuh di dalam gambar tanda tangan.
+        const expectedWidth = Math.min(0.35 * m.width, 0.65 * m.height * LOGO_ASPECT);
+        expect(Math.abs(m.widthRatio - expectedWidth / m.width), `${stage}: lebar logo`).toBeLessThan(0.03);
+        expect(Math.abs(m.heightRatio - expectedWidth / LOGO_ASPECT / m.height), `${stage}: tinggi logo`).toBeLessThan(0.04);
     }
+    expect(logoFailures, 'aset logo termuat tanpa galat').toEqual([]);
     expect(byStage.manajer.watermark).toBeNull();
     expect(measured.manajer.red, 'tanpa watermark: tidak ada piksel watermark').toBe(0);
 

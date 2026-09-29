@@ -8,21 +8,46 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { watermarkBox, WATERMARK_WIDTH_RATIO } from '../../src/presentation/components/watermark.js';
+import { readFileSync } from 'node:fs';
+import {
+    watermarkBox, WATERMARK_LOGO_URL, WATERMARK_MAX_HEIGHT_RATIO, WATERMARK_MAX_WIDTH_RATIO,
+} from '../../src/presentation/components/watermark.js';
 import { buildInspectionReportHtml } from '../../src/presentation/views/pdf-report.view.js';
 
-test('watermarkBox: tengah = posisi tersimpan x/y persis; lebar 45% gambar; rasio 120:28', () => {
-    const box = watermarkBox(600, 180, { x: 0.25, y: 0.8 });
-    assert.equal(box.width, 600 * WATERMARK_WIDTH_RATIO);
-    assert.equal(box.height, box.width * 28 / 120);
-    assert.equal(box.left + box.width / 2, 0.25 * 600);
-    assert.equal(box.top + box.height / 2, 0.8 * 180);
+// Rasio aspek SESUNGGUHNYA dari aset (header PNG), bukan angka yang diasumsikan.
+const logoBytes = readFileSync(new URL(WATERMARK_LOGO_URL));
+const LOGO_ASPECT = logoBytes.readUInt32BE(16) / logoBytes.readUInt32BE(20);
+const close = (actual, expected) => assert.ok(Math.abs(actual - expected) < 1e-9, `${actual} ≈ ${expected}`);
+
+test('watermark: aset lokal src/asset/company_logo.png, PNG sungguhan (bukan URL eksternal)', () => {
+    assert.match(WATERMARK_LOGO_URL, /^file:.*\/src\/asset\/company_logo\.png$/);
+    assert.equal(logoBytes.subarray(0, 8).toString('hex'), '89504e470d0a1a0a');
+    assert.ok(LOGO_ASPECT > 0);
+});
+
+test('watermarkBox: tengah = posisi tersimpan x/y persis; rasio aspek logo dijaga (tidak gepeng)', () => {
+    const box = watermarkBox(600, 180, { x: 0.25, y: 0.8 }, LOGO_ASPECT);
+    close(box.width / box.height, LOGO_ASPECT);
+    close(box.left + box.width / 2, 0.25 * 600);
+    close(box.top + box.height / 2, 0.8 * 180);
+});
+
+test('watermarkBox: ukuran "contain" tetap — maks. 35% lebar DAN 65% tinggi tanda tangan', () => {
+    for (const [width, height] of [[600, 180], [160, 48], [300, 300], [1000, 100], [200, 600]]) {
+        const box = watermarkBox(width, height, { x: 0.5, y: 0.5 }, LOGO_ASPECT);
+        assert.ok(box.width <= width * WATERMARK_MAX_WIDTH_RATIO + 1e-9, `${width}x${height}: lebar`);
+        assert.ok(box.height <= height * WATERMARK_MAX_HEIGHT_RATIO + 1e-9, `${width}x${height}: tinggi`);
+        const hitsLimit = Math.abs(box.width - width * WATERMARK_MAX_WIDTH_RATIO) < 1e-9
+            || Math.abs(box.height - height * WATERMARK_MAX_HEIGHT_RATIO) < 1e-9;
+        assert.ok(hitsLimit, `${width}x${height}: sebesar mungkin dalam batas`);
+        close(box.width / box.height, LOGO_ASPECT);
+    }
 });
 
 test('watermarkBox: posisi tepi (0/1) tidak dibatasi ulang — posisi tersimpan adalah sumber kebenaran', () => {
-    const box = watermarkBox(400, 100, { x: 0, y: 1 });
-    assert.equal(box.left + box.width / 2, 0);
-    assert.equal(box.top + box.height / 2, 100);
+    const box = watermarkBox(400, 100, { x: 0, y: 1 }, LOGO_ASPECT);
+    close(box.left + box.width / 2, 0);
+    close(box.top + box.height / 2, 100);
 });
 
 function completed(history) {
@@ -65,4 +90,14 @@ test('PDF: tanpa gambar disiapkan -> tidak ada <img> tanda tangan; src dan nama 
     const html = buildInspectionReportHtml(item, new Map([[1, '"><script>alert(1)</script>']]));
     assert.ok(!html.includes('<script>'));
     assert.ok(html.includes('src="&quot;&gt;&lt;script&gt;'));
+});
+
+test('PDF footer: netral — tanpa klaim tanda tangan elektronik tersertifikasi/keabsahan hukum, tanpa tanggal "ditandatangani" = waktu cetak', () => {
+    const html = buildInspectionReportHtml(completed([approved(1, 'koordinator_k3l')]));
+    const footer = html.slice(html.indexOf('class="pdf-footer"'));
+    for (const claim of [/ditandatangani dan disetujui secara elektronik/i, /sah dan berlaku/i, /bukti resmi/i]) {
+        assert.doesNotMatch(footer, claim);
+    }
+    assert.match(footer, /bukan tanda tangan elektronik tersertifikasi/);
+    assert.match(footer, /tercatat di sistem beserta nama penyetuju dan tanggal keputusannya/);
 });

@@ -12,7 +12,7 @@ Severity memakai skala CRITICAL / HIGH / MEDIUM / LOW.
 | S-05 | MEDIUM | Empat resource CDN tanpa Subresource Integrity | **TERBUKA** |
 | S-06 | MEDIUM | Pipeline PDF menyuntik HTML pengguna tak ter-escape | **DITANGANI** — Phase 3 |
 | S-07 | MEDIUM | Tidak ada otorisasi pada approval — siapa pun dapat menyetujui 4 tahap | **TERBUKA** — butuh keputusan bisnis |
-| S-08 | MEDIUM | SheetJS 0.20.1 terdampak CVE-2024-22363 (ReDoS) | **TERBUKA** — eksploitabilitas rendah, aplikasi hanya menulis |
+| S-08 | MEDIUM | SheetJS 0.20.1 terdampak CVE-2024-22363 (ReDoS) | **DITERIMA** (risiko diterima untuk rilis ini, 2026-09-29) — lihat bagian "S-08 — risiko yang diterima" di bawah |
 | S-09 | LOW | Pesan error internal dibocorkan ke pengguna lewat toast | **DITANGANI** — Phase 3 |
 | S-10 | LOW | `console.log` membocorkan bentuk internal saat login | **TERBUKA** — Phase 11 |
 | S-11 | LOW | Aksi destruktif hanya dijaga `confirm()`, tanpa audit trail | **TERBUKA** — butuh keputusan bisnis |
@@ -162,3 +162,34 @@ refactoring tambahan.
 injection) sudah ditangani sejak Phase 3 lewat escaping yang benar — itulah yang mencegah
 XSS, bukan penghapusan `onclick`. Perubahan Phase 9 murni arsitektural (memisahkan struktur
 dari perilaku) dan memperkecil permukaan yang bisa jadi CSP-hostile di kemudian hari.
+
+---
+
+## S-08 — risiko yang diterima (rilis, 2026-09-29)
+
+**Temuan.** Aplikasi memuat SheetJS Community Edition **0.20.1**
+(`https://cdn.sheetjs.com/xlsx-0.20.1/package/dist/xlsx.full.min.js`). Menurut advisory resmi
+SheetJS untuk **CVE-2024-22363**, seluruh versi SheetJS CE sampai dengan 0.20.1 rentan terhadap
+*Regular Expression Denial of Service* (ReDoS, CWE-1333); perbaikannya ada di **0.20.2** ke atas.
+
+**Keputusan.** Pustaka **tidak** di-upgrade dalam batch rilis ini (tenggat waktu). Risikonya
+diterima secara sadar dengan dasar berikut:
+
+- **Hanya menulis.** SheetJS dipakai semata untuk MEMBUAT berkas XLSX dari data aplikasi sendiri
+  (`XLSX.utils.*`, `XLSX.write`, `XLSX.writeFile`). Aplikasi tidak pernah membaca atau memproses
+  berkas spreadsheet dari pengguna — tidak ada `XLSX.read`/`XLSX.readFile` di kode.
+- **Terisolasi.** Satu-satunya pemakai adalah `src/infrastructure/excel-exporter.js` (lihat
+  "Isolasi library" di atas), dan isi sel sudah dinetralkan terhadap formula injection (S-04).
+- **Dampak terburuk terbatas di sisi klien.** Advisory tidak merinci jalur kode mana yang memuat
+  ekspresi reguler rentan, jadi dianggap bahwa teks yang disusun khusus (mis. deskripsi temuan)
+  *mungkin* membuat tab browser pengguna yang sedang mengekspor menjadi macet. Tidak ada kebocoran
+  data, tidak ada eksekusi kode, dan server tidak terdampak — SheetJS hanya berjalan di browser.
+- **Integritas berkas terjaga.** Skrip dimuat dari URL berversi tetap dengan Subresource Integrity
+  (S-05), jadi isi pustaka tidak bisa diganti diam-diam di CDN.
+
+**Kapan ditinjau ulang (wajib):**
+
+- saat ada fitur yang MEMBACA/mengimpor berkas spreadsheet — upgrade harus dilakukan lebih dulu;
+- pada fase pemeliharaan berikutnya: ganti URL ke rilis 0.20.2 atau lebih baru dari
+  `cdn.sheetjs.com`, perbarui hash `integrity` di `index.html`, lalu uji ulang seluruh jalur ekspor
+  (ekspor per inspeksi, semua temuan, ringkasan, dan tombol Sync).

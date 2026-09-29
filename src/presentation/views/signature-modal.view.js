@@ -15,12 +15,14 @@
  * digeser dengan mouse/sentuh (Pointer Events). Yang dikirim hanya posisi
  * tengahnya, ternormalisasi 0..1 terhadap gambar tanda tangan (lihat
  * domain/signature-rules.js checkWatermark); berkas tanda tangan tidak diubah.
+ * Gambarnya logo perusahaan (aset lokal, components/watermark.js).
  */
 
 import { SIGNATURE_MAX_BYTES, SIGNATURE_MIME_TYPES, WATERMARK_DEFAULT_POSITION } from '../../domain/signature-rules.js';
 import { SIGNATURE_METHOD } from '../../domain/statuses.js';
 import { bindModalClose, closeModal, openModal } from '../components/modal.js';
 import { createSignaturePad, detectImageType } from '../components/signature-pad.js';
+import { WATERMARK_LOGO_URL } from '../components/watermark.js';
 
 const MODAL_ID = 'signatureModal';
 
@@ -41,6 +43,12 @@ const el = {
     error: document.getElementById('signatureError'),
     confirm: document.getElementById('confirmApproveBtn'),
 };
+
+// Logo watermark dari satu sumber (components/watermark.js). Pembatasan posisi
+// mengukur ukuran logo di layar, jadi baru dilakukan setelah logo siap
+// (keepWatermarkInside menunggu janji ini).
+el.watermark.src = WATERMARK_LOGO_URL;
+const watermarkLogoReady = el.watermark.decode().catch(() => {});
 
 const state = {
     pending: null, // { inspectionId, stageId }
@@ -127,7 +135,10 @@ function moveWatermarkTo(clientX, clientY) {
     placeWatermark();
 }
 
-function keepWatermarkInside() {
+/** Memastikan logo utuh di dalam gambar — diukur setelah logo selesai dimuat. */
+async function keepWatermarkInside() {
+    await watermarkLogoReady;
+    if (!state.watermark.enabled || el.previewBox.hidden) return;
     const area = el.stage.getBoundingClientRect();
     moveWatermarkTo(
         area.left + el.stage.clientLeft + state.watermark.x * el.stage.clientWidth,
@@ -138,7 +149,6 @@ function keepWatermarkInside() {
 function setWatermarkEnabled(enabled) {
     state.watermark.enabled = enabled;
     el.watermarkToggle.checked = enabled;
-    // <svg> tidak punya properti .hidden seperti elemen HTML.
     el.watermark.toggleAttribute('hidden', !enabled);
     el.watermarkHint.hidden = !enabled;
     el.stage.classList.toggle('watermark-on', enabled);

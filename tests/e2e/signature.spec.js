@@ -179,7 +179,7 @@ test('Ketua menyetujui lewat UI -> COMPLETED tanpa aksi Setujui lagi; tanda tang
     await loginViaUi(ownerPage, 'arif');
     await goToTab(ownerPage, 'Dashboard');
     await ownerPage.locator('#inspeksiTableBody').getByRole('row', { name: inspection.id }).getByTestId('row-detail-btn').click();
-    const signatures = ownerPage.locator('#detailModal').getByTestId('stage-signature').locator('img');
+    const signatures = ownerPage.locator('#detailModal').getByTestId('stage-signature').locator('img:not(.signature-watermark)');
     await expect(signatures).toHaveCount(3);
     for (const img of await signatures.all()) {
         await expect(img).toHaveAttribute('src', new RegExp(`/api/inspections/${inspection.id}/approvals/\\d+/signature$`));
@@ -230,6 +230,36 @@ async function watermarkState(page) {
     });
 }
 
+/**
+ * Watermark = logo perusahaan (aset lokal), bukan teks "SHE Sasa": <img> dari
+ * src/asset/company_logo.png yang benar-benar termuat (bukan gambar rusak),
+ * rasio aspek aslinya dijaga, dan semi-transparan.
+ */
+async function expectLogoWatermark(locator) {
+    await expect.poll(() => locator.evaluate((node) => node.complete && node.naturalWidth)).toBeGreaterThan(0);
+    const logo = await locator.evaluate((node) => {
+        const rect = node.getBoundingClientRect();
+        return {
+            tag: node.tagName, src: node.src, html: node.outerHTML,
+            naturalAspect: node.naturalWidth / node.naturalHeight, renderedAspect: rect.width / rect.height,
+            opacity: getComputedStyle(node).opacity,
+        };
+    });
+    expect(logo.tag).toBe('IMG');
+    expect(logo.src).toMatch(/\/src\/asset\/company_logo\.png$/);
+    expect(logo.html).not.toContain('SHE Sasa');
+    expect(Math.abs(logo.renderedAspect - logo.naturalAspect) / logo.naturalAspect, 'logo tidak gepeng').toBeLessThan(0.03);
+    expect(logo.opacity).toBe('0.35');
+}
+
+/** Mencatat kegagalan memuat aset logo (tidak boleh ada gambar rusak). */
+function trackLogoFailures(page) {
+    const failures = [];
+    page.on('requestfailed', (req) => { if (req.url().includes('company_logo.png')) failures.push(`${req.url()} ${req.failure()?.errorText}`); });
+    page.on('response', (res) => { if (res.url().includes('company_logo.png') && res.status() >= 400) failures.push(`${res.url()} ${res.status()}`); });
+    return failures;
+}
+
 async function dragWithMouse(page, from, to) {
     await page.mouse.move(from.x, from.y);
     await page.mouse.down();
@@ -252,6 +282,7 @@ test('watermark (mouse): nonaktif bawaan; diaktifkan -> tengah; digeser & dibata
     const arif = await apiLogin('arif');
     const inspection = await createInspectionFixture(arif);
 
+    const logoFailures = trackLogoFailures(page);
     await loginViaUi(page, 'dewi');
     const modal = await openSignatureModalFor(page, inspection.id);
     await modal.getByRole('radio', { name: 'Upload Tanda Tangan' }).check();
@@ -264,6 +295,7 @@ test('watermark (mouse): nonaktif bawaan; diaktifkan -> tengah; digeser & dibata
 
     await toggle.check();
     await expect(watermark).toBeVisible();
+    await expectLogoWatermark(watermark);
     let state = await watermarkState(page);
     expect(state).toMatchObject({ x: 0.5, y: 0.5, inside: true, areaIsImage: true });
 
@@ -313,14 +345,23 @@ test('watermark (mouse): nonaktif bawaan; diaktifkan -> tengah; digeser & dibata
     expect(shown.y).toBeCloseTo(chosen.y, 4);
     // Area watermark di riwayat = gambar tanda tangan itu sendiri (bingkai tidak melebar).
     const thumb = ownerPage.locator('#detailModal').getByTestId('stage-signature');
-    await expect.poll(() => thumb.locator('img').evaluate((img) => img.complete && img.naturalWidth)).toBeGreaterThan(0);
+    await expect.poll(() => thumb.locator('img:not(.signature-watermark)').evaluate((img) => img.complete && img.naturalWidth)).toBeGreaterThan(0);
     const fit = await thumb.evaluate((link) => {
-        const img = link.querySelector('img').getBoundingClientRect();
+        const img = link.querySelector('img:not(.signature-watermark)').getBoundingClientRect();
         return { dw: Math.abs(img.width - link.clientWidth), dh: Math.abs(img.height - link.clientHeight) };
     });
     expect(fit.dw).toBeLessThan(1);
     expect(fit.dh).toBeLessThan(1);
+    // Logo yang sama, di posisi tersimpan, utuh di dalam gambar tanda tangan riwayat.
+    await expectLogoWatermark(overlay);
+    const overlayInside = await thumb.evaluate((link) => {
+        const area = link.querySelector('img:not(.signature-watermark)').getBoundingClientRect();
+        const mark = link.querySelector('.signature-watermark').getBoundingClientRect();
+        return mark.left >= area.left - 0.5 && mark.top >= area.top - 0.5 && mark.right <= area.right + 0.5 && mark.bottom <= area.bottom + 0.5;
+    });
+    expect(overlayInside, 'logo riwayat utuh di dalam tanda tangan').toBe(true);
     await ownerPage.close();
+    expect(logoFailures, 'aset logo termuat tanpa galat').toEqual([]);
 });
 
 test('tanpa watermark: persetujuan tetap sah, watermark tersimpan null', async ({ page }) => {
@@ -360,6 +401,7 @@ test.describe('layar sentuh 390px', () => {
 
         await modal.getByLabel('Tambahkan watermark').check();
         await expect(page.getByTestId('signature-watermark')).toBeVisible();
+        await expectLogoWatermark(page.getByTestId('signature-watermark'));
         await page.evaluate(() => {
             window.__watermarkPointerTypes = [];
             document.getElementById('signatureStage').addEventListener('pointerdown', (event) => window.__watermarkPointerTypes.push(event.pointerType));

@@ -28,16 +28,18 @@ import { getCurrentUser } from '../../infrastructure/session.js';
 import { canApprove, canReject } from '../../domain/inspection-policy.js';
 import { bindModalClose, openModal } from '../components/modal.js';
 import { showToast } from '../components/toast.js';
+import { WATERMARK_LOGO_URL } from '../components/watermark.js';
 
 /**
  * Watermark tersimpan (Phase 17.4D) di atas gambar tanda tangan, di posisi
- * tengah yang sama dengan pratinjau saat menyetujui. Teks tetap dari sistem;
- * dari server hanya angka posisi, dipaksa ke 0..1.
+ * tengah yang sama dengan pratinjau saat menyetujui. Gambarnya logo perusahaan
+ * (aset lokal, components/watermark.js); dari server hanya angka posisi,
+ * dipaksa ke 0..1.
  */
 function renderStageWatermark(watermark) {
     if (!watermark) return '';
     const percent = (value) => Math.min(Math.max(Number(value) || 0, 0), 1) * 100;
-    return `<svg class="signature-watermark" data-testid="stage-watermark" viewBox="0 0 120 28" aria-hidden="true" style="left:${percent(watermark.x)}%;top:${percent(watermark.y)}%"><rect x="2" y="2" width="116" height="24" rx="6"/><text x="60" y="20">SHE Sasa</text></svg>`;
+    return `<img class="signature-watermark" data-testid="stage-watermark" style="left:${percent(watermark.x)}%;top:${percent(watermark.y)}%" src="${escapeHtml(WATERMARK_LOGO_URL)}" alt="" aria-hidden="true" draggable="false">`;
 }
 
 /** Tanda tangan sebuah persetujuan: gambar dari API (tautan membuka ukuran penuh), atau keterangan data lama. */

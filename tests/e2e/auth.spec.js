@@ -63,3 +63,16 @@ test('logout benar-benar menghapus sesi di server (bukan cuma redirect di UI)', 
     const afterLogout = await page.request.get(`${API}/inspections`);
     expect(afterLogout.status()).toBe(401);
 });
+
+test('navbar memakai logo perusahaan (aset lokal) — termuat dan tidak gepeng', async ({ page }) => {
+    await loginViaUi(page, 'arif');
+    const logo = page.getByTestId('navbar-logo');
+    await expect(logo).toBeVisible();
+    await expect.poll(() => logo.evaluate((img) => img.complete && img.naturalWidth)).toBeGreaterThan(0);
+    const info = await logo.evaluate((img) => {
+        const rect = img.getBoundingClientRect();
+        return { src: img.src, rendered: rect.width / rect.height, natural: img.naturalWidth / img.naturalHeight };
+    });
+    expect(info.src).toMatch(/\/src\/asset\/company_logo\.png$/);
+    expect(Math.abs(info.rendered - info.natural) / info.natural).toBeLessThan(0.03);
+});

@@ -244,36 +244,37 @@
     cursor: grabbing;
 }
 
-/* Ukuran (45% lebar tanda tangan) dan opacity tetap — sama di pratinjau dan riwayat. */
+/* Watermark = logo perusahaan (src/asset/company_logo.png). Ukuran "contain"
+   tetap: maks. 35% lebar dan 65% tinggi tanda tangan, rasio aspek asli logo
+   dijaga (lebar/tinggi auto + max-*); opacity tetap. Sama di pratinjau,
+   riwayat, dan PDF (components/watermark.js watermarkBox). left/top = titik
+   TENGAH logo dari posisi tersimpan. */
 .signature-watermark {
     position: absolute;
     left: 50%;
     top: 50%;
-    width: 45%;
+    width: auto;
     height: auto;
-    aspect-ratio: 120 / 28;
+    max-width: 35%;
+    max-height: 65%;
     transform: translate(-50%, -50%);
     opacity: 0.35;
-    color: #d42a2a;
     pointer-events: none;
+    user-select: none;
+}
+
+/* Logo adalah <img>: aturan ukuran gambar tanda tangan (".signature-preview img",
+   ".stage-signature img") lebih spesifik dari ".signature-watermark" dan akan
+   menimpa ukurannya — di dua konteks itu batas logo dipasang ulang dengan
+   selektor yang lebih spesifik. */
+.signature-preview .signature-watermark,
+.stage-signature .signature-watermark {
+    max-width: 35%;
+    max-height: 65%;
 }
 
 .signature-watermark[hidden] {
     display: none;
-}
-
-.signature-watermark rect {
-    fill: none;
-    stroke: currentColor;
-    stroke-width: 2;
-}
-
-.signature-watermark text {
-    fill: currentColor;
-    font-family: 'Segoe UI', Roboto, system-ui, sans-serif;
-    font-size: 18px;
-    font-weight: 700;
-    text-anchor: middle;
 }
 
 .signature-watermark-toggle {

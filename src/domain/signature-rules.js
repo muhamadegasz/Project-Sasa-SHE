@@ -65,7 +65,7 @@ export function checkSignature(signature) {
 
 /*
  * Watermark (Phase 17.4D) — opsional, terpisah dari sah/tidaknya tanda tangan.
- * Teks "SHE Sasa" yang digambar UI di atas gambar tanda tangan; yang disimpan
+ * Logo perusahaan yang digambar UI di atas gambar tanda tangan; yang disimpan
  * hanya posisinya (approvals.watermark_*), berkas tanda tangan tidak diubah.
  * Posisi = titik TENGAH watermark, ternormalisasi 0..1 terhadap lebar/tinggi
  * gambar tanda tangan ((0,0) kiri atas). Ukuran dan opacity tetap dari sistem.

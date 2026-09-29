@@ -39,17 +39,13 @@
     gap: 0.8rem;
 }
 
-.logo-icon {
-    background: #d42a2a;
-    color: white;
-    width: 48px;
+/* Logo perusahaan (src/asset/company_logo.png, latar transparan) menggantikan
+   ikon helm. Tinggi sama dengan ikon lama; lebar mengikuti rasio aspek asli. */
+.logo-company {
+    display: block;
     height: 48px;
-    border-radius: 16px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 1.8rem;
-    box-shadow: 0 10px 20px -8px rgba(200, 40, 40, 0.35);
+    width: auto;
+    flex-shrink: 0;
 }
 
 .logo-text {

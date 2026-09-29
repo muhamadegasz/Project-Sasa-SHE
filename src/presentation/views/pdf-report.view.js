@@ -211,10 +211,10 @@ export function buildInspectionReportHtml(item, signatureImages = new Map()) {
             <div class="pdf-footer">
                 <div class="legal-text">
                     <i class="fas fa-check-circle"></i>
-                    Dokumen ini telah ditandatangani dan disetujui secara elektronik melalui
-                    <strong>Sistem Informasi K3 SHE Sasa</strong> pada tanggal ${new Date().toLocaleString('id-ID')}.
+                    Dokumen ini dihasilkan oleh <strong>Sistem Informasi K3 SHE Sasa</strong>. Setiap tahap
+                    persetujuan tercatat di sistem beserta nama penyetuju dan tanggal keputusannya.
                     <br>
-                    <span style="font-size:0.65rem;">Dokumen ini sah dan berlaku sebagai bukti resmi inspeksi keselamatan dan kesehatan kerja.</span>
+                    <span style="font-size:0.65rem;">Tanda tangan pada dokumen ini berupa gambar tanda tangan yang dibubuhkan melalui sistem, bukan tanda tangan elektronik tersertifikasi.</span>
                 </div>
 
                 <div style="margin-top:0.5rem;font-size:0.6rem;color:#aaa;text-align:center;">
