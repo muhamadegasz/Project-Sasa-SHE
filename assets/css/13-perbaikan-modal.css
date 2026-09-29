@@ -1,135 +1,143 @@
-/* 13-perbaikan-modal.css — Modal perbaikan: info box, timeline (definisi kedua, menimpa 10-detail.css), form tambah progres.
+/* 13-perbaikan-modal.css — Modal perbaikan: informasi inspeksi, tabel tindakan, form tambah progres.
    Diekstrak apa adanya dari index.html baris 2185-2366 (commit 4734b5c).
    URUTAN MUAT PENTING: prefix angka menentukan urutan <link>. Jangan ditukar —
    beberapa selektor sengaja didefinisikan ulang dan bergantung pada urutan ini.
    Lihat docs/DECISIONS.md K-5. */
 
 /* ========== PERBAIKAN MODAL STYLE ========== */
-.perbaikan-info-box {
-    background: #faf8f8;
-    border-radius: 12px;
-    padding: 1rem 1.5rem;
-    border: 1px solid #f0e0e0;
-    margin-bottom: 1rem;
+/* Tampilan operasional (perbaikan-modal.view.js): informasi inspeksi sebagai
+   label–nilai, lalu tabel tindakan yang memakai gaya th/td global (05-tables.css).
+   Tanpa kartu bertingkat, progress bar, pill metadata, atau ikon hiasan. */
+.perbaikan-summary {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.7rem 1.5rem;
+    margin: 0 0 1.2rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #f0e0e0;
 }
 
-.perbaikan-info-box .info-row {
-    display: flex;
-    justify-content: space-between;
-    padding: 0.3rem 0;
-    border-bottom: 1px dashed #f0e0e0;
-}
-
-.perbaikan-info-box .info-row:last-child {
-    border-bottom: none;
-}
-
-.perbaikan-info-box .info-row .label {
-    font-size: 0.7rem;
-    color: #8a6a6a;
+.perbaikan-summary dt {
+    font-size: 0.65rem;
     font-weight: 600;
+    color: #8a6a6a;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
 }
 
-.perbaikan-info-box .info-row .value {
-    font-size: 0.85rem;
-    font-weight: 500;
+.perbaikan-summary dd {
+    margin: 0.15rem 0 0;
+    font-size: 0.9rem;
     color: #2a1a1a;
 }
 
-.perbaikan-timeline {
-    background: #faf8f8;
-    border-radius: 12px;
-    padding: 0.5rem 0;
-    border: 1px solid #f0e0e0;
-}
-
-.perbaikan-timeline .perbaikan-item {
-    padding: 0.6rem 1rem;
-    border-bottom: 1px solid #f0e0e0;
+.perbaikan-section-head {
     display: flex;
     flex-wrap: wrap;
-    align-items: center;
-    gap: 0.5rem;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.3rem 1rem;
+    margin-bottom: 0.3rem;
 }
 
-.perbaikan-timeline .perbaikan-item:last-child {
-    border-bottom: none;
-}
-
-.perbaikan-timeline .perbaikan-item .date {
-    font-size: 0.7rem;
-    color: #8a6a6a;
-    min-width: 80px;
-}
-
-.perbaikan-timeline .perbaikan-item .action {
-    flex: 1;
-    font-weight: 500;
+.perbaikan-section-title {
+    margin: 0;
     font-size: 0.85rem;
-}
-
-.perbaikan-timeline .perbaikan-item .status-mini {
-    font-size: 0.6rem;
-    padding: 0.1rem 0.6rem;
-    border-radius: 60px;
     font-weight: 600;
+    color: #3a2a2a;
 }
 
-.perbaikan-timeline .perbaikan-item .status-mini.closed {
-    background: #e8f5e9;
-    color: #1b5e20;
+.perbaikan-muted {
+    font-size: 0.75rem;
+    color: #8a6a6a;
 }
-.perbaikan-timeline .perbaikan-item .status-mini.on-progress {
-    background: #fff3e0;
-    color: #e65100;
+
+.perbaikan-empty {
+    margin: 0.5rem 0 0;
 }
-.perbaikan-timeline .perbaikan-item .status-mini.open {
-    background: #fce4ec;
+
+/* break-word (bukan anywhere): kata pendek seperti nama PIC tidak dipotong di
+   tengah — hanya kata yang lebih panjang dari kolomnya yang dipatahkan. */
+.perbaikan-actions-table td {
+    vertical-align: top;
+    overflow-wrap: break-word;
+}
+
+.perbaikan-actions-table th:first-child,
+.perbaikan-actions-table td:first-child {
+    padding-left: 0;
+}
+
+.perbaikan-actions-table th:last-child,
+.perbaikan-actions-table td:last-child {
+    padding-right: 0;
+}
+
+.perbaikan-actions-table .col-date,
+.perbaikan-actions-table .col-foto,
+.perbaikan-actions-table .col-aksi {
+    white-space: nowrap;
+}
+
+/* Status satu tindakan: teks berwarna, bukan pill. */
+.perbaikan-actions-table .status-mini {
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.perbaikan-actions-table .status-mini.open {
     color: #c62828;
 }
 
-.perbaikan-timeline .perbaikan-item .pic-name {
-    font-size: 0.7rem;
-    color: #8a6a6a;
-    min-width: 60px;
+.perbaikan-actions-table .status-mini.on-progress {
+    color: #e65100;
 }
 
-.perbaikan-timeline .perbaikan-item .foto-thumbs {
-    display: flex;
-    gap: 0.2rem;
-    flex-wrap: wrap;
+.perbaikan-actions-table .status-mini.closed {
+    color: #2e7d32;
 }
 
-.perbaikan-timeline .perbaikan-item .foto-thumbs .thumb-mini {
-    width: 30px;
-    height: 30px;
-    border-radius: 6px;
-    background: #f0e8e8;
-    border: 1px solid #ddd;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 0.6rem;
+/* Foto tindakan: tautan teks "N foto" yang membuka lightbox. */
+.perbaikan-photo-link {
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    color: #0d47a1;
+    text-decoration: underline;
     cursor: pointer;
-    transition: 0.15s;
+}
+
+.perbaikan-photo-link:focus-visible {
+    outline: 2px solid #d42a2a;
+    outline-offset: 2px;
+}
+
+.btn-sm.perbaikan-status-btn {
+    white-space: nowrap;
+}
+
+.perbaikan-status-btn + .perbaikan-status-btn {
+    margin-left: 0.3rem;
+}
+
+.perbaikan-view-only {
+    margin: 1.2rem 0 0;
+    padding-top: 0.8rem;
+    border-top: 1px solid #f0e0e0;
+    font-size: 0.8rem;
     color: #8a6a6a;
 }
 
-.perbaikan-timeline .perbaikan-item .foto-thumbs .thumb-mini:hover {
-    transform: scale(1.1);
-    border-color: #d42a2a;
-}
-
+/* Form tambah progres: bagian bergaris atas, bukan kotak di dalam modal. */
 .perbaikan-form-section {
-    background: #faf8f8;
-    border-radius: 12px;
-    padding: 1rem 1.5rem;
-    border: 1px solid #f0e0e0;
-    margin-top: 1rem;
+    margin-top: 1.2rem;
+    padding-top: 1rem;
+    border-top: 1px solid #f0e0e0;
 }
 
 .perbaikan-form-section h5 {
-    color: #7a3a3a;
+    color: #3a2a2a;
     font-size: 0.85rem;
     margin-bottom: 0.8rem;
     display: flex;

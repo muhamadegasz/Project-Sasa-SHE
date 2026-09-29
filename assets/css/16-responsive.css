@@ -211,6 +211,47 @@
     .pagination-btn {
         height: 2.3rem;
     }
+    /* Ringkasan singkat "1–10 dari 57" (tanpa "Menampilkan" / "inspeksi"). */
+    .pagination-summary-long {
+        display: none;
+    }
+    /* Modal Perbaikan: informasi satu kolom; tiap tindakan menjadi blok baris
+       label–nilai (label dari data-label, pola modal Detail Jadwal). Tanpa
+       scroll horizontal. */
+    .perbaikan-summary {
+        grid-template-columns: 1fr;
+        gap: 0.5rem;
+    }
+    .perbaikan-actions-table,
+    .perbaikan-actions-table tbody,
+    .perbaikan-actions-table tr,
+    .perbaikan-actions-table td {
+        display: block;
+    }
+    .perbaikan-actions-table thead {
+        display: none;
+    }
+    .perbaikan-actions-table tr {
+        padding: 0.6rem 0;
+        border-bottom: 1px solid #f0e0e0;
+    }
+    .perbaikan-actions-table tr:last-child {
+        border-bottom: none;
+    }
+    .perbaikan-actions-table td {
+        display: grid;
+        grid-template-columns: 5.5rem minmax(0, 1fr);
+        gap: 0.5rem;
+        padding: 0.15rem 0;
+        border-bottom: 0;
+    }
+    .perbaikan-actions-table td::before {
+        content: attr(data-label);
+        color: #8a6a6a;
+    }
+    .perbaikan-actions-table .col-aksi {
+        white-space: normal;
+    }
     /* Modal Detail Jadwal: tabel -> per jadwal plant, status, lalu baris
        label–nilai (label dari data-label). Tanpa scroll horizontal. */
     .day-schedule-table,

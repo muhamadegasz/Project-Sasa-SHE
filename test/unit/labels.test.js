@@ -4,7 +4,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { ROLE } from '../../src/config/constants.js';
-import { formatInspectionStatusDetail, formatRole, formatUserRole } from '../../src/shared/labels.js';
+import { formatActionStatus, formatInspectionStatusDetail, formatRepairStatus, formatRole, formatUserRole } from '../../src/shared/labels.js';
+import { REPAIR_STATUS } from '../../src/domain/statuses.js';
 
 test('label role: istilah yang sama untuk header dan pengelolaan akun', () => {
     assert.equal(formatRole(ROLE.SAFETY_OFFICER), 'Safety Officer');
@@ -30,4 +31,12 @@ test('keterangan status: Dalam Review menyebut tahap yang ditunggu (currentAppro
     assert.equal(formatInspectionStatusDetail({ status: 'completed', currentApprovalStage: null }), '');
     assert.equal(formatInspectionStatusDetail({ status: 'draft', currentApprovalStage: null }), '');
     assert.equal(formatInspectionStatusDetail({ status: 'in_review', currentApprovalStage: 'tidak_dikenal' }), '', 'tahap tak dikenal: tanpa keterangan, bukan tebakan');
+});
+
+test('status perbaikan inspeksi: kosakata yang sama dengan status tindakan — Menunggu / Progres / Selesai', () => {
+    assert.equal(formatRepairStatus(REPAIR_STATUS.OPEN), 'Menunggu', 'belum ada tindakan');
+    assert.equal(formatRepairStatus(REPAIR_STATUS.TINJAU), 'Menunggu', 'ada tindakan, belum ada yang berjalan');
+    assert.equal(formatRepairStatus(REPAIR_STATUS.PERBAIKAN), 'Progres');
+    assert.equal(formatRepairStatus(REPAIR_STATUS.SELESAI), 'Selesai');
+    assert.deepEqual(['open', 'on-progress', 'closed'].map(formatActionStatus), ['Menunggu', 'Progres', 'Selesai']);
 });

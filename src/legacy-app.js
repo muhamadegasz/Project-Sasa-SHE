@@ -270,7 +270,8 @@ function showMainApp(user) {
 
 /**
  * Phase 18: tab yang hanya untuk role tertentu (data-roles di index.html:
- * "Buat Inspeksi" untuk Safety Officer, "Admin" untuk Admin). Kenyamanan UI
+ * "Buat Inspeksi" untuk Safety Officer, "Admin" untuk Admin, "Perbaikan" untuk
+ * Safety Officer & Admin — peninjau tidak mengelola tindakan perbaikan). Kenyamanan UI
  * saja — server menolak aksi di luar wewenang, apa pun yang tampil di sini.
  * Tab aktif yang tidak lagi berhak dilihat (mis. Admin logout lalu Safety
  * Officer login di halaman yang sama) diganti ke Dashboard.
@@ -441,6 +442,9 @@ document.addEventListener('DOMContentLoaded', async function() {
 // keempat kotak pencarian, sedangkan navigasi utama mempertahankan isinya dan
 // hanya memfilter ulang panel tujuan; perilaku navigasi utama yang dipakai.
 function switchTab(tabName) {
+    // Panel yang tab-nya disembunyikan untuk role ini (applyRoleGating) tidak dibuka lewat jalur mana pun.
+    const target = document.querySelector(`.nav-tab[data-panel="${tabName}"]`);
+    if (target && target.hidden && tabName !== 'dashboard') { switchTab('dashboard'); return; }
     document.querySelectorAll('.nav-tab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
     const tab = document.querySelector(`.nav-tab[data-panel="${tabName}"]`);

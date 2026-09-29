@@ -133,9 +133,10 @@
                 <button class="nav-tab active" data-panel="dashboard"><i class="fas fa-chart-pie"></i> Dashboard</button>
                 <button class="nav-tab" data-panel="jadwal"><i class="fas fa-calendar-plus"></i> Penjadwalan</button>
                 <button class="nav-tab" data-panel="inspeksi"><i class="fas fa-clipboard-check"></i> Inspeksi</button>
-                <button class="nav-tab" data-panel="perbaikan"><i class="fas fa-tools"></i> Perbaikan</button>
                 <!-- Phase 18: data-roles = role yang melihat tab ini (legacy-app.js applyRoleGating).
-                     Tersembunyi sampai login; kenyamanan UI saja, server tetap otoritatif. -->
+                     Tersembunyi sampai login; kenyamanan UI saja, server tetap otoritatif.
+                     Perbaikan: Safety Officer (pemilik tindakan perbaikan) & Admin — bukan peninjau. -->
+                <button class="nav-tab" data-panel="perbaikan" data-roles="safety_officer,admin" hidden><i class="fas fa-tools"></i> Perbaikan</button>
                 <button class="nav-tab" data-panel="form" data-roles="safety_officer" hidden><i class="fas fa-plus-circle"></i> Buat Inspeksi</button>
                 <button class="nav-tab" data-panel="admin" data-roles="admin" hidden><i class="fas fa-users-cog"></i> Admin</button>
             </nav>
@@ -304,12 +305,11 @@
                         <thead>
                             <tr>
                                 <th>ID Inspeksi</th>
-                                <th>Lokasi</th>
+                                <th>Lokasi / Plant</th>
                                 <th>Temuan</th>
                                 <th>Due Date Plant</th>
                                 <th>Tindakan Terakhir</th>
                                 <th>PIC</th>
-                                <th>Progres</th>
                                 <th>Status</th>
                                 <th>Aksi</th>
                             </tr>

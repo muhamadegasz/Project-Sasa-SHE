@@ -25,7 +25,8 @@
 import { escapeHtml, highlight } from '../../shared/html.js';
 import { formatDate, isOverdue } from '../../shared/date.js';
 import { PERIODE_LIST } from '../../config/constants.js';
-import { getProgress, getRepairStatus } from '../../domain/inspection-rules.js';
+import { getRepairStatus } from '../../domain/inspection-rules.js';
+import { ACTION_STATUS } from '../../domain/statuses.js';
 import { isFullyApproved, countApproved } from '../../domain/approval-rules.js';
 import { formatApprovalStatus, formatInspectionStatus, formatInspectionStatusDetail, formatRepairStatus } from '../../shared/labels.js';
 import { DEFAULT_PAGE_LIMIT, pageRange, pageWindow } from '../../shared/pagination.js';
@@ -253,46 +254,44 @@ async function renderPerbaikanTable(data = null, highlightQuery = '') {
 
     if (displayData.length === 0) {
         tbody.innerHTML =
-            '<tr><td colspan="9" style="text-align:center;padding:2rem;color:#8a6a6a;">Tidak ada data ditemukan</td></tr>';
+            '<tr><td colspan="8" style="text-align:center;padding:2rem;color:#8a6a6a;">Tidak ada data ditemukan</td></tr>';
         return;
     }
 
+    // Tabel operasional: status perbaikan sebagai teks (tanpa bar/persentase —
+    // jumlah tindakan selesai jadi keterangan di bawahnya); pola sel & tombol
+    // sama dengan tabel Inspeksi Terbaru.
     tbody.innerHTML = displayData.map(item => {
-        const progress = getProgress(item);
+        const id = escapeHtml(item.id);
         const statusPerbaikan = getRepairStatus(item);
         const lastAction = item.perbaikan[item.perbaikan.length - 1];
-        const temuanText = item.temuan && item.temuan.length > 0 ? item.temuan[0].deskripsi : '-';
-        const overdue = isOverdue(item.dueDate);
+        const jmlTemuan = item.temuan ? item.temuan.length : 0;
+        const temuanText = jmlTemuan > 0 ? item.temuan[0].deskripsi : '-';
+        const closedCount = item.perbaikan.filter((action) => action.status === ACTION_STATUS.CLOSED).length;
 
         const lokasiDisplay = highlight(item.lokasi, highlightQuery);
         const temuanDisplay = highlight(temuanText, highlightQuery);
         const actionDisplay = highlight(lastAction ? lastAction.action : '-', highlightQuery);
         const picDisplay = highlight(lastAction ? lastAction.pic : '-', highlightQuery);
-
-        const overdueBadge = overdue ? OVERDUE_BADGE : '';
-
-        const progressBar = `
-                <div class="progress-wrapper">
-                    <div class="progress-bar-container">
-                        <div class="progress-fill ${statusPerbaikan}" style="width:${progress}%"></div>
-                    </div>
-                    <span class="progress-text">${progress}%</span>
-                </div>
-            `;
+        const temuanCell = jmlTemuan > 0
+            ? `<span class="temuan-preview">${temuanDisplay}</span><span class="temuan-count">${jmlTemuan} temuan</span>`
+            : '-';
 
         return `
-                <tr>
-                    <td><strong>${escapeHtml(item.id)}</strong></td>
+                <tr data-testid="perbaikan-row">
+                    <td><strong>${id}</strong></td>
                     <td>${lokasiDisplay}</td>
-                    <td>${temuanDisplay}</td>
-                    <td>${escapeHtml(item.dueDate || '-')} ${overdueBadge}</td>
+                    <td>${temuanCell}</td>
+                    <td class="due-date-cell">${escapeHtml(item.dueDate || '-')} ${isOverdue(item.dueDate) ? OVERDUE_BADGE : ''}</td>
                     <td>${actionDisplay}</td>
                     <td>${picDisplay}</td>
-                    <td>${progressBar}</td>
-                    <td><span class="status-badge ${statusPerbaikan}" style="white-space:nowrap;">${formatRepairStatus(statusPerbaikan)}</span></td>
                     <td>
-                        <button class="btn-sm primary" data-action="openPerbaikanModal" data-id="${escapeHtml(item.id)}"><i class="fas fa-edit"></i></button>
-                        <button class="btn-sm info" data-action="openDetailModal" data-id="${escapeHtml(item.id)}"><i class="fas fa-eye"></i></button>
+                        <span class="repair-status ${escapeHtml(statusPerbaikan)}" data-testid="repair-status">${escapeHtml(formatRepairStatus(statusPerbaikan))}</span>
+                        <span class="inspection-status-detail" data-testid="repair-status-detail">${closedCount} dari ${item.perbaikan.length} tindakan selesai</span>
+                    </td>
+                    <td class="perbaikan-aksi">
+                        <button class="btn-sm info" data-action="openDetailModal" data-id="${id}" title="Lihat detail" aria-label="Lihat detail ${id}"><i class="fas fa-eye"></i></button>
+                        <button class="btn-sm outline" data-action="openPerbaikanModal" data-id="${id}" data-testid="perbaikan-open-btn" title="Perbaikan &amp; Progres (tindakan perbaikan temuan)" aria-label="Perbaikan &amp; Progres ${id}"><i class="fas fa-tools"></i></button>
                     </td>
                 </tr>
             `;
@@ -319,7 +318,10 @@ function renderRecentPagination(pagination) {
     const range = pageRange(pagination);
     if (!range) { nav.innerHTML = ''; return; }
     const { page, totalPages, total } = pagination;
-    const summary = `<p class="pagination-summary" data-testid="recent-pagination-summary">Menampilkan ${range.from}–${range.to} dari ${total} inspeksi</p>`;
+    // Layar sempit hanya "1–10 dari 57" (.pagination-summary-long disembunyikan, 16-responsive.css).
+    const summary = `<p class="pagination-summary" data-testid="recent-pagination-summary">`
+        + `<span class="pagination-summary-long">Menampilkan </span>${range.from}–${range.to} dari ${total}`
+        + `<span class="pagination-summary-long"> inspeksi</span></p>`;
     if (totalPages <= 1) { nav.innerHTML = summary; return; }
 
     const button = (target, label, disabled) =>

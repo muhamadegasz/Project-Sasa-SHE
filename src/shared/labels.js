@@ -95,14 +95,16 @@ export function formatActionStatus(status) {
     return ACTION_STATUS_LABELS[status] || status;
 }
 
-// OPEN (belum ada tindakan sama sekali) sengaja berlabel sama dengan TINJAU:
-// begitulah tabel dashboard selama ini menampilkannya, dan fase ini hanya
-// menyeragamkan label, tidak menambah istilah baru.
+// Kosakata yang SAMA dengan status satu tindakan (ACTION_STATUS_LABELS di atas):
+// semua tindakan selesai -> Selesai, ada yang berjalan -> Progres, belum ada
+// yang berjalan (TINJAU) atau belum ada tindakan (OPEN) -> Menunggu. Sebelumnya
+// "Perbaikan"/"Tinjau" — istilah ketiga yang tidak dipakai di tempat lain.
+// Hanya label; nilai REPAIR_STATUS (juga nama CSS class, dan nilai di Excel) tetap.
 const REPAIR_STATUS_LABELS = {
-    [REPAIR_STATUS.SELESAI]: 'Selesai',
-    [REPAIR_STATUS.PERBAIKAN]: 'Perbaikan',
-    [REPAIR_STATUS.TINJAU]: 'Tinjau',
-    [REPAIR_STATUS.OPEN]: 'Tinjau',
+    [REPAIR_STATUS.SELESAI]: ACTION_STATUS_LABELS[ACTION_STATUS.CLOSED],
+    [REPAIR_STATUS.PERBAIKAN]: ACTION_STATUS_LABELS[ACTION_STATUS.ON_PROGRESS],
+    [REPAIR_STATUS.TINJAU]: ACTION_STATUS_LABELS[ACTION_STATUS.OPEN],
+    [REPAIR_STATUS.OPEN]: ACTION_STATUS_LABELS[ACTION_STATUS.OPEN],
 };
 
 /** Label status perbaikan SEBUAH INSPEKSI (hasil getRepairStatus()). */
