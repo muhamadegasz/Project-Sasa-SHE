@@ -73,50 +73,90 @@
     flex-wrap: wrap;
 }
 
-.header-badge {
-    background: white;
-    padding: 0.4rem 1.2rem;
-    border-radius: 60px;
-    font-weight: 500;
-    font-size: 0.85rem;
-    color: #7a3a3a;
-    border: 1px solid #f0d0d0;
+/* .header-badge (lonceng notifikasi — hitungannya selalu 0, tidak pernah
+   berfungsi) dan wadah pill .user-profile dihapus. Badge jam & status Online
+   sudah lebih dulu dihapus, lihat docs/DECISIONS.md K-6. (Titik status
+   kalender memakai .cal-dot di 09-calendar.css — selektor lain.) */
+
+/* Identitas login: avatar, nama dengan role di bawahnya, tombol keluar.
+   Sengaja tanpa wadah pill/kartu — hierarkinya cukup dari tipografi. */
+.header-user {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 0.75rem;
+    min-width: 0;
+    max-width: 100%;
 }
 
-.header-badge i {
-    color: #d42a2a;
-}
-
-/* .header-badge .dot, .header-badge .clock, .header-badge .clock i dan
-   @keyframes pulse dihapus bersama badge jam & status Online.
-   Lihat docs/DECISIONS.md K-6. Catatan: .dot di 09-calendar.css adalah
-   selektor lain (legenda kalender) dan tetap dipakai. */
-
-.user-profile {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    background: white;
-    padding: 0.3rem 1rem 0.3rem 0.8rem;
-    border-radius: 60px;
-    border: 1px solid #f0d0d0;
-    cursor: default;
-}
-
-.user-profile .avatar-placeholder {
-    width: 34px;
-    height: 34px;
+.header-avatar {
+    width: 38px;
+    height: 38px;
+    flex-shrink: 0;
     border-radius: 50%;
-    background: #d42a2a;
-    color: white;
+    background: #f6e7e7;
+    color: #9c1c1c;
     display: flex;
     align-items: center;
     justify-content: center;
     font-weight: 600;
+    font-size: 0.8rem;
+    letter-spacing: 0.03em;
+}
+
+.header-identity {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    line-height: 1.3;
+}
+
+/* Nama dan role tidak pernah membuat header meluap: teks yang terlalu
+   panjang (mis. nama plant) dipotong dengan elipsis; teks utuh ada di title. */
+.header-user-name,
+.header-user-role {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.header-user-name {
+    font-weight: 600;
+    font-size: 0.92rem;
+    color: #3a2020;
+}
+
+.header-user-role {
+    font-weight: 500;
+    font-size: 0.75rem;
+    color: #8a5a5a;
+}
+
+.header-logout {
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    margin-left: 0.25rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid #ead6d6;
+    border-radius: 8px;
+    background: transparent;
+    color: #8a3a3a;
     font-size: 0.9rem;
+    cursor: pointer;
+    transition: background-color 0.15s, border-color 0.15s, color 0.15s;
+}
+
+.header-logout:hover {
+    background: #fbefef;
+    border-color: #e0c2c2;
+    color: #b31b1b;
+}
+
+.header-logout:focus-visible {
+    outline: 2px solid #d42a2a;
+    outline-offset: 2px;
 }
 
 .nav-tabs {

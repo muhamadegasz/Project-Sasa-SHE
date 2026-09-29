@@ -1,10 +1,12 @@
 /* tables.view.js — tabel dashboard, inspeksi, jadwal, dan perbaikan.
  *
- * Dipindah apa adanya dari legacy-app.js (Phase 8). Hanya wrapper "WithSearch"
- * dan renderJadwalTable yang diekspor — itu satu-satunya yang dipanggil dari
- * luar berkas ini (lewat setupSearch() dan setInterval() di initApp()).
- * renderInspeksiTable/renderPerbaikanTable/updateNotifBadge sengaja tidak
- * diekspor: tidak ada pemanggil lain di luar berkas ini.
+ * Dipindah apa adanya dari legacy-app.js (Phase 8). Hanya wrapper "WithSearch",
+ * renderJadwalTable, dan pemuat Inspeksi Terbaru (loadRecentInspections,
+ * bindRecentInspectionsSearch — berhalaman di server) yang diekspor — itu
+ * satu-satunya yang dipanggil dari luar berkas ini (initApp() & aksi halaman).
+ * renderInspeksiTable/renderPerbaikanTable sengaja tidak diekspor: tidak ada
+ * pemanggil lain di luar berkas ini. (updateNotifBadge dihapus bersama lonceng
+ * notifikasi header — hitungannya selalu 0, tidak pernah berfungsi.)
  *
  * Phase 14.1-E: tombol "Kelola Pengesahan" (ikon stempel) pada baris tabel
  * Semua Inspeksi diberi data-testid="row-approve-btn" — ikon tanpa teks tidak
@@ -25,17 +27,21 @@ import { formatDate, isOverdue } from '../../shared/date.js';
 import { PERIODE_LIST } from '../../config/constants.js';
 import { getProgress, getRepairStatus } from '../../domain/inspection-rules.js';
 import { isFullyApproved, countApproved } from '../../domain/approval-rules.js';
-import { formatApprovalStatus, formatInspectionStatus, formatRepairStatus } from '../../shared/labels.js';
+import { formatApprovalStatus, formatInspectionStatus, formatInspectionStatusDetail, formatRepairStatus } from '../../shared/labels.js';
+import { DEFAULT_PAGE_LIMIT, pageRange, pageWindow } from '../../shared/pagination.js';
+import { reportError } from '../../shared/errors.js';
 import * as scheduleRules from '../../domain/schedule-rules.js';
 import * as scheduleRepository from '../../repositories/schedule-repository.js';
 import * as inspectionRepository from '../../repositories/inspection-repository.js';
 import * as plantRepository from '../../repositories/plant-repository.js';
-import { canDelete, canDeleteDraft, canEdit, canRevise, canSubmit } from '../../domain/inspection-policy.js';
+import { canApprove, canDelete, canDeleteDraft, canEdit, canReject, canRevise, canSubmit } from '../../domain/inspection-policy.js';
+import { overdueIndicator } from '../components/overdue-indicator.js';
 import { ROLE } from '../../config/constants.js';
 import { getCurrentUser } from '../../infrastructure/session.js';
 
-// Dipakai ketiga tabel di berkas ini (inspeksi, jadwal, perbaikan).
-const OVERDUE_BADGE = '<span class="overdue-badge"><i class="fas fa-exclamation-circle"></i> OVERDUE</span>';
+// Dipakai ketiga tabel di berkas ini (inspeksi, jadwal, perbaikan): ikon kecil
+// + tooltip di samping tanggal (components/overdue-indicator.js), bukan badge besar.
+const OVERDUE_BADGE = overdueIndicator();
 
 /**
  * Tombol siklus hidup untuk Safety Officer PEMILIK (Phase 17.3B): Edit/Revisi,
@@ -72,54 +78,43 @@ function adminDeleteButton(item) {
     return `<button class="btn-sm danger" data-action="hapusInspeksiAdmin" data-id="${escapeHtml(item.id)}" data-testid="row-admin-delete-btn" title="Hapus inspeksi (Admin)"><i class="fas fa-trash-alt"></i></button>`;
 }
 
-/** Badge status alur kerja inspeksi — dipakai kedua varian tabel inspeksi. */
+/** Badge status alur kerja inspeksi — tabel Semua Data Inspeksi. */
 function inspectionStatusBadge(item) {
     return `<span class="status-badge ${escapeHtml(item.status)}">${escapeHtml(formatInspectionStatus(item.status))}</span>`;
 }
 
-function updateNotifBadge(count) {
-    const countEl = document.getElementById('notifCount');
-    const dotEl = document.getElementById('notifDot');
-    if (count > 0) {
-        countEl.textContent = count;
-        dotEl.classList.add('active');
-    } else {
-        countEl.textContent = '0';
-        dotEl.classList.remove('active');
-    }
+/**
+ * Status di tabel Inspeksi Terbaru: status alur kerja (teks berwarna, bukan
+ * pill) + keterangan tahap yang ditunggu (labels.js). Status tindakan
+ * perbaikan sengaja TIDAK ikut — siklusnya terpisah dari alur kerja inspeksi.
+ */
+function recentStatusCell(item) {
+    const detail = formatInspectionStatusDetail(item);
+    return `<span class="inspection-status ${escapeHtml(item.status)}" data-testid="recent-status">${escapeHtml(formatInspectionStatus(item.status))}</span>`
+        + (detail ? `<span class="inspection-status-detail" data-testid="recent-status-detail">${escapeHtml(detail)}</span>` : '');
 }
 
 function renderInspeksiTable(data, tbodyId, isFull, highlightQuery = '') {
     const tbody = document.getElementById(tbodyId);
     if (!tbody) return;
     if (data.length === 0) {
-        const colspan = isFull ? 9 : 7;
+        const colspan = isFull ? 9 : 6;
         tbody.innerHTML =
             `<tr><td colspan="${colspan}" style="text-align:center;padding:2rem;color:#8a6a6a;">Tidak ada data ditemukan</td></tr>`;
         return;
     }
 
     tbody.innerHTML = data.map(item => {
-        const progress = getProgress(item);
-        const statusPerbaikan = getRepairStatus(item);
-        const statusLabel = formatRepairStatus(statusPerbaikan);
         const overdue = isOverdue(item.dueDate);
         const jmlTemuan = item.temuan ? item.temuan.length : 0;
         const temuanPreview = item.temuan && item.temuan.length > 0 ? item.temuan[0].deskripsi : '-';
-        const moreTemuan = jmlTemuan > 1 ? ` +${jmlTemuan - 1} lagi` : '';
 
         const lokasiDisplay = highlight(item.lokasi, highlightQuery);
         const temuanDisplay = highlight(temuanPreview, highlightQuery);
-
-        const progressBar = `
-                <div class="progress-wrapper">
-                    <div class="progress-bar-container">
-                        <div class="progress-fill ${statusPerbaikan}" style="width:${progress}%"></div>
-                    </div>
-                    <span class="progress-text">${progress}%</span>
-                    <span class="progress-label">${statusLabel}</span>
-                </div>
-            `;
+        // Temuan pertama + jumlah eksplisit di baris kedua (sebelumnya "… +1 lagi").
+        const temuanCell = jmlTemuan > 0
+            ? `<span class="temuan-preview">${temuanDisplay}</span><span class="temuan-count" data-testid="temuan-count">${jmlTemuan} temuan</span>`
+            : '-';
 
         const overdueBadge = overdue ? OVERDUE_BADGE : '';
 
@@ -153,20 +148,36 @@ function renderInspeksiTable(data, tbodyId, isFull, highlightQuery = '') {
                     </tr>
                 `;
         } else {
+            // Aksi hanya yang benar-benar bisa dijalankan pengguna ini: Pengesahan
+            // hanya untuk peninjau yang berwenang atas tahap yang sedang berjalan
+            // (aturan domain yang sama dengan server — role, tahap, plant); status
+            // pengesahan untuk yang lain dibaca di Detail. PDF hanya setelah
+            // selesai. Server tetap otoritatif atas setiap aksi.
+            const user = getCurrentUser();
+            const id = escapeHtml(item.id);
+            const approvalBtn = canApprove(user, item) || canReject(user, item)
+                ? `<button class="btn-sm warning" data-action="openApprovalModal" data-id="${id}" data-testid="recent-approval-btn" title="Pengesahan"><i class="fas fa-stamp"></i></button>`
+                : '';
+            // Revisi inspeksi (alur pengesahan) hanya untuk Safety Officer pemiliknya
+            // selama Perlu Revisi — tombol berteks, dibedakan dari "Perbaikan &
+            // Progres" (tindakan perbaikan temuan, siklus terpisah).
+            const reviseBtn = canRevise(user, item)
+                ? `<button class="btn-sm primary btn-revise" data-action="editInspeksi" data-id="${id}" data-testid="recent-revise-btn" title="Revisi inspeksi ${id}"><i class="fas fa-pen"></i> Revisi</button>`
+                : '';
             return `
                     <tr>
-                        <td><strong>${escapeHtml(item.id)}</strong></td>
+                        <td><strong>${id}</strong></td>
                         <td>${lokasiDisplay}</td>
-                        <td>${temuanDisplay}${moreTemuan}</td>
-                        <td>${escapeHtml(item.dueDate || '-')} ${overdueBadge}</td>
-                        <td>${inspectionStatusBadge(item)}</td>
-                        <td>${progressBar}</td>
+                        <td>${temuanCell}</td>
+                        <td class="due-date-cell">${escapeHtml(item.dueDate || '-')} ${overdueBadge}</td>
+                        <td>${recentStatusCell(item)}</td>
                         <td>
-                            <button class="btn-sm info" data-action="openDetailModal" data-id="${escapeHtml(item.id)}" data-testid="row-detail-btn"><i class="fas fa-eye"></i></button>
-                            <button class="btn-sm primary" data-action="openPerbaikanModal" data-id="${escapeHtml(item.id)}"><i class="fas fa-tools"></i></button>
-                            <button class="btn-sm warning" data-action="openApprovalModal" data-id="${escapeHtml(item.id)}"><i class="fas fa-stamp"></i></button>
+                            <button class="btn-sm info" data-action="openDetailModal" data-id="${id}" data-testid="row-detail-btn" title="Lihat detail" aria-label="Lihat detail ${id}"><i class="fas fa-eye"></i></button>
+                            ${reviseBtn}
+                            <button class="btn-sm outline" data-action="openPerbaikanModal" data-id="${id}" data-testid="recent-perbaikan-btn" title="Perbaikan &amp; Progres (tindakan perbaikan temuan)" aria-label="Perbaikan &amp; Progres ${id}"><i class="fas fa-tools"></i></button>
+                            ${approvalBtn}
                             ${exportBtn}
-                            ${pdfBtn}
+                            ${allApproved ? pdfBtn : ''}
                         </td>
                     </tr>
                 `;
@@ -178,15 +189,15 @@ export async function renderJadwalTable(data = null, highlightQuery = '') {
     const tbody = document.getElementById('jadwalTableBody');
     if (!tbody) return;
     const displayData = data !== null ? data : await scheduleRepository.getAll();
-    let notifCount = 0;
     // Phase 18: hapus jadwal khusus Admin (DELETE /api/schedules/:id requireRole('admin')) — tombolnya pun hanya untuk Admin.
     const canDeleteSchedules = getCurrentUser()?.role === ROLE.ADMIN;
+    // Ubah jadwal: hanya role yang juga diizinkan server (PUT /api/schedules/:id).
+    const canEditSchedules = scheduleRules.canManageSchedules(getCurrentUser());
 
     if (displayData.length === 0) {
         tbody.innerHTML =
             '<tr><td colspan="8" style="text-align:center;padding:2rem;color:#8a6a6a;">Tidak ada data ditemukan</td></tr>';
-        updateNotifBadge(0);
-        return 0;
+        return;
     }
 
     const limitedData = displayData.slice(0, 100);
@@ -208,7 +219,7 @@ export async function renderJadwalTable(data = null, highlightQuery = '') {
         let statusText = 'Aktif';
         if (item.tanggalRealisasi) {
             statusClass = 'selesai';
-            statusText = '✅ Selesai';
+            statusText = 'Selesai';
         } else if (isOverdueSchedule) {
             statusClass = 'terlambat';
             statusText = '⚠️ Overdue';
@@ -224,18 +235,14 @@ export async function renderJadwalTable(data = null, highlightQuery = '') {
                     <td>${officerDisplay}</td>
                     <td><span class="status-badge ${statusClass}">${statusText}</span></td>
                     <td>
-                        <button class="btn-sm warning" data-action="editJadwal" data-id="${escapeHtml(item.id)}"><i class="fas fa-edit"></i></button>
+                        ${canEditSchedules ? `<button class="btn-sm warning" data-action="editJadwal" data-id="${escapeHtml(item.id)}" data-testid="schedule-edit-btn" aria-label="Edit jadwal ${escapeHtml(item.id)}"><i class="fas fa-edit"></i></button>` : ''}
                         ${canDeleteSchedules ? `<button class="btn-sm danger" data-action="hapusJadwal" data-id="${escapeHtml(item.id)}" data-testid="schedule-delete-btn"><i class="fas fa-trash"></i></button>` : ''}
+                        ${canEditSchedules || canDeleteSchedules ? '' : '<span style="color:#b8a0a0;">-</span>'}
                     </td>
                 </tr>
             `;
     }));
     tbody.innerHTML = rows.join('');
-
-    if (data === null) {
-        updateNotifBadge(notifCount);
-    }
-    return notifCount;
 }
 
 async function renderPerbaikanTable(data = null, highlightQuery = '') {
@@ -292,8 +299,90 @@ async function renderPerbaikanTable(data = null, highlightQuery = '') {
     }).join('');
 }
 
+// ========================================================================
+// Inspeksi Terbaru — berhalaman di server (GET /api/inspections?page=&limit=&q=):
+// cakupan visibilitas, pencarian, urutan, LIMIT/OFFSET semuanya di database.
+// Tabel lain, statistik, dan ekspor tetap memakai daftar penuh (getAll).
+// ========================================================================
+
+let recentState = { page: 1, search: '' };
+let recentRequest = 0;
+
+/** Baris tabel Inspeksi Terbaru dari data yang sudah diambil (tanpa fetch sendiri — juga diuji xss-regression.test.js). */
 export function renderInspeksiWithSearch(data, query) {
     renderInspeksiTable(data, 'inspeksiTableBody', false, query);
+}
+
+function renderRecentPagination(pagination) {
+    const nav = document.getElementById('inspeksiPagination');
+    if (!nav) return;
+    const range = pageRange(pagination);
+    if (!range) { nav.innerHTML = ''; return; }
+    const { page, totalPages, total } = pagination;
+    const summary = `<p class="pagination-summary" data-testid="recent-pagination-summary">Menampilkan ${range.from}–${range.to} dari ${total} inspeksi</p>`;
+    if (totalPages <= 1) { nav.innerHTML = summary; return; }
+
+    const button = (target, label, disabled) =>
+        `<button type="button" class="pagination-btn" data-action="recentInspectionsPage" data-page="${target}"${disabled ? ' disabled' : ''}>${label}</button>`;
+    const pages = pageWindow(page, totalPages).map((number) => (number === page
+        ? `<span class="pagination-btn current" aria-current="page">${number}</span>`
+        : button(number, number, false))).join('');
+    nav.innerHTML = `${summary}
+        <div class="pagination-controls">
+            ${button(page - 1, '← Sebelumnya', page <= 1)}
+            <span class="pagination-pages">${pages}</span>
+            <span class="pagination-compact">${page} / ${totalPages}</span>
+            ${button(page + 1, 'Berikutnya →', page >= totalPages)}
+        </div>`;
+}
+
+/**
+ * Memuat & merender satu halaman Inspeksi Terbaru. Pencarian yang berubah
+ * kembali ke halaman 1; tanpa perubahan pencarian (mis. refresh setelah aksi)
+ * halaman aktif dipertahankan. Jawaban yang sudah basi (pencarian keburu
+ * berganti) diabaikan.
+ */
+export async function loadRecentInspections({ page, search = recentState.search } = {}) {
+    const targetPage = search !== recentState.search ? 1 : (page ?? recentState.page);
+    const request = ++recentRequest;
+    let result = await inspectionRepository.getPage({ page: targetPage, limit: DEFAULT_PAGE_LIMIT, search });
+    // Halaman aktif bisa hilang setelah datanya berkurang (mis. inspeksi dihapus) -> halaman terakhir yang ada.
+    if (result.items.length === 0 && result.pagination.totalPages > 0 && targetPage > result.pagination.totalPages) {
+        result = await inspectionRepository.getPage({ page: result.pagination.totalPages, limit: DEFAULT_PAGE_LIMIT, search });
+    }
+    if (request !== recentRequest) return;
+
+    recentState = { page: result.pagination.page, search };
+    renderInspeksiWithSearch(result.items, search);
+    renderRecentPagination(result.pagination);
+    const count = document.getElementById('searchInspeksiCount');
+    if (count) count.textContent = search ? `${result.pagination.total} hasil` : '';
+}
+
+/**
+ * Pencarian Inspeksi Terbaru — dijalankan di server atas SELURUH data yang
+ * terlihat (bukan hanya halaman yang sedang tampil), sesaat setelah berhenti
+ * mengetik. Menggantikan setupSearch() (penyaringan di browser) untuk tabel ini.
+ */
+export function bindRecentInspectionsSearch() {
+    const input = document.getElementById('searchInspeksiInput');
+    const clear = document.getElementById('clearSearchInspeksi');
+    if (!input) return Promise.resolve();
+    let timer = null;
+    const load = () => loadRecentInspections({ search: input.value.trim() })
+        .catch((error) => { reportError('muat inspeksi terbaru', error, ''); });
+    const onInput = () => {
+        clear.classList.toggle('visible', input.value.trim() !== '');
+        clearTimeout(timer);
+        timer = setTimeout(load, 250);
+    };
+    input.addEventListener('input', onInput);
+    clear.addEventListener('click', () => {
+        input.value = '';
+        onInput();
+        input.focus();
+    });
+    return load();
 }
 
 export function renderAllInspeksiWithSearch(data, query) {

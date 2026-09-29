@@ -76,3 +76,73 @@ test('navbar memakai logo perusahaan (aset lokal) — termuat dan tidak gepeng',
     expect(info.src).toMatch(/\/src\/asset\/company_logo\.png$/);
     expect(Math.abs(info.rendered - info.natural) / info.natural).toBeLessThan(0.03);
 });
+
+// Header: nama + role pengguna login (dari sesi, bukan username); lonceng notifikasi yang tidak berfungsi sudah dihapus.
+for (const [username, name, role] of [
+    ['arif', 'Arif', 'Safety Officer'],
+    ['andi', 'Andi', 'Manajer Bagian'],
+    ['hadi', 'Hadi', 'Ketua P2K3'],
+    ['admin', 'Administrator', 'Administrator'],
+]) {
+    test(`header: ${username} melihat nama dan role "${role}", tanpa plant`, async ({ page }) => {
+        await loginViaUi(page, username);
+        await expect(page.getByTestId('user-name')).toHaveText(name);
+        await expect(page.getByTestId('user-role')).toHaveText(role);
+        await expect(page.locator('#notifContainer, .notif-bell')).toHaveCount(0);
+    });
+}
+
+async function assignedPlantName(page) {
+    const { user } = await (await page.request.get(`${API}/auth/me`)).json();
+    const plants = await (await page.request.get(`${API}/plants`)).json();
+    const plant = plants.find((row) => String(row.id) === String(user.plantId));
+    expect(plant, 'Koordinator punya plant yang ditugaskan').toBeTruthy();
+    return plant.name;
+}
+
+test('header: Koordinator K3L melihat role + nama plant cakupannya', async ({ page }) => {
+    await loginViaUi(page, 'dewi');
+    const plantName = await assignedPlantName(page);
+    await expect(page.getByTestId('user-name')).toHaveText('Dewi');
+    await expect(page.getByTestId('user-role')).toHaveText(`Koordinator K3L · ${plantName}`);
+    await expect(page.getByTestId('user-role')).toHaveAttribute('title', `Koordinator K3L · ${plantName}`);
+});
+
+test('header responsif: nama + role tetap terbaca, tanpa luapan horizontal di 375/390/1280/1440px', async ({ page }) => {
+    await loginViaUi(page, 'dewi'); // teks role terpanjang: Koordinator K3L + nama plant
+    const plantName = await assignedPlantName(page);
+    await expect(page.getByTestId('user-role')).toHaveText(`Koordinator K3L · ${plantName}`);
+
+    for (const width of [375, 390, 1280, 1440]) {
+        await page.setViewportSize({ width, height: 800 });
+        await expect(page.getByTestId('user-name')).toBeVisible();
+        await expect(page.getByTestId('user-role')).toBeVisible();
+        const layout = await page.evaluate(() => {
+            const role = document.querySelector('[data-testid="user-role"]');
+            const name = document.querySelector('[data-testid="user-name"]');
+            const context = document.createElement('canvas').getContext('2d');
+            context.font = getComputedStyle(role).font;
+            return {
+                pageOverflow: document.documentElement.scrollWidth > window.innerWidth,
+                userRight: document.querySelector('[data-testid="header-user"]').getBoundingClientRect().right,
+                logoutRight: document.querySelector('[data-action="logout"]').getBoundingClientRect().right,
+                // Label role ("Koordinator K3L") selalu utuh; yang boleh terpotong hanya nama plant.
+                roleLabelFits: role.clientWidth >= context.measureText('Koordinator K3L').width,
+                roleTruncated: role.scrollWidth > role.clientWidth,
+                nameTruncated: name.scrollWidth > name.clientWidth,
+            };
+        });
+        expect(layout.pageOverflow, `${width}px: tanpa scroll horizontal`).toBe(false);
+        expect(layout.userRight, `${width}px: identitas di dalam layar`).toBeLessThanOrEqual(width);
+        expect(layout.logoutRight, `${width}px: tombol keluar di dalam layar`).toBeLessThanOrEqual(width);
+        expect(layout.roleLabelFits, `${width}px: label role utuh`).toBe(true);
+        expect(layout.nameTruncated, `${width}px: nama utuh`).toBe(false);
+        if (width >= 1280) expect(layout.roleTruncated, `${width}px: role + plant utuh`).toBe(false);
+    }
+
+    // Tombol keluar tetap tombol logout yang sama (data-action="logout").
+    await page.setViewportSize({ width: 390, height: 800 });
+    page.once('dialog', (dialog) => dialog.accept());
+    await page.getByRole('button', { name: 'Logout' }).click();
+    await expect(page.getByTestId('user-name')).not.toBeVisible();
+});

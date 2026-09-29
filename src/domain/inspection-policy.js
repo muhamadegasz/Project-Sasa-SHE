@@ -14,10 +14,13 @@
  */
 
 import { ROLE, APPROVAL_STAGE } from '../config/constants.js';
-import { INSPECTION_STATUS } from './statuses.js';
+import { APPROVAL_DECISION, INSPECTION_STATUS } from './statuses.js';
 import { findStage } from './approval-rules.js';
 
 const { DRAFT, IN_REVIEW, REVISION_REQUIRED, COMPLETED } = INSPECTION_STATUS;
+
+/** Status yang mungkin dimiliki inspeksi setelah pernah disetujui (DRAFT tidak pernah). */
+const SUBMITTED_STATUSES = [IN_REVIEW, REVISION_REQUIRED, COMPLETED];
 
 function isOwner(user, inspection) {
     return inspection.petugasUserId != null && Number(inspection.petugasUserId) === Number(user.id);
@@ -32,11 +35,35 @@ export function isInAssignedPlant(user, inspection) {
 }
 
 /**
+ * Kriteria riwayat untuk peninjau: inspeksi yang tahap `stageId` (tahap milik
+ * role-nya) pernah DIA setujui tetap terlihat walau tahap berjalan sudah
+ * pindah, direvisi, atau selesai. Hanya hak BACA — memutuskan tetap lewat
+ * canApprove/canReject (tahap berjalan saja). Penolakan tidak memberi
+ * visibilitas, dan persetujuan tahap lain (mis. sebelum role-nya diganti)
+ * tidak dihitung.
+ */
+function approvedByReviewer(user, stageId) {
+    return { statuses: SUBMITTED_STATUSES, approvedBy: { userId: user.id, stage: stageId } };
+}
+
+function hasApproved(inspection, approvedBy) {
+    if (approvedBy.userId == null) return false;
+    return (inspection.approvalHistory || []).some((entry) => entry.decision === APPROVAL_DECISION.APPROVED
+        && entry.stage === approvedBy.stage
+        && entry.reviewerUserId != null
+        && Number(entry.reviewerUserId) === Number(approvedBy.userId));
+}
+
+/**
  * Cakupan visibilitas seorang pengguna, sebagai daftar kriteria (Phase 17.3A).
  * Sebuah inspeksi terlihat bila cocok dengan SALAH SATU kriteria; di dalam
  * satu kriteria, SEMUA field yang disebut harus cocok:
  *
- *   { petugasUserId, plantId, statuses: [...], currentApprovalStage }
+ *   { petugasUserId, plantId, statuses: [...], currentApprovalStage,
+ *     approvedBy: { userId, stage } }
+ *
+ * `approvedBy`: riwayat pengesahan inspeksi memuat persetujuan tahap `stage`
+ * oleh pengguna `userId` (lihat approvedByReviewer di bawah).
  *
  * Satu sumber aturan untuk dua pemakai: canView() di bawah (satu inspeksi di
  * memori) dan repository server (klausa WHERE, supaya inspeksi di luar
@@ -56,20 +83,24 @@ export function visibilityScope(user) {
         ];
     case ROLE.KOORDINATOR_K3L:
         // Tanpa plant yang ditugaskan: tidak melihat apa pun (gagal-tertutup).
+        // Riwayat persetujuannya pun tetap dibatasi plant yang ditugaskan.
         if (user.plantId == null) return [];
         return [
             { plantId: user.plantId, statuses: [IN_REVIEW], currentApprovalStage: APPROVAL_STAGE.KOORDINATOR_K3L },
             { plantId: user.plantId, statuses: [COMPLETED] },
+            { plantId: user.plantId, ...approvedByReviewer(user, APPROVAL_STAGE.KOORDINATOR_K3L) },
         ];
     case ROLE.MANAJER_BAGIAN:
         return [
             { statuses: [IN_REVIEW], currentApprovalStage: APPROVAL_STAGE.MANAJER },
             { statuses: [COMPLETED] },
+            approvedByReviewer(user, APPROVAL_STAGE.MANAJER),
         ];
     case ROLE.KETUA_P2K3:
         return [
             { statuses: [IN_REVIEW], currentApprovalStage: APPROVAL_STAGE.KETUA_P2K3 },
             { statuses: [COMPLETED] },
+            approvedByReviewer(user, APPROVAL_STAGE.KETUA_P2K3),
         ];
     case ROLE.ADMIN:
         // Semua kecuali draft.
@@ -84,6 +115,7 @@ function matchesCriterion(criterion, inspection) {
     if (criterion.plantId != null && Number(inspection.plantId) !== Number(criterion.plantId)) return false;
     if (criterion.statuses && !criterion.statuses.includes(inspection.status)) return false;
     if (criterion.currentApprovalStage && inspection.currentApprovalStage !== criterion.currentApprovalStage) return false;
+    if (criterion.approvedBy && !hasApproved(inspection, criterion.approvedBy)) return false;
     return true;
 }
 

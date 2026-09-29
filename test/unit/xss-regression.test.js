@@ -261,6 +261,8 @@ const historyOf = (html, stageTitle) => {
     const block = html.split('<div class="approval-stage').find((part) => part.includes(`>${stageTitle}<`)) || '';
     return [...block.matchAll(/data-decision="(\w+)"[\s\S]*?Percobaan (\d+)/g)].map((m) => [Number(m[2]), m[1]]);
 };
+// Teks yang terbaca pengguna (tanpa tag, spasi dirapatkan) — label "Alasan:" dan isinya elemen terpisah.
+const textOf = (html) => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ');
 
 test('riwayat pengesahan: ditolak lalu disetujui pada attempt berikutnya -> kedua attempt urut, alasan penolakan tampil; kartu tetap "Disetujui"', () => {
     const item = { id: 'INS-001', status: 'in_review', currentApprovalStage: 'manajer', approvalHistory: [
@@ -269,8 +271,9 @@ test('riwayat pengesahan: ditolak lalu disetujui pada attempt berikutnya -> kedu
     ] };
     const html = renderApprovalStages(item);
     assert.deepEqual(historyOf(html, 'Koordinator K3L Bagian'), [[1, 'rejected'], [2, 'approved']]);
-    assert.ok(html.includes('Alasan: Foto kurang jelas'));
-    assert.ok(html.includes('✅ Disetujui'));
+    assert.ok(textOf(html).includes('Alasan: Foto kurang jelas'));
+    assert.match(html, /class="stage-status done">Disetujui</);
+    assert.ok(!html.includes('stage-attempt-pending'), 'sudah diputuskan: tanpa attempt yang menunggu');
     assert.equal((html.match(/data-testid="stage-history"/g) || []).length, 1, 'hanya tahap dengan attempt yang belum terwakili');
 });
 
@@ -282,8 +285,11 @@ test('riwayat pengesahan: ditolak Ketua lalu diajukan ulang -> tahap Ketua kemba
     ] };
     const html = renderApprovalStages(item);
     assert.deepEqual(historyOf(html, 'Ketua P2K3'), [[1, 'rejected']]);
-    assert.ok(html.includes('Alasan: Lengkapi bukti'));
+    assert.ok(textOf(html).includes('Alasan: Lengkapi bukti'));
     assert.ok(html.includes('Menunggu Persetujuan'), 'status tahap berjalan tidak berubah');
+    // Diajukan ulang: attempt berikutnya yang belum diputuskan menutup riwayat tahap itu.
+    assert.ok(textOf(html).includes('Percobaan 2 Menunggu persetujuan Ketua P2K3'));
+    assert.equal((html.match(/data-testid="stage-attempt-pending"/g) || []).length, 1);
     assert.deepEqual(historyOf(html, 'Koordinator K3L Bagian'), []);
     assert.deepEqual(historyOf(html, 'Manajer Bagian'), []);
 });

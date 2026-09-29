@@ -4,78 +4,153 @@
    beberapa selektor sengaja didefinisikan ulang dan bergantung pada urutan ini.
    Lihat docs/DECISIONS.md K-5. */
 
-/* ========== MODAL KALENDER ========== */
+/* ========== MODAL KALENDER ==========
+   Informasi operasional, bukan dekorasi: tanggal, ringkasan, lalu tabel
+   jadwal (Plant, Status, Periode, Minggu, Safety Officer) bergaris tipis.
+   Tanpa emoji, ikon per field, atau pill. Warna status = token kalender
+   (--cal-*, 09-calendar.css), sama dengan legenda dan tabel Penjadwalan.
+   Layar sempit: tiap jadwal menjadi baris label–nilai (16-responsive.css). */
 #calendarModal .modal-box {
-    max-width: 550px;
+    max-width: 760px;
 }
 
-.calendar-event-list {
-    max-height: 350px;
-    overflow-y: auto;
+.day-detail-header {
+    margin-bottom: 0.9rem;
 }
 
-.calendar-event-item {
-    display: flex;
-    gap: 0.8rem;
-    padding: 0.7rem 0.8rem;
-    border-bottom: 1px solid #f0e0e0;
-    align-items: flex-start;
-    transition: 0.15s;
-}
-
-.calendar-event-item:hover {
-    background: #faf8f8;
-    border-radius: 8px;
-}
-
-.calendar-event-item:last-child {
-    border-bottom: none;
-}
-
-.calendar-event-item .event-icon {
-    font-size: 1.4rem;
-    flex-shrink: 0;
-    margin-top: 2px;
-}
-
-.calendar-event-item .event-detail {
-    flex: 1;
-}
-
-.calendar-event-item .event-title {
-    font-size: 0.9rem;
+.day-detail-date {
+    font-size: 1.05rem;
+    font-weight: 600;
     color: #2a1a1a;
 }
 
-.calendar-event-item .event-meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
+.day-detail-summary,
+.day-detail-breakdown {
     margin-top: 0.2rem;
+    font-size: 0.85rem;
+    color: #6f5a5a;
 }
 
-.calendar-event-item .event-status {
-    font-size: 0.65rem;
-    padding: 0.1rem 0.6rem;
-    border-radius: 60px;
+.day-summary-count {
     font-weight: 600;
 }
 
-.calendar-event-item .event-status.scheduled {
-    background: #fff3e0;
-    color: #e65100;
+.day-summary-count.scheduled {
+    color: var(--cal-scheduled);
 }
 
-.calendar-event-item .event-status.completed {
-    background: #e8f5e9;
-    color: #1b5e20;
+.day-summary-count.overdue {
+    color: var(--cal-overdue);
 }
 
-.calendar-event-item .event-meta-item {
-    font-size: 0.65rem;
+.day-summary-count.completed {
+    color: var(--cal-completed);
+}
+
+.day-schedule-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+    color: #3a2a2a;
+}
+
+.day-schedule-table th {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid #e6d6d6;
+    font-size: 0.68rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    text-align: left;
     color: #8a6a6a;
-    background: #f5f0f0;
-    padding: 0.1rem 0.6rem;
-    border-radius: 60px;
+    white-space: nowrap;
+}
+
+/* border-bottom 0: garis td global (05-tables.css) digantikan satu garis per
+   jadwal di tbody — baris tanggal tidak dipisah dari jadwalnya. */
+.day-schedule-table td {
+    padding: 0.7rem 0.75rem;
+    border-bottom: 0;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+}
+
+.day-schedule-table th:first-child,
+.day-schedule-table td:first-child {
+    padding-left: 0;
+}
+
+.day-schedule-table th:last-child,
+.day-schedule-table td:last-child {
+    padding-right: 0;
+}
+
+.day-schedule-table .col-periode,
+.day-schedule-table .col-minggu {
+    text-align: center;
+    width: 5.5rem;
+}
+
+/* Satu jadwal = satu <tbody>; garis tipis di bawah jadwal, bukan di bawah
+   baris tanggalnya. */
+.day-schedule-table tbody.day-schedule {
+    border-bottom: 1px solid var(--cal-line);
+}
+
+.day-schedule-table tbody.day-schedule:last-child {
+    border-bottom: none;
+}
+
+.day-schedule-table .col-plant {
+    font-weight: 600;
+    color: #2a1a1a;
+}
+
+.day-schedule-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    white-space: nowrap;
+    vertical-align: middle;
+}
+
+.day-schedule-status.scheduled {
+    color: var(--cal-scheduled);
+}
+
+.day-schedule-status.overdue {
+    color: var(--cal-overdue);
+}
+
+.day-schedule-status.completed {
+    color: var(--cal-completed);
+}
+
+/* Tanggal eksplisit — hanya bila tanggal jadwal & realisasi berbeda. */
+.day-schedule-table .day-schedule-dates td {
+    padding-top: 0;
+}
+
+.day-schedule-dates dl {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 2rem;
+}
+
+.day-schedule-dates dl > div {
+    display: flex;
+    gap: 0.6rem;
+}
+
+.day-schedule-dates dt {
+    color: #8a6a6a;
+}
+
+.day-schedule-dates dd {
+    color: #3a2a2a;
 }
 

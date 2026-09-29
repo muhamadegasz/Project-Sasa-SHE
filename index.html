@@ -114,16 +114,15 @@
                     </div>
                 </div>
                 <div class="header-right">
-                    <span class="header-badge notif-bell" id="notifContainer">
-                        <i class="fas fa-bell"></i>
-                        <span class="notif-dot" id="notifDot"></span>
-                        <span class="notif-count" id="notifCount">0</span>
-                    </span>
-                    <div class="user-profile">
-                        <div class="avatar-placeholder" id="userAvatar">AP</div>
-                        <span style="font-weight:500; font-size:0.9rem;" id="userName" data-testid="user-name">Andi</span>
-                        <button class="btn-sm danger" data-action="logout" aria-label="Logout" style="margin-left:0.5rem;font-size:0.65rem;padding:0.15rem 0.6rem;">
-                            <i class="fas fa-sign-out-alt"></i>
+                    <!-- Identitas login: nama + role (+ plant untuk Koordinator K3L), diisi legacy-app.js showMainApp(). -->
+                    <div class="header-user" data-testid="header-user">
+                        <div class="header-avatar" id="userAvatar" aria-hidden="true"></div>
+                        <div class="header-identity">
+                            <span class="header-user-name" id="userName" data-testid="user-name"></span>
+                            <span class="header-user-role" id="userRole" data-testid="user-role"></span>
+                        </div>
+                        <button class="header-logout" data-action="logout" aria-label="Logout" title="Keluar">
+                            <i class="fas fa-sign-out-alt" aria-hidden="true"></i>
                         </button>
                     </div>
                 </div>
@@ -169,7 +168,7 @@
                 <!-- CALENDAR -->
                 <div class="table-wrap" style="margin-bottom:1.5rem;">
                     <div class="table-header">
-                        <h4><i class="fas fa-calendar-alt"></i> Jadwal Inspeksi Mingguan <span class="demo-badge">DEMO</span></h4>
+                        <h4><i class="fas fa-calendar-alt"></i> Jadwal Inspeksi Mingguan</h4>
                         <button class="btn-sm primary" data-action="switchTab" data-panel="jadwal"><i class="fas fa-arrow-right"></i> Kelola</button>
                     </div>
                     <div class="calendar-container" id="calendarContainer"></div>
@@ -196,7 +195,6 @@
                                 <button class="clear-search" id="clearSearchInspeksi">&times;</button>
                                 <span class="search-count" id="searchInspeksiCount"></span>
                             </div>
-                            <button class="btn-sync" id="syncToSheets"><i class="fas fa-cloud-upload-alt"></i> Sync</button>
                             <button class="btn-export" id="exportSpreadsheet"><i class="fas fa-file-excel"></i> Export XLSX</button>
                         </div>
                     </div>
@@ -208,12 +206,13 @@
                                 <th>Temuan</th>
                                 <th>Due Date</th>
                                 <th>Status</th>
-                                <th>Progres</th>
                                 <th>Aksi</th>
                             </tr>
                         </thead>
                         <tbody id="inspeksiTableBody"></tbody>
                     </table>
+                    <!-- Berhalaman di server (tables.view.js loadRecentInspections). -->
+                    <nav class="table-pagination" id="inspeksiPagination" aria-label="Halaman Inspeksi Terbaru"></nav>
                 </div>
             </div>
 
@@ -221,7 +220,7 @@
             <div id="panel-jadwal" class="panel no-print">
                 <div class="table-wrap">
                     <div class="table-header">
-                        <h4><i class="fas fa-calendar-plus"></i> Penjadwalan Inspeksi Mingguan <span class="demo-badge">DEMO</span></h4>
+                        <h4><i class="fas fa-calendar-plus"></i> Penjadwalan Inspeksi Mingguan </h4>
                         <div class="table-header-right">
                             <div class="search-wrapper" id="searchJadwal">
                                 <i class="fas fa-search search-icon"></i>
@@ -229,7 +228,8 @@
                                 <button class="clear-search" id="clearSearchJadwal">&times;</button>
                                 <span class="search-count" id="searchJadwalCount"></span>
                             </div>
-                            <button class="btn-sm primary" data-action="openJadwalModal"><i class="fas fa-plus"></i> Tambah</button>
+                            <!-- Hanya role yang boleh menyimpan jadwal (domain/schedule-rules.js SCHEDULE_EDITOR_ROLES). -->
+                            <button class="btn-sm primary" data-action="openJadwalModal" data-roles="safety_officer,admin" data-testid="schedule-add-btn" hidden><i class="fas fa-plus"></i> Tambah</button>
                         </div>
                     </div>
                     <table>
@@ -254,7 +254,7 @@
             <div id="panel-inspeksi" class="panel no-print">
                 <div class="table-wrap">
                     <div class="table-header">
-                        <h4><i class="fas fa-clipboard-check"></i> Semua Data Inspeksi <span class="demo-badge">DEMO</span></h4>
+                        <h4><i class="fas fa-clipboard-check"></i> Semua Data Inspeksi </h4>
                         <div class="table-header-right">
                             <div class="search-wrapper" id="searchAllInspeksi">
                                 <i class="fas fa-search search-icon"></i>
@@ -289,7 +289,7 @@
             <div id="panel-perbaikan" class="panel no-print">
                 <div class="table-wrap">
                     <div class="table-header">
-                        <h4><i class="fas fa-tools"></i> Daftar Perbaikan & Progres <span class="demo-badge">DEMO</span></h4>
+                        <h4><i class="fas fa-tools"></i> Daftar Perbaikan & Progres </h4>
                         <div class="table-header-right">
                             <div class="search-wrapper" id="searchPerbaikan">
                                 <i class="fas fa-search search-icon"></i>
@@ -323,8 +323,9 @@
             <div id="panel-form" class="panel no-print">
                 <div class="form-section">
                     <h4><i class="fas fa-plus-circle"></i> <span id="inspeksiFormTitle">Buat Inspeksi Baru</span></h4>
-                    <!-- Phase 17.3B: tampil saat merevisi inspeksi yang ditolak — alasan penolakan terakhir. -->
-                    <div id="revisionNotice" class="demo-badge" style="display:none;margin-bottom:0.8rem;padding:0.6rem 0.9rem;border-radius:12px;font-size:0.8rem;"></div>
+                    <!-- Phase 17.3B: tampil saat merevisi inspeksi yang ditolak — permintaan revisi
+                         yang sedang berlaku (components/revision-info.js, sama dengan modal Detail). -->
+                    <div id="revisionNotice" class="revision-notice" hidden></div>
                     <form id="inspeksiForm" onsubmit="return false;">
                         <div class="form-row">
                             <div class="form-group">
@@ -634,12 +635,20 @@
     <div class="modal-overlay" id="calendarModal">
         <div class="modal-box" role="dialog" aria-labelledby="calendarModalTitle">
             <button class="close-modal" id="closeCalendarModal" aria-label="Tutup">&times;</button>
-            <h3 id="calendarModalTitle"><i class="fas fa-calendar-day"></i> Detail Jadwal</h3>
+            <h3 id="calendarModalTitle">Detail Jadwal</h3>
             <div id="calendarModalContent"></div>
         </div>
     </div>
 
-    <div id="toastMessage" class="toast-msg no-print"><i class="fas fa-bolt"></i> <span id="toastText"></span></div>
+    <!-- Toast (presentation/components/toast.js): ikon status, judul (#toastText), deskripsi, tombol tutup. -->
+    <div id="toastMessage" class="toast-msg no-print" data-variant="info" role="status" aria-live="polite" aria-atomic="true">
+        <i class="toast-icon fas fa-circle-info" aria-hidden="true"></i>
+        <div class="toast-body">
+            <p class="toast-title" id="toastText"></p>
+            <p class="toast-description" id="toastDescription" hidden></p>
+        </div>
+        <button type="button" class="toast-close" id="toastClose" aria-label="Tutup notifikasi"><i class="fas fa-xmark" aria-hidden="true"></i></button>
+    </div>
 
     <!-- Import map (Phase 12): src/services/*.js meng-import repository lewat
          specifier "#repositories/*.js", bukan path relatif langsung. Node

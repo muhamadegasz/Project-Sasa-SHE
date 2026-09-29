@@ -14,6 +14,7 @@ import { sendResult } from '../middleware/to-http.js';
 import { asyncHandler } from '../middleware/async-handler.js';
 import { upload, UPLOAD_DIR, verifyImageContent, cleanupUploadedFiles } from '../config/upload.js';
 import { detectSignatureMimeType, parseSignatureUpload } from '../config/signature-storage.js';
+import { checkPageRequest, pageSummary } from '../../src/shared/pagination.js';
 
 export const inspectionsRouter = Router();
 
@@ -63,8 +64,19 @@ function contentFromRequest(req) {
 // pengguna login (domain/inspection-policy.js visibilityScope, diterapkan di
 // query). Inspeksi di luar cakupan dijawab 404 yang SAMA PERSIS dengan id yang
 // tidak ada — tidak membocorkan apakah id itu ada, milik plant mana, dst.
+//
+// Tanpa ?page: seluruh inspeksi yang terlihat (array — kontrak lama, dipakai
+// statistik, grafik, ekspor, dan tabel lain). Dengan ?page=&limit=&q=: satu
+// halaman { items, pagination } dari database, cakupan yang sama.
 inspectionsRouter.get('/', asyncHandler(async (req, res) => {
-    res.json(await inspectionRepository.getAllVisibleTo(req.user));
+    if (req.query.page === undefined) {
+        return res.json(await inspectionRepository.getAllVisibleTo(req.user));
+    }
+    const checked = checkPageRequest(req.query);
+    if (checked.error) return res.status(400).json({ error: 'INVALID_PAGINATION' });
+    const { page, limit } = checked.value;
+    const { items, total } = await inspectionRepository.getPageVisibleTo(req.user, checked.value);
+    res.json({ items, pagination: pageSummary(page, limit, total) });
 }));
 
 inspectionsRouter.get('/:id', asyncHandler(async (req, res) => {

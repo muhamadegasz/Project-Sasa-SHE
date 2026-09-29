@@ -24,6 +24,7 @@ import * as correctiveActionService from '../../src/services/corrective-action-s
 import * as inspectionService from '../../src/services/inspection-service.js';
 import * as scheduleService from '../../src/services/schedule-service.js';
 import { filterByFields } from '../../src/services/search-service.js';
+import { SCHEDULE_EDITOR_ROLES, canManageSchedules } from '../../src/domain/schedule-rules.js';
 
 // Stub minimal untuk excel-exporter.js (lapisan infrastruktur, bukan repository) —
 // hanya dipakai bagian S-04 di bawah. Bukan mock jaringan/DOM apa pun yang lain.
@@ -159,10 +160,17 @@ test('approve: ketiga tahap -> COMPLETED, fullyApproved true', async () => {
 
 test('approve: approve ulang tahap yang sudah lewat ditolak, keputusan lama tidak ditimpa', async () => {
     await approvalService.approve('INS-002', 'koordinator_k3l', dewiPlant9, SIGNATURE);
-    // Setelah tahapnya lewat, Koordinator tidak lagi melihat inspeksi -> NOT_FOUND.
+    // Koordinator tetap MELIHAT inspeksi yang dia setujui (riwayat), tapi tidak
+    // bisa memutuskan lagi: tahapnya sudah lewat, dan tahap Manajer bukan miliknya.
     const again = await approvalService.approve('INS-002', 'koordinator_k3l', dewiPlant9, SIGNATURE);
-    assert.equal(again.reason, AE.NOT_FOUND);
-    assert.equal((await inspectionFake.findById('INS-002')).approvalHistory.length, 1);
+    assert.equal(again.reason, AE.STAGE_NOT_CURRENT);
+    const rejectAgain = await approvalService.reject('INS-002', 'koordinator_k3l', dewiPlant9, 'Berubah pikiran');
+    assert.equal(rejectAgain.reason, AE.STAGE_NOT_CURRENT);
+    assert.equal((await approvalService.approve('INS-002', 'manajer', dewiPlant9, SIGNATURE)).reason, AE.FORBIDDEN);
+    assert.equal((await approvalService.reject('INS-002', 'manajer', dewiPlant9, 'Bukan tahap saya')).reason, AE.FORBIDDEN);
+    const stored = await inspectionFake.findById('INS-002');
+    assert.equal(stored.approvalHistory.length, 1);
+    assert.deepEqual([stored.status, stored.currentApprovalStage], ['in_review', 'manajer']);
 });
 
 test('approve: dua persetujuan bersamaan untuk tahap yang sama -> tepat satu tersimpan', async () => {
@@ -495,6 +503,16 @@ test('remove: berhasil menghapus / id tak dikenal mengembalikan removed:false', 
     assert.equal((await scheduleService.remove(created.data.schedule.id)).data.removed, true);
     assert.equal((await scheduleService.remove('TIDAK-ADA')).data.removed, false);
     assert.equal(await scheduleFake.count(), 0);
+});
+
+test('schedule-rules: hanya Safety Officer & Admin boleh membuat/mengubah jadwal (sama dengan penjaga route)', () => {
+    assert.deepEqual(SCHEDULE_EDITOR_ROLES, ['safety_officer', 'admin']);
+    assert.ok(canManageSchedules({ id: 1, role: 'safety_officer' }));
+    assert.ok(canManageSchedules({ id: 9, role: 'admin' }));
+    for (const role of ['koordinator_k3l', 'manajer_bagian', 'ketua_p2k3', 'tidak_dikenal']) {
+        assert.equal(canManageSchedules({ id: 5, role }), false, role);
+    }
+    assert.equal(canManageSchedules(null), false, 'tanpa login');
 });
 
 // =========================================================================

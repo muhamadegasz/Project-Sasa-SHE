@@ -11,6 +11,17 @@
     padding-top: 1rem;
 }
 
+/* Warna status jadwal — sama dengan badge status tabel Penjadwalan
+   (05-tables.css: .proses = Aktif, .terlambat, .selesai). Satu sumber untuk
+   titik di tanggal, legenda, dan modal Detail Jadwal (14-calendar-modal.css). */
+.calendar-container,
+#calendarModal {
+    --cal-scheduled: #e65100;
+    --cal-overdue: #c62828;
+    --cal-completed: #2e7d32;
+    --cal-line: #f0e6e6;
+}
+
 .calendar-header {
     display: flex;
     justify-content: space-between;
@@ -41,124 +52,142 @@
     color: #d42a2a;
 }
 
+/* Grid kalender flat: garis tipis antarsel, tanpa kartu rounded per tanggal.
+   Status jadwal tampil sebagai titik kecil berlabel di bawah angka tanggal;
+   sel tidak diberi warna status (sebelumnya semua tanggal berjadwal hijau,
+   apa pun statusnya). */
 .calendar-grid {
     display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    gap: 2px;
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    border-top: 1px solid var(--cal-line);
+    border-left: 1px solid var(--cal-line);
+}
+
+.calendar-grid .day-name,
+.calendar-grid .day-cell {
+    border-right: 1px solid var(--cal-line);
+    border-bottom: 1px solid var(--cal-line);
+    min-width: 0;
 }
 
 .calendar-grid .day-name {
-    text-align: center;
+    padding: 0.45rem 0.55rem;
     font-size: 0.65rem;
     font-weight: 600;
+    letter-spacing: 0.04em;
     color: #8a6a6a;
-    padding: 0.3rem 0;
     text-transform: uppercase;
+    background: #fcf9f9;
 }
 
 .calendar-grid .day-cell {
-    text-align: center;
-    padding: 0.3rem 0;
-    border-radius: 8px;
-    font-size: 0.8rem;
-    min-height: 40px;
+    min-height: 62px;
+    padding: 0.35rem 0.55rem 0.45rem;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    background: #faf8f8;
-    cursor: default;
-    transition: 0.15s;
-    border: 1px solid transparent;
-    position: relative;
+    align-items: flex-start;
+    gap: 0.2rem;
+    background: #ffffff;
 }
 
-.calendar-grid .day-cell.other-month {
-    color: #ccc;
-    background: #f9f9f9;
-}
-
-.calendar-grid .day-cell.today {
-    border-color: #d42a2a;
-    background: #fff5f5;
+.calendar-grid .day-cell.weekend {
+    background: #fcf9f9;
 }
 
 .calendar-grid .day-cell.has-event {
-    background: #e8f5e9;
-    border-color: #2e7d32;
     cursor: pointer;
 }
 
 .calendar-grid .day-cell.has-event:hover {
-    transform: scale(1.03);
-    box-shadow: 0 2px 8px rgba(46, 125, 50, 0.15);
+    background: #fdf3f3;
 }
 
 .calendar-grid .day-cell .day-number {
-    font-weight: 600;
-    font-size: 0.85rem;
-}
-
-.calendar-grid .day-cell .event-dot {
-    width: 6px;
-    height: 6px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.6rem;
+    height: 1.6rem;
+    margin-left: -0.3rem;
     border-radius: 50%;
-    margin-top: 2px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #3a2a2a;
 }
 
-.calendar-grid .day-cell .event-dot.scheduled {
+.calendar-grid .day-cell.other-month .day-number {
+    font-weight: 500;
+    color: #c9b8b8;
+}
+
+/* Hari ini: angka dalam lingkaran merah brand. */
+.calendar-grid .day-cell.today .day-number {
     background: #d42a2a;
+    color: #ffffff;
 }
 
-.calendar-grid .day-cell .event-dot.completed {
-    background: #2e7d32;
+.calendar-grid .day-events {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    width: 100%;
+    min-width: 0;
 }
 
-.calendar-grid .day-cell .event-dot.overdue {
-    background: #c62828;
-    animation: blink 1s infinite;
+.calendar-grid .day-event {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    min-width: 0;
+    font-size: 0.68rem;
+    line-height: 1.2;
+    color: #5a4545;
 }
 
-.calendar-grid .day-cell .event-dot.mixed {
-    background: linear-gradient(45deg, #d42a2a 50%, #2e7d32 50%);
+.calendar-grid .day-event-label {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.cal-dot {
+    display: inline-block;
+    width: 7px;
+    height: 7px;
+    flex-shrink: 0;
+    border-radius: 50%;
+}
+
+.cal-dot.scheduled {
+    background: var(--cal-scheduled);
+}
+
+.cal-dot.overdue {
+    background: var(--cal-overdue);
+}
+
+.cal-dot.completed {
+    background: var(--cal-completed);
 }
 
 .calendar-legend {
     display: flex;
-    gap: 1rem;
-    justify-content: center;
-    margin-top: 0.8rem;
     flex-wrap: wrap;
+    gap: 0.4rem 1.1rem;
+    margin-top: 0.7rem;
 }
 
 .calendar-legend .legend-item {
     display: flex;
     align-items: center;
-    gap: 0.3rem;
-    font-size: 0.6rem;
-    color: #8a6a6a;
+    gap: 0.35rem;
+    font-size: 0.7rem;
+    color: #7a5a5a;
 }
 
-.calendar-legend .legend-item .dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-}
-
-.calendar-legend .legend-item .dot.scheduled {
-    background: #d42a2a;
-}
-
-.calendar-legend .legend-item .dot.completed {
-    background: #2e7d32;
-}
-
-.calendar-legend .legend-item .dot.overdue {
-    background: #c62828;
-}
-
-.calendar-legend .legend-item .dot.mixed {
-    background: linear-gradient(45deg, #d42a2a 50%, #2e7d32 50%);
+/* Campuran = titik setiap status yang ada, berdampingan. */
+.calendar-legend .legend-item .cal-dot + .cal-dot {
+    margin-left: -0.15rem;
 }
 
 .jadwal-card {

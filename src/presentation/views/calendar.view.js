@@ -2,58 +2,65 @@
  *
  * Dipindah apa adanya dari legacy-app.js (Phase 8). Menyimpan sendiri bulan/tahun
  * yang sedang ditampilkan (state presentasi murni, bukan data aplikasi).
+ *
+ * Status per tanggal dihitung domain/schedule-rules.js (calendarDays,
+ * calendarDayState) dengan aturan yang sama dengan tabel Penjadwalan —
+ * sebelumnya kalender menghitung "overdue" sendiri, dan tanggal berisi
+ * realisasi + jadwal tertunda salah tampil "selesai".
  */
 
 import { escapeHtml } from '../../shared/html.js';
-import { formatDate } from '../../shared/date.js';
 import * as scheduleRepository from '../../repositories/schedule-repository.js';
+import { calendarDayState, calendarDays, getState, scheduleDateKey } from '../../domain/schedule-rules.js';
+import { SCHEDULE_STATE } from '../../domain/statuses.js';
 import { bindModalClose, openModal } from '../components/modal.js';
 import { showToast } from '../components/toast.js';
 
 let currentCalendarMonth = new Date().getMonth();
 let currentCalendarYear = new Date().getFullYear();
 
-/** Mengelompokkan seluruh jadwal per tanggal (kunci `YYYY-MM-DD`) untuk pewarnaan dot kalender. */
-async function collectMonthEvents() {
-    const events = {};
-    (await scheduleRepository.getAll()).forEach(j => {
-        if (j.tanggalJadwal) {
-            const d = new Date(j.tanggalJadwal);
-            const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-            if (!events[key]) events[key] = [];
-            events[key].push({
-                plant: j.plantName,
-                status: j.tanggalRealisasi ? 'completed' : 'scheduled',
-                id: j.id,
-                isRealisasi: false,
-                officer: j.officer,
-                minggu: j.minggu,
-                periode: j.periode
-            });
-        }
-        if (j.tanggalRealisasi) {
-            const d = new Date(j.tanggalRealisasi);
-            const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-            if (!events[key]) events[key] = [];
-            events[key].push({
-                plant: j.plantName,
-                status: 'completed',
-                id: j.id,
-                isRealisasi: true,
-                officer: j.officer,
-                minggu: j.minggu,
-                periode: j.periode
-            });
-        }
-    });
-    return events;
+/**
+ * Indikator status di tanggal DAN di legenda — satu daftar, satu kelas CSS
+ * (.cal-dot.<className>) per status, sehingga warna keduanya selalu sama.
+ * Tanggal "campuran" menampilkan titik setiap status yang ada di dalamnya.
+ */
+const STATUS_INDICATORS = [
+    { state: SCHEDULE_STATE.AKTIF, className: 'scheduled', label: 'Terjadwal' },
+    { state: SCHEDULE_STATE.TERLAMBAT, className: 'overdue', label: 'Overdue' },
+    { state: SCHEDULE_STATE.SELESAI, className: 'completed', label: 'Selesai' },
+];
+
+const MONTH_NAMES = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+
+function dateKeyOf(year, month, day) {
+    return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
+/** "2026-10-12" -> "12 Oktober 2026" (dari teks, tanpa new Date()). */
+function longDate(dateKey) {
+    const [year, month, day] = dateKey.split('-').map(Number);
+    return `${day} ${MONTH_NAMES[month - 1]} ${year}`;
+}
+
+function renderDayIndicators(counts) {
+    return STATUS_INDICATORS
+        .filter(({ state }) => counts[state] > 0)
+        .map(({ state, className, label }) => `
+            <span class="day-event ${className}" data-testid="day-event">
+                <span class="cal-dot ${className}"></span><span class="day-event-label">${counts[state] > 1 ? `${counts[state]} ${label}` : label}</span>
+            </span>`)
+        .join('');
+}
+
+function renderOtherMonthCell(day, weekday) {
+    return `<div class="day-cell other-month${weekday === 0 || weekday === 6 ? ' weekend' : ''}"><span class="day-number">${day}</span></div>`;
 }
 
 export async function renderCalendar() {
     const container = document.getElementById('calendarContainer');
     if (!container) return;
 
-    const monthNames = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
+    const monthNames = MONTH_NAMES;
     const dayNames = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
 
     const firstDay = new Date(currentCalendarYear, currentCalendarMonth, 1).getDay();
@@ -61,17 +68,16 @@ export async function renderCalendar() {
     const daysInPrevMonth = new Date(currentCalendarYear, currentCalendarMonth, 0).getDate();
 
     const today = new Date();
-    const todayDate = today.getDate();
-    const todayMonth = today.getMonth();
-    const todayYear = today.getFullYear();
+    const todayKey = dateKeyOf(today.getFullYear(), today.getMonth(), today.getDate());
 
-    const events = await collectMonthEvents();
+    // Aturan keadaan sama dengan tabel Penjadwalan (domain/schedule-rules.js).
+    const days = calendarDays(await scheduleRepository.getAll(), today);
 
     let html = `
         <div class="calendar-header">
-            <button class="nav-btn" data-action="changeCalendarMonth" data-delta="-1"><i class="fas fa-chevron-left"></i></button>
-            <span class="month-year">${monthNames[currentCalendarMonth]} ${currentCalendarYear}</span>
-            <button class="nav-btn" data-action="changeCalendarMonth" data-delta="1"><i class="fas fa-chevron-right"></i></button>
+            <button class="nav-btn" data-action="changeCalendarMonth" data-delta="-1" aria-label="Bulan sebelumnya"><i class="fas fa-chevron-left" aria-hidden="true"></i></button>
+            <span class="month-year" data-testid="calendar-month">${monthNames[currentCalendarMonth]} ${currentCalendarYear}</span>
+            <button class="nav-btn" data-action="changeCalendarMonth" data-delta="1" aria-label="Bulan berikutnya"><i class="fas fa-chevron-right" aria-hidden="true"></i></button>
         </div>
         <div class="calendar-grid">
     `;
@@ -81,53 +87,41 @@ export async function renderCalendar() {
     });
 
     for (let i = 0; i < firstDay; i++) {
-        const prevDate = daysInPrevMonth - firstDay + i + 1;
-        html += `<div class="day-cell other-month">${prevDate}</div>`;
+        html += renderOtherMonthCell(daysInPrevMonth - firstDay + i + 1, i);
     }
 
     for (let day = 1; day <= daysInMonth; day++) {
-        const dateKey = `${currentCalendarYear}-${String(currentCalendarMonth+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
-        const isToday = day === todayDate && currentCalendarMonth === todayMonth && currentCalendarYear === todayYear;
-        const dayEvents = events[dateKey] || [];
-        const hasEvent = dayEvents.length > 0;
-
-        let dotClass = '';
-
-        if (hasEvent) {
-            const hasCompleted = dayEvents.some(e => e.status === 'completed' && !e.isRealisasi);
-            const hasScheduled = dayEvents.some(e => e.status === 'scheduled');
-            const hasRealisasi = dayEvents.some(e => e.isRealisasi === true);
-
-            if (hasCompleted && hasScheduled) {
-                dotClass = 'mixed';
-            } else if (hasCompleted || hasRealisasi) {
-                dotClass = 'completed';
-            } else if (hasScheduled) {
-                dotClass = 'scheduled';
-                const eventDate = new Date(currentCalendarYear, currentCalendarMonth, day);
-                if (eventDate < today) {
-                    dotClass = 'overdue';
-                }
-            }
-        }
+        const dateKey = dateKeyOf(currentCalendarYear, currentCalendarMonth, day);
+        const weekday = (firstDay + day - 1) % 7;
+        const counts = days[dateKey];
+        const classes = ['day-cell'];
+        if (dateKey === todayKey) classes.push('today');
+        if (weekday === 0 || weekday === 6) classes.push('weekend');
+        if (counts) classes.push('has-event');
 
         html += `
-            <div class="day-cell ${isToday ? 'today' : ''} ${hasEvent ? 'has-event' : ''}"
-                 ${hasEvent ? `data-action="showDayEvents" data-date="${escapeHtml(dateKey)}"` : ''}>
+            <div class="${classes.join(' ')}" data-date="${escapeHtml(dateKey)}"
+                 ${dateKey === todayKey ? 'aria-current="date"' : ''}
+                 ${counts ? `data-action="showDayEvents" data-status="${escapeHtml(calendarDayState(counts))}"` : ''}>
                 <span class="day-number">${day}</span>
-                ${hasEvent ? `<div class="event-dot ${dotClass}"></div>` : ''}
+                ${counts ? `<span class="day-events">${renderDayIndicators(counts)}</span>` : ''}
             </div>
         `;
+    }
+
+    // Minggu terakhir dilengkapi hari bulan berikutnya — grid bergaris tetap utuh.
+    const trailing = (7 - ((firstDay + daysInMonth) % 7)) % 7;
+    for (let day = 1; day <= trailing; day++) {
+        html += renderOtherMonthCell(day, (firstDay + daysInMonth + day - 1) % 7);
     }
 
     html += `</div>`;
 
     html += `
-        <div class="calendar-legend">
-            <span class="legend-item"><span class="dot scheduled"></span> Terjadwal</span>
-            <span class="legend-item"><span class="dot completed"></span> Selesai</span>
-            <span class="legend-item"><span class="dot overdue"></span> Overdue</span>
-            <span class="legend-item"><span class="dot mixed"></span> Campuran</span>
+        <div class="calendar-legend" data-testid="calendar-legend">
+            ${STATUS_INDICATORS.map(({ className, label }) => `
+                <span class="legend-item" data-status="${className}"><span class="cal-dot ${className}"></span>${label}</span>`).join('')}
+            <span class="legend-item" data-status="mixed"><span class="cal-dot scheduled"></span><span class="cal-dot completed"></span>Campuran (beberapa status)</span>
         </div>
     `;
 
@@ -146,71 +140,93 @@ export async function changeCalendarMonth(delta) {
     await renderCalendar();
 }
 
-export async function showDayEvents(dateKey) {
-    const events = [];
-    (await scheduleRepository.getAll()).forEach(j => {
-        if (j.tanggalJadwal) {
-            const d = new Date(j.tanggalJadwal);
-            const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-            if (key === dateKey) {
-                events.push({
-                    plant: j.plantName,
-                    tanggal: formatDate(j.tanggalJadwal),
-                    status: j.tanggalRealisasi ? '✅ Sudah dilaksanakan' : '📋 Terjadwal',
-                    realisasi: j.tanggalRealisasi ? formatDate(j.tanggalRealisasi) : 'Belum',
-                    minggu: j.minggu || '-',
-                    periode: j.periode || '-',
-                    officer: j.officer
-                });
-            }
+/**
+ * Jadwal pada satu tanggal, dengan aturan yang sama dengan sel kalender
+ * (domain calendarDays): di tanggal jadwalnya berstatus getState(); di tanggal
+ * realisasinya (bila berbeda) berstatus selesai. Satu jadwal satu baris —
+ * sebelumnya jadwal yang direalisasi di hari yang sama tampil dua kali, dan
+ * jadwal terlewat tampil "Terjadwal" padahal selnya Overdue.
+ */
+function schedulesOnDate(schedules, dateKey, now) {
+    const entries = [];
+    for (const schedule of schedules) {
+        const scheduledKey = schedule.tanggalJadwal ? scheduleDateKey(schedule.tanggalJadwal) : null;
+        const realizedKey = schedule.tanggalRealisasi ? scheduleDateKey(schedule.tanggalRealisasi) : null;
+        if (scheduledKey === dateKey) {
+            entries.push({ schedule, state: getState(schedule, now), scheduledKey, realizedKey });
+        } else if (realizedKey === dateKey) {
+            entries.push({ schedule, state: SCHEDULE_STATE.SELESAI, scheduledKey, realizedKey });
         }
-        if (j.tanggalRealisasi) {
-            const d = new Date(j.tanggalRealisasi);
-            const key = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
-            if (key === dateKey) {
-                events.push({
-                    plant: j.plantName,
-                    tanggal: formatDate(j.tanggalRealisasi),
-                    status: '✅ Realisasi',
-                    realisasi: formatDate(j.tanggalRealisasi),
-                    minggu: j.minggu || '-',
-                    periode: j.periode || '-',
-                    officer: j.officer
-                });
-            }
-        }
-    });
+    }
+    return entries;
+}
 
-    if (events.length === 0) {
+/** Ringkasan dari hitungan sel kalender yang sama (calendarDays). */
+function renderDaySummary(counts) {
+    const total = STATUS_INDICATORS.reduce((sum, { state }) => sum + counts[state], 0);
+    const parts = STATUS_INDICATORS
+        .filter(({ state }) => counts[state] > 0)
+        .map(({ state, className, label }) => `<span class="day-summary-count ${className}">${counts[state]} ${label}</span>`);
+    if (parts.length === 1) {
+        return `<p class="day-detail-summary" data-testid="day-summary">${total} jadwal inspeksi · ${parts[0]}</p>`;
+    }
+    return `
+        <p class="day-detail-summary" data-testid="day-summary">${total} jadwal inspeksi</p>
+        <p class="day-detail-breakdown" data-testid="day-breakdown">${parts.join(' · ')}</p>`;
+}
+
+/**
+ * Satu jadwal = satu <tbody>: baris data (kolom tabel di desktop; baris
+ * label–nilai di layar sempit, lihat 16-responsive.css) dan — hanya bila
+ * tanggal jadwal & realisasinya berbeda — baris tanggal yang eksplisit.
+ */
+function renderDaySchedule({ schedule, state, scheduledKey, realizedKey }) {
+    const { className, label } = STATUS_INDICATORS.find((indicator) => indicator.state === state);
+    const cell = (field, heading, value) =>
+        `<td class="col-${field}" data-field="${field}" data-label="${heading}">${escapeHtml(value ?? '-')}</td>`;
+    const dates = realizedKey && scheduledKey && realizedKey !== scheduledKey ? `
+            <tr class="day-schedule-dates">
+                <td colspan="5">
+                    <dl>
+                        <div><dt>Tanggal Jadwal</dt><dd data-field="scheduled-date">${escapeHtml(longDate(scheduledKey))}</dd></div>
+                        <div><dt>Tanggal Realisasi</dt><dd data-field="realized-date">${escapeHtml(longDate(realizedKey))}</dd></div>
+                    </dl>
+                </td>
+            </tr>` : '';
+    return `
+        <tbody class="day-schedule" data-testid="day-schedule" data-status="${className}">
+            <tr>
+                ${cell('plant', 'Plant', schedule.plantName)}
+                <td class="col-status" data-field="status" data-label="Status"><span class="day-schedule-status ${className}"><span class="cal-dot ${className}"></span>${label}</span></td>
+                ${cell('periode', 'Periode', schedule.periode)}
+                ${cell('minggu', 'Minggu', schedule.minggu)}
+                ${cell('officer', 'Safety Officer', schedule.officer)}
+            </tr>${dates}
+        </tbody>`;
+}
+
+export async function showDayEvents(dateKey) {
+    const schedules = await scheduleRepository.getAll();
+    const now = new Date();
+    const entries = schedulesOnDate(schedules, dateKey, now);
+    const counts = calendarDays(schedules, now)[dateKey];
+
+    if (entries.length === 0 || !counts) {
         showToast('📅 Tidak ada jadwal pada tanggal ini');
         return;
     }
 
-    const content = document.getElementById('calendarModalContent');
-
-    let eventHtml = events.map(e => `
-        <div class="calendar-event-item">
-            <div class="event-icon">🏭</div>
-            <div class="event-detail">
-                <div class="event-title"><strong>${escapeHtml(e.plant)}</strong></div>
-                <div class="event-meta">
-                    <span class="event-status ${e.status.includes('Realisasi') || e.status.includes('dilaksanakan') ? 'completed' : 'scheduled'}">${escapeHtml(e.status)}</span>
-                    ${e.periode ? `<span class="event-meta-item">📅 Periode ${escapeHtml(e.periode)}</span>` : ''}
-                    ${e.minggu ? `<span class="event-meta-item">📌 Minggu ke-${escapeHtml(e.minggu)}</span>` : ''}
-                    ${e.officer ? `<span class="event-meta-item">👤 ${escapeHtml(e.officer)}</span>` : ''}
-                </div>
-            </div>
+    document.getElementById('calendarModalContent').innerHTML = `
+        <div class="day-detail-header">
+            <p class="day-detail-date" data-testid="day-date">${escapeHtml(longDate(dateKey))}</p>
+            ${renderDaySummary(counts)}
         </div>
-    `).join('');
-
-    content.innerHTML = `
-        <div style="margin-bottom:1rem;font-size:0.9rem;color:#7a4a4a;">
-            <i class="fas fa-calendar-day" style="color:#d42a2a;"></i>
-            <strong>${escapeHtml(formatDate(dateKey))}</strong>
-        </div>
-        <div class="calendar-event-list">
-            ${eventHtml}
-        </div>
+        <table class="day-schedule-table">
+            <thead>
+                <tr><th scope="col">Plant</th><th scope="col">Status</th><th scope="col" class="col-periode">Periode</th><th scope="col" class="col-minggu">Minggu</th><th scope="col">Safety Officer</th></tr>
+            </thead>
+            ${entries.map(renderDaySchedule).join('')}
+        </table>
     `;
 
     openModal('calendarModal');

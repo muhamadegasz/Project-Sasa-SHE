@@ -1,16 +1,64 @@
 /* detail-modal.view.js — modal detail inspeksi (read-only).
  *
- * Dipindah apa adanya dari legacy-app.js (Phase 8).
+ * Dipindah apa adanya dari legacy-app.js (Phase 8). Detail = melihat informasi:
+ * tanpa tombol aksi (pengesahan & ekspor dilakukan lewat tombol di tabel);
+ * tahap pengesahan tampil lengkap tapi hanya-baca. Satu-satunya pengecualian:
+ * inspeksi Perlu Revisi menampilkan permintaan revisinya, dan HANYA Safety
+ * Officer pemiliknya (canRevise) mendapat tombol "Revisi Inspeksi".
  */
 
 import { escapeHtml, jsArg } from '../../shared/html.js';
 import { isOverdue } from '../../shared/date.js';
+import { photoUrl } from '../../infrastructure/api-client.js';
 import * as inspectionRepository from '../../repositories/inspection-repository.js';
 import { bindModalClose, openModal } from '../components/modal.js';
+import { overdueIndicator } from '../components/overdue-indicator.js';
+import { documentationPhotos } from '../components/documentation-photos.js';
+import { renderRevisionInfo } from '../components/revision-info.js';
+import { getCurrentUser } from '../../infrastructure/session.js';
+import { canRevise } from '../../domain/inspection-policy.js';
 import { showToast } from '../components/toast.js';
 import { renderApprovalStages } from './approval.view.js';
 import { formatInspectionStatus } from '../../shared/labels.js';
 import { totalStages } from '../../domain/approval-rules.js';
+
+/**
+ * Galeri foto sungguhan: gambar dimuat dari endpoint terotorisasi
+ * (photoUrl — sesi + cakupan visibilitas inspeksi, bukan /uploads), utuh
+ * (tanpa dipotong), klik membuka lightbox. Sebelumnya hanya ikon 📷 + nama.
+ */
+function renderGallery(photos) {
+    if (photos.length === 0) return '<div style="color:#8a6a6a;font-size:0.8rem;">Tidak ada dokumentasi foto.</div>';
+    const images = jsArg(photos.map(({ id, originalName }) => ({ id, originalName })));
+    return photos.map((photo, index) => `
+        <button type="button" class="gallery-item" data-action="openLightbox" data-images="${images}" data-index="${index}" data-testid="detail-photo" title="Buka ${escapeHtml(photo.originalName)}">
+            <span class="gallery-thumb">
+                <img src="${escapeHtml(photoUrl(photo.id))}" alt="${escapeHtml(`${photo.slot}: ${photo.originalName}`)}">
+                <span class="gallery-missing">Gambar tidak dapat ditampilkan</span>
+            </span>
+            <span class="gallery-caption">
+                <span class="gallery-slot">${escapeHtml(photo.slot)}</span>
+                <span class="file-name">${escapeHtml(photo.originalName)}</span>
+            </span>
+        </button>`).join('');
+}
+
+/**
+ * Gambar yang gagal dimuat (berkas tidak ada di server — mis. data seed tanpa
+ * berkas — atau isinya tidak bisa ditampilkan) diberi keterangan, bukan ikon
+ * gambar rusak. Nama berkas & lightbox tetap ada.
+ */
+function markUnavailablePhotos(container) {
+    container.querySelectorAll('.detail-gallery img').forEach((img) => {
+        const mark = () => {
+            const item = img.closest('.gallery-item');
+            item.classList.add('unavailable');
+            item.disabled = true; // tidak ada yang bisa diperbesar
+        };
+        img.addEventListener('error', mark, { once: true });
+        if (img.complete && img.naturalWidth === 0) mark();
+    });
+}
 
 export async function openDetailModal(id) {
     const item = await inspectionRepository.findById(id);
@@ -23,19 +71,8 @@ export async function openDetailModal(id) {
         ).join('') :
         '<li style="color:#8a6a6a;">Tidak ada temuan</li>';
 
-    const allPhotos = [...(item.fotoDekat || []), ...(item.fotoJauh || [])];
-    const galleryHtml = allPhotos.length > 0 ?
-        allPhotos.map((photo, idx) =>
-                `<div class="gallery-item" data-action="openLightbox" data-images="${jsArg(allPhotos)}" data-index="${idx}" title="Klik untuk preview">
-                    <span class="preview-icon">📷</span>
-                    <span class="file-name">${escapeHtml(photo.originalName)}</span>
-                </div>`
-            ).join('') :
-        '<div style="color:#8a6a6a;font-size:0.8rem;">Tidak ada foto</div>';
-
-    const overdueBadge = isOverdue(item.dueDate) ?
-        `<span class="overdue-badge"><i class="fas fa-exclamation-circle"></i> OVERDUE</span>` :
-        '';
+    const photos = documentationPhotos(item);
+    const overdueBadge = isOverdue(item.dueDate) ? overdueIndicator() : '';
 
     content.innerHTML = `
             <div class="detail-container">
@@ -70,33 +107,26 @@ export async function openDetailModal(id) {
                     </div>
                 </div>
 
+                ${renderRevisionInfo(item, canRevise(getCurrentUser(), item) ? 'owner' : 'viewer')}
+
                 <div class="detail-section">
                     <div class="section-title"><i class="fas fa-list"></i> Temuan (${item.temuan ? item.temuan.length : 0})</div>
                     <ul class="temuan-list-detail">${temuanHtml}</ul>
-                    ${item.temuan && item.temuan.length > 0 ? `
-                        <div style="margin-top:0.5rem;display:flex;gap:0.5rem;flex-wrap:wrap;">
-                            <button class="btn-export-temuan" data-action="exportTemuanPerItem" data-id="${escapeHtml(item.id)}">
-                                <i class="fas fa-file-excel"></i> Export Temuan
-                            </button>
-                        </div>
-                    ` : ''}
                 </div>
 
                 <div class="detail-section">
-                    <div class="section-title"><i class="fas fa-images"></i> Dokumentasi Foto</div>
-                    <div class="detail-gallery">${galleryHtml}</div>
-                    <div style="font-size:0.65rem;color:#8a6a6a;margin-top:0.3rem;">Klik gambar untuk preview</div>
+                    <div class="section-title"><i class="fas fa-images"></i> Dokumentasi Foto (${photos.length})</div>
+                    <div class="detail-gallery">${renderGallery(photos)}</div>
+                    ${photos.length > 0 ? '<div style="font-size:0.7rem;color:#8a6a6a;margin-top:0.4rem;">Klik foto untuk memperbesar</div>' : ''}
                 </div>
 
                 <div class="detail-section">
                     <div class="section-title"><i class="fas fa-stamp"></i> Pengesahan (${totalStages()} Tahap)</div>
-                    ${renderApprovalStages(item)}
-                    <div style="margin-top:0.5rem;">
-                        <button class="btn-sm primary" data-action="openApprovalModal" data-id="${escapeHtml(item.id)}"><i class="fas fa-stamp"></i> Kelola Pengesahan</button>
-                    </div>
+                    ${renderApprovalStages(item, undefined, { readOnly: true })}
                 </div>
             </div>
         `;
+    markUnavailablePhotos(content);
     openModal('detailModal');
 }
 

@@ -3,6 +3,7 @@
 import { Router } from 'express';
 import * as scheduleRepository from '../repositories/schedule-repository.js';
 import * as scheduleService from '../../src/services/schedule-service.js';
+import { SCHEDULE_EDITOR_ROLES } from '../../src/domain/schedule-rules.js';
 import { requireRole } from '../middleware/session-auth.js';
 import { sendResult } from '../middleware/to-http.js';
 import { asyncHandler } from '../middleware/async-handler.js';
@@ -13,12 +14,13 @@ schedulesRouter.get('/', asyncHandler(async (req, res) => {
     res.json(await scheduleRepository.getAll());
 }));
 
-schedulesRouter.post('/', requireRole('safety_officer', 'admin'), asyncHandler(async (req, res) => {
+// Safety Officer & Admin saja (domain/schedule-rules.js — aturan yang sama dipakai UI).
+schedulesRouter.post('/', requireRole(...SCHEDULE_EDITOR_ROLES), asyncHandler(async (req, res) => {
     const result = await scheduleService.save({ ...req.body, officerUserId: req.user.id });
     sendResult(res, result, 201);
 }));
 
-schedulesRouter.put('/:id', requireRole('safety_officer', 'admin'), asyncHandler(async (req, res) => {
+schedulesRouter.put('/:id', requireRole(...SCHEDULE_EDITOR_ROLES), asyncHandler(async (req, res) => {
     const result = await scheduleService.save({ ...req.body, id: req.params.id });
     if (result.ok && result.data.schedule === null) {
         return res.status(404).json({ error: 'NOT_FOUND' });

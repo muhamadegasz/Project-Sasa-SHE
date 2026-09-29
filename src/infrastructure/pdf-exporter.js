@@ -44,7 +44,17 @@ function reportRenderRules() {
     return rules.join('\n');
 }
 
-/** Opsi html2pdf yang dipakai seluruh laporan. */
+/**
+ * Opsi html2pdf yang dipakai seluruh laporan.
+ *
+ * pagebreak: HANYA aturan CSS (break-inside: avoid pada blok kecil yang tidak
+ * boleh terbelah — lihat 15-print.css), bukan 'avoid-all'. 'avoid-all'
+ * memberlakukan "jangan dibelah" pada SETIAP elemen, termasuk pembungkus besar:
+ * html2pdf mendorong utuh ke halaman berikutnya setiap elemen yang melintasi
+ * batas halaman dan tingginya <= 1 halaman — sehingga seluruh isi laporan
+ * (.pdf-body) pindah ke halaman 2 meninggalkan halaman 1 berisi header saja, dan
+ * footer terdorong sendirian ke halaman terakhir.
+ */
 function buildOptions(filename) {
     return {
         margin: [0.5, 0.5, 0.5, 0.5],
@@ -61,7 +71,7 @@ function buildOptions(filename) {
             format: 'a4',
             orientation: 'portrait',
         },
-        pagebreak: { mode: ['avoid-all', 'css', 'legacy'] },
+        pagebreak: { mode: ['css', 'legacy'] },
     };
 }
 

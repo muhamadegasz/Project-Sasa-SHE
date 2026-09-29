@@ -52,6 +52,17 @@ function navigateLightbox(direction) {
     counter.textContent = `${currentLightboxIndex + 1} dari ${lightboxImages.length}`;
 }
 
+// Berkas foto yang tidak ada di server (mis. data seed tanpa berkas) atau tidak
+// bisa ditampilkan: keterangan pada nama, bukan ikon gambar rusak.
+const lightboxImage = document.getElementById('lightboxImage');
+lightboxImage.addEventListener('error', () => {
+    const current = lightboxImages[currentLightboxIndex];
+    if (!current || !lightboxImage.getAttribute('src')) return;
+    lightboxImage.style.visibility = 'hidden';
+    document.getElementById('lightboxFileName').textContent = `${current.originalName} — gambar tidak dapat ditampilkan`;
+});
+lightboxImage.addEventListener('load', () => { lightboxImage.style.visibility = ''; });
+
 document.getElementById('lightboxClose').addEventListener('click', closeLightbox);
 document.getElementById('lightboxOverlay').addEventListener('click', function(e) {
     if (e.target === this) closeLightbox();

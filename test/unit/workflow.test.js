@@ -249,6 +249,73 @@ test('Admin: melihat semua non-draft, boleh menghapus termasuk yang IN_REVIEW, b
 });
 
 // =========================================================================
+// Visibilitas lewat riwayat persetujuan — hak baca, bukan hak memutuskan
+// =========================================================================
+
+function decided(stage, reviewer, decision = 'approved') {
+    return { stage, attempt: 1, decision, reviewerUserId: reviewer ? reviewer.id : null };
+}
+
+function assertReadOnly(user, item, label) {
+    assert.ok(canView(user, item), `${label}: terlihat`);
+    for (const [name, rule] of Object.entries({ canApprove, canReject, canEdit, canSubmit, canDelete, canEditCorrectiveAction })) {
+        assert.equal(rule(user, item), false, `${label}: ${name} harus false`);
+    }
+}
+
+test('riwayat: Koordinator yang menyetujui tetap melihat setelah tahap pindah, direvisi, atau selesai — tanpa hak memutuskan', () => {
+    const approvalHistory = [decided(KOORDINATOR_K3L, koordinatorPlant1)];
+    for (const [label, state] of [
+        ['tahap Manajer', { status: IN_REVIEW, currentApprovalStage: MANAJER }],
+        ['tahap Ketua', { status: IN_REVIEW, currentApprovalStage: KETUA_P2K3 }],
+        ['ditolak Manajer', { status: REVISION_REQUIRED, currentApprovalStage: MANAJER }],
+        ['selesai', { status: COMPLETED, currentApprovalStage: null }],
+    ]) {
+        assertReadOnly(koordinatorPlant1, inspection({ ...state, approvalHistory }), label);
+    }
+});
+
+test('riwayat: Manajer yang menyetujui tetap melihat di tahap Ketua dan saat ditolak Ketua; Ketua tetap satu-satunya yang memutuskan', () => {
+    const approvalHistory = [decided(KOORDINATOR_K3L, koordinatorPlant1), decided(MANAJER, manajer)];
+    const atKetua = inspection({ currentApprovalStage: KETUA_P2K3, approvalHistory });
+    assertReadOnly(manajer, atKetua, 'tahap Ketua');
+    assert.ok(canApprove(ketua, atKetua), 'Ketua tetap berwenang atas tahapnya');
+    assertReadOnly(manajer, inspection({
+        status: REVISION_REQUIRED, currentApprovalStage: KETUA_P2K3,
+        approvalHistory: [...approvalHistory, decided(KETUA_P2K3, ketua, 'rejected')],
+    }), 'ditolak Ketua');
+});
+
+test('riwayat: hanya persetujuan MILIKNYA di tahap role-nya — bukan peninjau lain, bukan penolakan, bukan tahap lain', () => {
+    const koordinatorLainPlant1 = { id: 11, role: ROLE.KOORDINATOR_K3L, plantId: 1 };
+    const manajerLain = { id: 12, role: ROLE.MANAJER_BAGIAN };
+    const atKetua = inspection({ currentApprovalStage: KETUA_P2K3, approvalHistory: [decided(KOORDINATOR_K3L, koordinatorPlant1), decided(MANAJER, manajer)] });
+    assert.equal(canView(koordinatorLainPlant1, atKetua), false, 'Koordinator lain di plant yang sama');
+    assert.equal(canView(manajerLain, atKetua), false, 'Manajer lain');
+
+    const rejectedByManajer = inspection({ status: REVISION_REQUIRED, currentApprovalStage: MANAJER, approvalHistory: [decided(MANAJER, manajer, 'rejected')] });
+    assert.equal(canView(manajer, rejectedByManajer), false, 'penolakan tidak memberi hak lihat');
+
+    // Mis. akun yang dulu Koordinator lalu dijadikan Manajer: persetujuan tahap Koordinator tidak dihitung.
+    const formerKoordinator = { id: koordinatorPlant1.id, role: ROLE.MANAJER_BAGIAN };
+    assert.equal(canView(formerKoordinator, inspection({ currentApprovalStage: KETUA_P2K3, approvalHistory: [decided(KOORDINATOR_K3L, koordinatorPlant1)] })), false);
+
+    // Safety Officer dan Admin tidak mendapat kriteria riwayat.
+    assert.equal(canView(otherOfficer, inspection({ status: REVISION_REQUIRED, currentApprovalStage: MANAJER, approvalHistory: [decided(KOORDINATOR_K3L, otherOfficer)] })), false);
+});
+
+test('riwayat: gagal-tertutup — plant yang sudah bukan miliknya, tanpa plant, penyetuju NULL, riwayat tidak ada, DRAFT', () => {
+    const approvalHistory = [decided(KOORDINATOR_K3L, koordinatorPlant1)];
+    const atManajer = inspection({ plantId: 1, currentApprovalStage: MANAJER, approvalHistory });
+    assert.equal(canView({ ...koordinatorPlant1, plantId: 9 }, atManajer), false, 'dipindah ke plant lain');
+    assert.equal(canView({ ...koordinatorPlant1, plantId: null }, atManajer), false, 'tanpa plant');
+    assert.equal(canView(manajer, inspection({ currentApprovalStage: KETUA_P2K3, approvalHistory: [decided(MANAJER, null)] })), false, 'penyetuju lama/terhapus (NULL)');
+    assert.equal(canView({ id: null, role: ROLE.MANAJER_BAGIAN }, inspection({ currentApprovalStage: KETUA_P2K3, approvalHistory: [decided(MANAJER, null)] })), false, 'pengguna tanpa id');
+    assert.equal(canView(koordinatorPlant1, { ...atManajer, approvalHistory: undefined }), false, 'riwayat tidak ada');
+    assert.equal(canView(koordinatorPlant1, inspection({ status: DRAFT, currentApprovalStage: null, approvalHistory })), false, 'DRAFT');
+});
+
+// =========================================================================
 // Kepemilikan vs visibilitas (Phase 17.3B)
 // =========================================================================
 

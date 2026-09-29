@@ -170,55 +170,93 @@
     font-weight: 600;
 }
 
+/* Dokumentasi foto: thumbnail foto sungguhan (endpoint terotorisasi), utuh
+   tanpa dipotong (contain), keterangan slot + nama berkas di bawahnya. */
 .detail-gallery {
-    display: flex;
-    gap: 0.5rem;
-    flex-wrap: wrap;
-    margin-top: 0.3rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+    gap: 0.75rem;
+    margin-top: 0.4rem;
 }
 
 .detail-gallery .gallery-item {
-    width: 70px;
-    height: 70px;
-    border-radius: 12px;
-    background: #f0e8e8;
-    border: 2px solid #e0d0d0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+}
+
+.detail-gallery .gallery-thumb {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.8rem;
-    cursor: pointer;
-    transition: 0.2s;
-    position: relative;
+    aspect-ratio: 4 / 3;
     overflow: hidden;
+    border: 1px solid #eadddd;
+    border-radius: 6px;
+    background: #f7f3f3;
 }
 
-.detail-gallery .gallery-item:hover {
-    transform: scale(1.1);
+.detail-gallery .gallery-item:hover .gallery-thumb,
+.detail-gallery .gallery-item:focus-visible .gallery-thumb {
     border-color: #d42a2a;
-    box-shadow: 0 4px 16px rgba(200, 40, 40, 0.25);
 }
 
-.detail-gallery .gallery-item .file-name {
-    font-size: 0.5rem;
+.detail-gallery .gallery-item:focus-visible {
+    outline: 2px solid #d42a2a;
+    outline-offset: 2px;
+}
+
+.detail-gallery .gallery-thumb img {
+    display: block;
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+}
+
+.detail-gallery .gallery-missing {
+    display: none;
+    padding: 0.5rem;
+    font-size: 0.72rem;
     color: #8a6a6a;
     text-align: center;
-    word-break: break-all;
-    position: absolute;
-    bottom: 2px;
-    background: rgba(0, 0, 0, 0.7);
-    color: white;
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-size: 0.45rem;
-    width: 90%;
+}
+
+.detail-gallery .gallery-item:disabled {
+    cursor: default;
+}
+
+.detail-gallery .gallery-item.unavailable img {
+    display: none;
+}
+
+.detail-gallery .gallery-item.unavailable .gallery-missing {
+    display: block;
+}
+
+.detail-gallery .gallery-caption {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.detail-gallery .gallery-slot {
+    font-size: 0.68rem;
+    color: #8a6a6a;
+}
+
+.detail-gallery .file-name {
+    font-size: 0.78rem;
+    color: #3a2a2a;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-}
-
-.detail-gallery .gallery-item .preview-icon {
-    font-size: 2rem;
 }
 
 .detail-signature {

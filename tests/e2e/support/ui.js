@@ -48,9 +48,9 @@ export async function goToTab(page, tabName) {
  * (dropdown terbuka lagi begitu diketik ulang), BUKAN retries generik yang
  * menyembunyikan kegagalan test — lihat instruksi Phase 14.1-I.
  */
-export async function selectPlant(page, searchPlaceholder, plantName) {
-    const input = page.getByPlaceholder(searchPlaceholder);
-    const dropdown = page.locator('#plantDropdown');
+export async function selectPlant(page, searchPlaceholder, plantName, dropdownSelector = '#plantDropdown') {
+    const input = page.getByPlaceholder(searchPlaceholder, { exact: true });
+    const dropdown = page.locator(dropdownSelector);
 
     let lastError;
     for (let attempt = 1; attempt <= 3; attempt++) {

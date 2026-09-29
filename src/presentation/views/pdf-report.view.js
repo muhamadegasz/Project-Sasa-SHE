@@ -14,12 +14,41 @@ import { isStageApproved, latestDecision } from '../../domain/approval-rules.js'
 import { INSPECTION_STATUS } from '../../domain/statuses.js';
 import * as inspectionRepository from '../../repositories/inspection-repository.js';
 import { composeSignature } from '../components/watermark.js';
+import { documentationPhotos } from '../components/documentation-photos.js';
 
-function buildGalleryHtml(item) {
-    const allPhotos = [...(item.fotoDekat || []), ...(item.fotoJauh || [])];
-    return allPhotos.length > 0 ?
-        allPhotos.map(() => `<div class="pdf-thumb">📷</div>`).join('') :
-        '<span style="color:#888;">Tidak ada foto</span>';
+const PHOTO_UNAVAILABLE = 'Berkas foto tidak tersedia';
+
+/**
+ * Section Dokumentasi Foto: foto sungguhan (gambar yang disiapkan
+ * preparePhotoImages — ukuran & rasio aspek asli, tidak dipotong), dua per
+ * baris. Setiap baris foto tidak dibelah antarhalaman, dan judul section
+ * menempel pada baris pertama (tidak tertinggal sendirian di bawah halaman);
+ * baris berikutnya boleh berlanjut ke halaman selanjutnya (15-print.css).
+ * Foto yang berkasnya tidak ada di server ditandai, bukan diganti ikon kamera.
+ */
+function buildPhotoSection(item, photoImages) {
+    const title = '<div class="title"><i class="fas fa-images"></i> Dokumentasi Foto</div>';
+    const photos = documentationPhotos(item);
+    if (photos.length === 0) {
+        return `<div class="pdf-photos-start">${title}<p class="pdf-photo-empty">Tidak ada dokumentasi foto.</p></div>`;
+    }
+    const figures = photos.map((photo) => {
+        const src = photoImages.get(photo.id);
+        const media = src
+            ? `<img class="pdf-photo-img" src="${escapeHtml(src)}" alt="${escapeHtml(`${photo.slot}: ${photo.originalName}`)}">`
+            : `<div class="pdf-photo-missing">${PHOTO_UNAVAILABLE}</div>`;
+        return `
+            <figure class="pdf-photo" data-photo-id="${escapeHtml(photo.id)}">
+                ${media}
+                <figcaption>${escapeHtml(photo.slot)} · ${escapeHtml(photo.originalName)}</figcaption>
+            </figure>`;
+    });
+    const rows = [];
+    for (let index = 0; index < figures.length; index += 2) {
+        rows.push(`<div class="pdf-photo-row">${figures.slice(index, index + 2).join('')}</div>`);
+    }
+    return `<div class="pdf-photos-start">${title}${rows[0]}</div>${rows.slice(1).join('')}`
+        + `<div class="pdf-photo-count">${photos.length} foto</div>`;
 }
 
 function buildTemuanRows(item) {
@@ -114,13 +143,58 @@ export async function prepareSignatureImages(item) {
 }
 
 /**
+ * Menyiapkan foto dokumentasi untuk PDF: setiap foto diambil lewat endpoint
+ * terotorisasi yang sama dengan Detail/lightbox (sesi + cakupan visibilitas
+ * inspeksi — bukan /uploads, bukan URL publik baru), menjadi URL blob:
+ * sementara; berkas asli tidak diubah. 404 = berkasnya tidak ada di server
+ * (mis. data seed tanpa berkas) -> dicetak sebagai "tidak tersedia". Kegagalan
+ * lain (sesi, jaringan, server) = error: PDF tidak dibuat setengah-setengah.
+ *
+ * @returns {Promise<{ images: Map<number, string>, release: () => void }>}
+ */
+export async function preparePhotoImages(item) {
+    const photos = documentationPhotos(item);
+    const results = await Promise.allSettled(photos.map((photo) => inspectionRepository.fetchPhotoImage(photo.id)));
+    const images = new Map();
+    const urls = [];
+    let failure = null;
+    results.forEach((result, index) => {
+        if (result.status === 'fulfilled') {
+            const url = URL.createObjectURL(result.value);
+            urls.push(url);
+            images.set(photos[index].id, url);
+        } else if (result.reason?.status !== 404 && !failure) {
+            failure = result.reason;
+        }
+    });
+    const release = () => urls.forEach((url) => URL.revokeObjectURL(url));
+    if (failure) { release(); throw failure; }
+    return { images, release };
+}
+
+/**
+ * Menunggu semua gambar laporan siap sebelum html2canvas memotret. Foto yang
+ * terambil tetapi isinya tidak bisa ditampilkan diberi keterangan yang sama
+ * dengan berkas yang tidak ada — bukan kotak kosong/rusak di PDF.
+ */
+export async function settleReportImages(container) {
+    await Promise.all([...container.querySelectorAll('img')].map((img) => img.decode().catch(() => {
+        if (!img.classList.contains('pdf-photo-img')) return;
+        const missing = document.createElement('div');
+        missing.className = 'pdf-photo-missing';
+        missing.textContent = PHOTO_UNAVAILABLE;
+        img.replaceWith(missing);
+    })));
+}
+
+/**
  * Markup lengkap laporan inspeksi (header, info, temuan, perbaikan, foto,
  * tanda tangan, footer). `signatureImages`: hasil prepareSignatureImages()
  * (id keputusan -> src gambar); tanpa itu blok pengesahan hanya berisi nama.
+ * `photoImages`: hasil preparePhotoImages() (id foto -> src gambar).
  */
-export function buildInspectionReportHtml(item, signatureImages = new Map()) {
+export function buildInspectionReportHtml(item, signatureImages = new Map(), photoImages = new Map()) {
     const now = new Date();
-    const allPhotos = [...(item.fotoDekat || []), ...(item.fotoJauh || [])];
 
     return `
             <div class="pdf-header">
@@ -165,7 +239,7 @@ export function buildInspectionReportHtml(item, signatureImages = new Map()) {
                     </div>
                 </div>
 
-                <div class="section">
+                <div class="section pdf-table-section">
                     <div class="title"><i class="fas fa-list"></i> Daftar Temuan</div>
                     <table>
                         <thead>
@@ -179,7 +253,7 @@ export function buildInspectionReportHtml(item, signatureImages = new Map()) {
                     </table>
                 </div>
 
-                <div class="section">
+                <div class="section pdf-table-section">
                     <div class="title"><i class="fas fa-tools"></i> Tindakan Perbaikan</div>
                     <table>
                         <thead>
@@ -194,39 +268,42 @@ export function buildInspectionReportHtml(item, signatureImages = new Map()) {
                     </table>
                 </div>
 
-                <div class="section">
-                    <div class="title"><i class="fas fa-images"></i> Dokumentasi Foto</div>
-                    <div class="pdf-gallery">${buildGalleryHtml(item)}</div>
-                    <div style="font-size:0.7rem;color:#888;margin-top:0.3rem;">${allPhotos.length} foto terupload</div>
+                <div class="section pdf-photos" data-testid="pdf-photos">
+                    ${buildPhotoSection(item, photoImages)}
                 </div>
 
-                <div class="section">
-                    <div class="title"><i class="fas fa-stamp"></i> Lembar Pengesahan</div>
-                    <div class="signature-block" style="display:flex;justify-content:space-around;flex-wrap:wrap;gap:1rem;margin-top:0.5rem;">
-                        ${buildApprovalSignatures(item, signatureImages)}
+                <!-- Penutup = Lembar Pengesahan + footer: satu blok yang tidak dibelah
+                     (15-print.css), jadi footer tidak pernah sendirian di halaman baru.
+                     Stempel ditambatkan ke footer, tidak menutupi tanda tangan. -->
+                <div class="pdf-closing">
+                    <div class="section">
+                        <div class="title"><i class="fas fa-stamp"></i> Lembar Pengesahan</div>
+                        <div class="signature-block" style="display:flex;justify-content:space-around;flex-wrap:wrap;gap:1rem;margin-top:0.5rem;">
+                            ${buildApprovalSignatures(item, signatureImages)}
+                        </div>
+                    </div>
+
+                    <div class="pdf-footer">
+                        <div class="legal-text">
+                            <i class="fas fa-check-circle"></i>
+                            Dokumen ini dihasilkan oleh <strong>Sistem Informasi K3 SHE Sasa</strong>. Setiap tahap
+                            persetujuan tercatat di sistem beserta nama penyetuju dan tanggal keputusannya.
+                            <br>
+                            <span style="font-size:0.65rem;">Tanda tangan pada dokumen ini berupa gambar tanda tangan yang dibubuhkan melalui sistem, bukan tanda tangan elektronik tersertifikasi.</span>
+                        </div>
+
+                        <div style="margin-top:0.5rem;font-size:0.6rem;color:#aaa;text-align:center;">
+                            Dicetak pada: ${now.toLocaleString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                            <br>
+                            © SHE Sasa - Sistem Informasi K3
+                        </div>
+
+                        <div class="pdf-stamp">
+                            DISETUJUI
+                            <small>Elektronik</small>
+                        </div>
                     </div>
                 </div>
-            </div>
-
-            <div class="pdf-footer">
-                <div class="legal-text">
-                    <i class="fas fa-check-circle"></i>
-                    Dokumen ini dihasilkan oleh <strong>Sistem Informasi K3 SHE Sasa</strong>. Setiap tahap
-                    persetujuan tercatat di sistem beserta nama penyetuju dan tanggal keputusannya.
-                    <br>
-                    <span style="font-size:0.65rem;">Tanda tangan pada dokumen ini berupa gambar tanda tangan yang dibubuhkan melalui sistem, bukan tanda tangan elektronik tersertifikasi.</span>
-                </div>
-
-                <div style="margin-top:0.5rem;font-size:0.6rem;color:#aaa;text-align:center;">
-                    Dicetak pada: ${now.toLocaleString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                    <br>
-                    © SHE Sasa - Sistem Informasi K3
-                </div>
-            </div>
-
-            <div class="pdf-stamp">
-                DISETUJUI
-                <small>Elektronik</small>
             </div>
         `;
 }

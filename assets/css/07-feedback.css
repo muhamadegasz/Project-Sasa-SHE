@@ -38,28 +38,132 @@
     border: 1px dashed #f0d0d0;
 }
 
+/* Toast: kartu putih ringkas di kanan bawah — ikon status kecil, judul,
+ * deskripsi, tombol tutup (presentation/components/toast.js). Hanya ikon yang
+ * berwarna per jenis; tanpa gradient, tanpa pill.
+ *
+ * z-index 1100: di atas overlay modal (1000), supaya pesan gagal/berhasil saat
+ * modal terbuka tidak tertutup latar modal (sebelumnya 999, di bawahnya).
+ *
+ * Wadah tetap pointer-events: none (klik tembus ke kontrol di bawahnya, seperti
+ * sebelumnya); hanya tombol tutup yang bisa diklik, dan hanya selama tampil. */
 .toast-msg {
     position: fixed;
-    bottom: 2rem;
-    right: 2rem;
-    background: #b31b1b;
-    color: white;
-    padding: 0.8rem 2rem;
-    border-radius: 60px;
-    font-weight: 500;
-    font-size: 0.95rem;
-    box-shadow: 0 12px 30px rgba(200, 40, 40, 0.25);
+    right: 1.5rem;
+    bottom: 1.5rem;
+    z-index: 1100;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.7rem;
+    width: 360px;
+    max-width: calc(100vw - 2rem);
+    padding: 0.8rem 0.7rem 0.8rem 0.9rem;
+    background: #ffffff;
+    color: #2b1d1d;
+    border: 1px solid #eadddd;
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(40, 20, 20, 0.08), 0 1px 3px rgba(40, 20, 20, 0.06);
     opacity: 0;
-    transform: translateY(20px);
-    transition: 0.25s ease;
+    transform: translateY(8px);
+    transition: opacity 0.18s ease, transform 0.18s ease;
     pointer-events: none;
-    z-index: 999;
-    border: 1px solid rgba(255, 200, 200, 0.15);
 }
 
 .toast-msg.show {
     opacity: 1;
     transform: translateY(0);
+}
+
+.toast-icon {
+    flex-shrink: 0;
+    margin-top: 0.1rem;
+    font-size: 1rem;
+    color: #5f6b78;
+}
+
+.toast-msg[data-variant="success"] .toast-icon {
+    color: #2e7d32;
+}
+
+.toast-msg[data-variant="error"] .toast-icon {
+    color: #c62828;
+}
+
+.toast-msg[data-variant="warning"] .toast-icon {
+    color: #b26a00;
+}
+
+.toast-body {
+    flex: 1;
+    min-width: 0;
+}
+
+.toast-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+}
+
+.toast-description {
+    margin-top: 0.15rem;
+    font-size: 0.8rem;
+    line-height: 1.4;
+    color: #6f5a5a;
+    overflow-wrap: anywhere;
+}
+
+.toast-close {
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
+    margin: -0.15rem 0 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #9a8585;
+    font-size: 0.85rem;
+    cursor: pointer;
+}
+
+.toast-close:hover {
+    background: #f6eeee;
+    color: #4a2f2f;
+}
+
+.toast-close:focus-visible {
+    outline: 2px solid #d42a2a;
+    outline-offset: 1px;
+}
+
+.toast-msg.show .toast-close {
+    pointer-events: auto;
+}
+
+/* Tersembunyi: tombol tutup tidak bisa difokus/diklik. */
+.toast-msg:not(.show) .toast-close {
+    visibility: hidden;
+}
+
+/* Layar sempit: selebar layar dikurangi margin aman kiri-kanan. */
+@media (max-width: 480px) {
+    .toast-msg {
+        left: 1rem;
+        right: 1rem;
+        bottom: 1rem;
+        width: auto;
+        max-width: none;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .toast-msg {
+        transform: none;
+        transition: opacity 0.01s;
+    }
 }
 
 /* Selama halaman login tampil (.login-page, z-index 9999), notifikasi harus
@@ -68,11 +172,6 @@
  * halaman login z-index notifikasi tidak berubah. */
 #loginPage:not(.hidden) ~ .toast-msg {
     z-index: 10001;
-}
-
-.toast-msg i {
-    margin-right: 12px;
-    color: #ffb0b0;
 }
 
 .modal-overlay {

@@ -1,4 +1,4 @@
-/* 11-lightbox.css — Lightbox pratinjau foto, lonceng notifikasi, dan wadah PDF tersembunyi.
+/* 11-lightbox.css — Lightbox pratinjau foto dan wadah PDF tersembunyi.
    Diekstrak apa adanya dari index.html baris 1889-2072 (commit 4734b5c).
    URUTAN MUAT PENTING: prefix angka menentukan urutan <link>. Jangan ditukar —
    beberapa selektor sengaja didefinisikan ulang dan bergantung pada urutan ini.
@@ -140,49 +140,8 @@
     backdrop-filter: blur(10px);
 }
 
-.notif-bell {
-    position: relative;
-    cursor: pointer;
-}
-
-.notif-bell .notif-dot {
-    position: absolute;
-    top: -4px;
-    right: -4px;
-    width: 10px;
-    height: 10px;
-    background: #c62828;
-    border-radius: 50%;
-    border: 2px solid white;
-    animation: pulse-dot 1s infinite;
-    display: none;
-}
-
-.notif-bell .notif-dot.active {
-    display: block;
-}
-
-@keyframes pulse-dot {
-    0%,
-    100% {
-        transform: scale(1);
-    }
-    50% {
-        transform: scale(1.3);
-    }
-}
-
-.notif-bell .notif-count {
-    background: #c62828;
-    color: white;
-    border-radius: 60px;
-    padding: 0.1rem 0.5rem;
-    font-size: 0.6rem;
-    font-weight: 700;
-    margin-left: 4px;
-    min-width: 18px;
-    text-align: center;
-}
+/* .notif-bell (lonceng notifikasi header) dihapus: hitungannya selalu 0 dan
+   tidak pernah berfungsi. Lihat 03-layout.css. */
 
 .pdf-content {
     display: none;

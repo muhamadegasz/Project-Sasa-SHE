@@ -310,20 +310,17 @@ td {
     color: #e65100;
 }
 
-.overdue-badge {
+/* Penanda overdue di samping tanggal (components/overdue-indicator.js): ikon
+   kecil merah + tooltip, menggantikan badge merah berkedip "OVERDUE". Ukuran
+   mengikuti teks tanggal, jadi tidak mengubah tinggi baris. */
+.overdue-indicator {
     display: inline-block;
-    padding: 0.15rem 0.6rem;
-    border-radius: 60px;
-    font-size: 0.6rem;
-    font-weight: 700;
-    background: #c62828;
-    color: white;
-    animation: blink 0.8s infinite;
-    margin-left: 4px;
-}
-
-.overdue-badge i {
-    margin-right: 3px;
+    margin-left: 0.3rem;
+    font-size: 0.85em;
+    line-height: 1;
+    color: #c62828;
+    cursor: help;
+    vertical-align: baseline;
 }
 
 @keyframes blink {
@@ -336,3 +333,133 @@ td {
     }
 }
 
+
+/* Inspeksi Terbaru: status alur kerja sebagai teks berwarna (warna yang sama
+   dengan .status-badge per status di atas) + keterangan tahap yang ditunggu di
+   bawahnya. Tanpa pill; status tindakan perbaikan tidak ditampilkan di sini. */
+.inspection-status {
+    display: block;
+    font-size: 0.8rem;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.inspection-status.draft {
+    color: #0d47a1;
+}
+
+.inspection-status.in_review {
+    color: #e65100;
+}
+
+.inspection-status.revision_required {
+    color: #c62828;
+}
+
+.inspection-status.completed {
+    color: #2e7d32;
+}
+
+.inspection-status-detail {
+    display: block;
+    margin-top: 0.1rem;
+    font-size: 0.72rem;
+    color: #8a6a6a;
+}
+
+/* Kolom Temuan: temuan pertama, lalu jumlah temuan eksplisit di baris kedua. */
+.temuan-preview {
+    display: block;
+}
+
+.temuan-count {
+    display: block;
+    margin-top: 0.1rem;
+    font-size: 0.72rem;
+    color: #8a6a6a;
+}
+
+.due-date-cell {
+    white-space: nowrap;
+}
+
+/* Tombol Revisi (ikon + teks) tidak terlipat di kolom Aksi yang sempit (ponsel). */
+.btn-sm.btn-revise {
+    white-space: nowrap;
+}
+
+/* Navigasi halaman di bawah tabel Inspeksi Terbaru (berhalaman di server). */
+.table-pagination {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.6rem 1rem;
+    margin-top: 0.9rem;
+}
+
+.table-pagination:empty {
+    display: none;
+}
+
+.pagination-summary {
+    font-size: 0.78rem;
+    color: #8a6a6a;
+}
+
+.pagination-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+}
+
+.pagination-pages {
+    display: flex;
+    gap: 0.25rem;
+}
+
+.pagination-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 2rem;
+    height: 2rem;
+    padding: 0 0.6rem;
+    border: 1px solid #ead6d6;
+    border-radius: 6px;
+    background: #ffffff;
+    font-size: 0.78rem;
+    font-weight: 500;
+    color: #5a3a3a;
+    cursor: pointer;
+}
+
+.pagination-btn:hover:not(:disabled):not(.current) {
+    background: #fbf3f3;
+    border-color: #e0c2c2;
+}
+
+.pagination-btn:disabled {
+    color: #c9b8b8;
+    cursor: default;
+}
+
+.pagination-btn.current {
+    border-color: #b31b1b;
+    color: #b31b1b;
+    font-weight: 700;
+    cursor: default;
+}
+
+.pagination-btn:focus-visible {
+    outline: 2px solid #d42a2a;
+    outline-offset: 1px;
+}
+
+/* Layar sempit memakai ini sebagai pengganti nomor halaman (16-responsive.css). */
+.pagination-compact {
+    display: none;
+    padding: 0 0.3rem;
+    font-size: 0.78rem;
+    color: #5a3a3a;
+}

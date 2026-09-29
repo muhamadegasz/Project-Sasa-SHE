@@ -22,12 +22,12 @@ import { apiPost, apiGet, ApiError } from './infrastructure/api-client.js';
 import { setSession, clearSession, getCsrfToken, getCurrentUser, onSessionExpired } from './infrastructure/session.js';
 
 import { allActionsClosed, countAllFindings } from './domain/inspection-rules.js';
-import { findStage, isFullyApproved, latestDecision } from './domain/approval-rules.js';
+import { findStage, isFullyApproved } from './domain/approval-rules.js';
 import { canApprove, canEdit, canRevise } from './domain/inspection-policy.js';
 import { isAwaitingStage } from './domain/workflow-rules.js';
 import { INSPECTION_STATUS } from './domain/statuses.js';
 import { localDateToIso } from './shared/date.js';
-import { formatActionStatus } from './shared/labels.js';
+import { formatActionStatus, formatRole, formatUserRole } from './shared/labels.js';
 import * as scheduleRules from './domain/schedule-rules.js';
 
 import * as approvalService from './services/approval-service.js';
@@ -42,6 +42,7 @@ import { createPlantSelect } from './presentation/components/plant-select.js';
 import { bindModalClose, closeModal, openModal } from './presentation/components/modal.js';
 import { openLightbox } from './presentation/components/lightbox.js';
 import { showToast } from './presentation/components/toast.js';
+import { renderRevisionInfo } from './presentation/components/revision-info.js';
 import { setupSearch } from './presentation/components/search-box.js';
 window.showToast = showToast;
 
@@ -55,13 +56,16 @@ import { closeUserModal, openUserModal, readUserForm, renderUsersTable } from '.
 import { openPerbaikanModal } from './presentation/views/perbaikan-modal.view.js';
 import {
     renderJadwalTable,
-    renderInspeksiWithSearch,
+    bindRecentInspectionsSearch,
+    loadRecentInspections,
     renderAllInspeksiWithSearch,
     renderJadwalWithSearch,
     renderPerbaikanWithSearch,
 } from './presentation/views/tables.view.js';
 import { initCharts, renderTemuanPlantChart, updatePerbaikanChart } from './presentation/views/charts.view.js';
-import { buildInspectionReportHtml, prepareSignatureImages } from './presentation/views/pdf-report.view.js';
+import {
+    buildInspectionReportHtml, preparePhotoImages, prepareSignatureImages, settleReportImages,
+} from './presentation/views/pdf-report.view.js';
 import { registerAction, initActionDispatcher } from './presentation/controllers/action-dispatcher.js';
 
 // ========================================================================
@@ -233,12 +237,28 @@ function initialsOf(displayName) {
         : (parts[0][0] + parts[1][0]).toUpperCase();
 }
 
+/**
+ * Role di bawah nama pada header — dari sesi (user.role, user.plantId), bukan
+ * dari username. Nama plant Koordinator K3L diambil dari daftar plant yang
+ * sudah di-cache plantRepository; bila gagal, cukup label role-nya.
+ */
+async function renderUserRole(user) {
+    const roleElement = document.getElementById('userRole');
+    const show = (text) => { roleElement.textContent = text; roleElement.title = text; };
+    show(formatUserRole(user));
+    if (user.plantId == null) return;
+    const plant = await plantRepository.findById(user.plantId).catch(() => undefined);
+    // Sesi bisa berganti (logout/login lain) selama menunggu daftar plant.
+    if (plant && getCurrentUser()?.id === user.id) show(formatUserRole(user, plant.name));
+}
+
 /** Menampilkan #mainApp dan mengisi header dari identitas yang sedang login. */
 function showMainApp(user) {
     document.getElementById('loginPage').classList.add('hidden');
     document.getElementById('mainApp').classList.add('visible');
     document.getElementById('userAvatar').textContent = initialsOf(user.displayName);
     document.getElementById('userName').textContent = user.displayName;
+    renderUserRole(user);
     // Terkunci sejak Phase 14 (docs/DECISIONS.md): server SELALU memaksa
     // petugas dari identitas login (lihat inspections.routes.js), field ini
     // kini murni tampilan — bukan lagi input bebas yang bisa menyimpang dari
@@ -497,10 +517,9 @@ async function confirmApprove() {
             ? '🎉 Semua tahap pengesahan telah disetujui! Inspeksi selesai.'
             : `✅ ${stage.title} telah menyetujui inspeksi ${pending.inspectionId}`);
 
-        // Phase 17.3A: modal ditutup, TIDAK dibuka ulang — setelah tahapnya lewat,
-        // penyetuju biasanya tidak lagi berhak melihat inspeksi ini (server menjawab
-        // 404), dan membuka ulang hanya akan menimpa toast sukses dengan
-        // "Data tidak ditemukan".
+        // Phase 17.3A: modal ditutup, TIDAK dibuka ulang — keputusan tahap ini
+        // sudah selesai. Penyetuju tetap bisa membukanya lagi dari daftar
+        // (hanya-baca: visibilitas lewat riwayat persetujuan, bukan hak memutuskan).
         closeSignatureModal();
         closeModal('approvalModal');
         await refreshAll();
@@ -572,7 +591,7 @@ async function cetakPDF(id) {
     // Release: tanda tangan (+ watermark di posisi tersimpan) diambil lewat
     // endpoint terotorisasi SEBELUM render. Gagal memuat -> PDF tidak dibuat,
     // bukan PDF "bertanda tangan" dengan tanda tangan yang hilang diam-diam.
-    releasePdfSignatures();
+    releasePdfImages();
     let prepared;
     try {
         prepared = await prepareSignatureImages(item);
@@ -582,12 +601,24 @@ async function cetakPDF(id) {
         }
         return;
     }
-    releasePdfSignatures = prepared.release;
+    // Foto dokumentasi lewat endpoint foto terotorisasi yang sama dengan Detail.
+    // Berkas yang tidak ada di server dicetak "tidak tersedia"; gagal lainnya -> PDF tidak dibuat.
+    let photos;
+    try {
+        photos = await preparePhotoImages(item);
+    } catch (error) {
+        prepared.release();
+        if (!(error instanceof ApiError && error.status === 401)) {
+            showToast(reportError('siapkan foto PDF ' + item.id, error, '⚠️ Foto dokumentasi gagal dimuat — PDF tidak dibuat. Coba ulangi beberapa saat lagi.'));
+        }
+        return;
+    }
+    releasePdfImages = () => { prepared.release(); photos.release(); };
 
     const pdfContainer = document.getElementById('pdfContent');
-    pdfContainer.innerHTML = buildInspectionReportHtml(item, prepared.images);
+    pdfContainer.innerHTML = buildInspectionReportHtml(item, prepared.images, photos.images);
     // html2canvas memotret apa yang sudah termuat — tunggu seluruh gambar siap.
-    await Promise.all([...pdfContainer.querySelectorAll('img')].map((img) => img.decode().catch(() => {})));
+    await settleReportImages(pdfContainer);
 
     pdfExporter.savePdf(pdfContainer, pdfExporter.reportFilename(item.id)).then(() => {
         showToast(`✅ PDF Laporan ${item.id} berhasil dicetak!`);
@@ -596,8 +627,8 @@ async function cetakPDF(id) {
     });
 }
 
-/** URL blob: gambar tanda tangan PDF terakhir — dilepas saat PDF berikutnya disiapkan. */
-let releasePdfSignatures = () => {};
+/** URL blob: gambar tanda tangan & foto PDF terakhir — dilepas saat PDF berikutnya disiapkan. */
+let releasePdfImages = () => {};
 
 // ========================================================================
 // ========== EXPORT FUNCTIONS ==========
@@ -701,9 +732,12 @@ document.getElementById('submitJadwal').addEventListener('click', async function
         // kode lama juga diam pada kasus itu. Lihat schedule-service.js.
         const { schedule, created } = result.data;
         if (schedule) {
-            showToast(created
-                ? `✅ Jadwal ${schedule.id} berhasil ditambahkan`
-                : `✅ Jadwal ${schedule.id} berhasil diupdate`);
+            showToast('Jadwal berhasil disimpan', {
+                variant: 'success',
+                description: created
+                    ? `Jadwal ${schedule.id} berhasil ditambahkan.`
+                    : `Perubahan jadwal ${schedule.id} berhasil disimpan.`,
+            });
         }
 
         plantSelectJadwal.clear();
@@ -711,11 +745,27 @@ document.getElementById('submitJadwal').addEventListener('click', async function
         await refreshAll();
         closeModal('jadwalModal');
     } catch (error) {
-        if (!(error instanceof ApiError) || error.status !== 401) {
-            showToast(reportError('simpan jadwal', error, '⚠️ Gagal menyimpan jadwal. Coba ulangi beberapa saat lagi.'));
-        }
+        // 401: sesi berakhir — sudah ditangani onSessionExpired, tanpa toast kedua.
+        if (error instanceof ApiError && error.status === 401) return;
+        reportError('simpan jadwal', error, '');
+        showToast('Gagal menyimpan jadwal', { variant: 'error', description: scheduleSaveFailure(error) });
     }
 });
+
+/**
+ * Penjelasan kegagalan simpan jadwal dari jawaban server — alasan sebenarnya,
+ * bukan "coba ulangi" untuk semua kasus. Mis. 403 berarti role pengguna tidak
+ * boleh menyimpan jadwal (bukan gangguan sementara).
+ */
+function scheduleSaveFailure(error) {
+    const reason = error instanceof ApiError ? error.body?.error : null;
+    if (reason === 'FORBIDDEN') {
+        return `Hanya ${scheduleRules.SCHEDULE_EDITOR_ROLES.map(formatRole).join(' dan ')} yang dapat menambah atau mengubah jadwal.`;
+    }
+    if (reason && PESAN_GAGAL[reason]) return PESAN_GAGAL[reason].replace(/^\S+\s+/, '');
+    if (error instanceof ApiError && error.status < 500) return 'Periksa data dan coba lagi.';
+    return 'Server tidak dapat dihubungi atau sedang bermasalah. Coba ulangi beberapa saat lagi.';
+}
 
 // ========================================================================
 // ========== PERBAIKAN MODAL ==========
@@ -898,8 +948,8 @@ function setFormMode(inspection) {
     const cancelBtn = document.getElementById('batalEditInspeksi');
     const submitBtn = document.getElementById('submitAjukanInspeksi');
 
-    notice.style.display = 'none';
-    notice.textContent = '';
+    notice.hidden = true;
+    notice.innerHTML = '';
     photoNote.textContent = '';
     if (!inspection) {
         document.getElementById('inspeksiFormTitle').textContent = 'Buat Inspeksi Baru';
@@ -916,13 +966,10 @@ function setFormMode(inspection) {
         : '<i class="fas fa-paper-plane"></i> Simpan &amp; Ajukan';
 
     if (revising) {
-        const stage = findStage(inspection.currentApprovalStage);
-        const rejection = latestDecision(inspection, inspection.currentApprovalStage);
-        // textContent, bukan innerHTML: alasan penolakan adalah isian bebas peninjau.
-        notice.textContent = `Ditolak oleh ${stage ? stage.title : 'peninjau'}${rejection && rejection.reviewerName ? ` (${rejection.reviewerName})` : ''}: `
-            + `"${rejection && rejection.rejectionReason ? rejection.rejectionReason : '-'}". `
-            + `Setelah direvisi, inspeksi diajukan ulang ke tahap ${stage ? stage.title : 'yang sama'}.`;
-        notice.style.display = 'block';
+        // Blok yang sama dengan modal Detail (alasan penolakan di-escape di sana —
+        // isian bebas peninjau), tanpa tombol: form ini sudah tempat merevisi.
+        notice.innerHTML = renderRevisionInfo(inspection, 'form');
+        notice.hidden = false;
     }
     const photoCount = (inspection.fotoDekat || []).length + (inspection.fotoJauh || []).length;
     if (photoCount > 0) photoNote.textContent = `(${photoCount} foto sudah tersimpan — foto yang dipilih akan ditambahkan)`;
@@ -942,13 +989,17 @@ function resetInspeksiForm() {
     setFormMode(null);
 }
 
-/** Membuka draft / revisi milik sendiri di form (tombol "Edit" di tabel inspeksi). */
+/**
+ * Membuka draft / revisi milik sendiri di form (tombol "Edit"/"Revisi" di
+ * tabel, atau "Revisi Inspeksi" di modal Detail).
+ */
 async function editInspeksi(id) {
     const item = await inspectionRepository.findById(id);
     if (!item) { showToast(pesanGagal('NOT_FOUND')); return; }
     const user = getCurrentUser();
     if (!canEdit(user, item) && !canRevise(user, item)) { showToast(pesanGagal('NOT_EDITABLE')); return; }
 
+    closeModal('detailModal'); // dipanggil dari Detail: form terlihat di bawahnya
     resetInspeksiForm();
     editingInspection = { id: item.id };
     const plant = await plantRepository.findById(item.plantId);
@@ -1185,7 +1236,9 @@ async function syncToGoogleSheets(btn) {
     }
 }
 
-document.querySelectorAll('#syncToSheets, #syncToSheets2, #syncToSheets3').forEach(btn => {
+// Tombol Sync di Inspeksi Terbaru dihapus (data sudah dari database/API; Export
+// XLSX tetap ada). Sync di Semua Data Inspeksi & Perbaikan masih memakai handler ini.
+document.querySelectorAll('#syncToSheets2, #syncToSheets3').forEach(btn => {
     btn.addEventListener('click', function() {
         syncToGoogleSheets(this);
     });
@@ -1213,8 +1266,8 @@ async function initApp() {
 
         initPlantSelect();
 
-        setupSearch('searchInspeksiInput', 'clearSearchInspeksi', 'searchInspeksiCount',
-            () => inspectionRepository.getAll(), renderInspeksiWithSearch, ['id', 'lokasi', 'petugas', 'status', 'dueDate']);
+        // Inspeksi Terbaru: berhalaman & dicari di server (bukan menyaring daftar penuh di browser).
+        bindRecentInspectionsSearch();
 
         setupSearch('searchAllInspeksiInput', 'clearSearchAllInspeksi', 'searchAllInspeksiCount',
             () => inspectionRepository.getAll(), renderAllInspeksiWithSearch, ['id', 'lokasi', 'keteranganLokasi', 'petugas',
@@ -1285,6 +1338,8 @@ document.getElementById('loginUsername').addEventListener('keydown', function(e)
 registerAction('logout', () => logout());
 registerAction('switchTab', (el) => switchTab(el.dataset.panel));
 registerAction('openJadwalModal', () => openJadwalModal());
+registerAction('recentInspectionsPage', (el) => loadRecentInspections({ page: Number(el.dataset.page) })
+    .catch((error) => { reportError('muat halaman inspeksi terbaru', error, ''); }));
 registerAction('setRealisasiHariIni', () => setRealisasiHariIni());
 registerAction('changeCalendarMonth', (el) => changeCalendarMonth(Number(el.dataset.delta)));
 registerAction('showDayEvents', (el) => showDayEvents(el.dataset.date));

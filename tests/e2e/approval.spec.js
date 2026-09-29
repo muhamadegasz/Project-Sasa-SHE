@@ -23,9 +23,9 @@ async function openApprovalModalFor(page, inspectionId) {
 /**
  * Membaca inspeksi lewat API dengan sesi `requestContext` (page.request milik
  * pengguna UI, atau context apiLogin()). Sejak Phase 17.3A server hanya
- * menyajikan inspeksi yang boleh dilihat sesi itu — setelah memutuskan,
- * penyetuju tidak lagi melihat inspeksinya, jadi hasil keputusan dibaca
- * sebagai pemiliknya (Safety Officer pembuat).
+ * menyajikan inspeksi yang boleh dilihat sesi itu — penolak tidak melihat
+ * inspeksi yang sedang direvisi, jadi hasil keputusan umumnya dibaca sebagai
+ * pemiliknya (Safety Officer pembuat).
  */
 async function fetchInspection(requestContext, inspectionId) {
     const res = await requestContext.get(`${API}/inspections/${inspectionId}`);
@@ -180,6 +180,47 @@ test('peninjau berwenang: Koordinator plant-nya melihat "Pengesahan Inspeksi" de
     await expect(content.locator('[data-action="approveStage"], [data-action="rejectStage"]')).toHaveCount(0);
     await expect(content.getByTestId('stage-readonly')).toHaveCount(1);
     await arif.context.dispose();
+});
+
+test('Koordinator yang sudah menyetujui tetap melihat inspeksinya di tahap Manajer — hanya-baca, tanpa Setujui/Tolak; server tetap menolak keputusan', async ({ page }) => {
+    const arif = await apiLogin('arif');
+    const dewi = await apiLogin('dewi');
+    const inspection = await createInspectionFixture(arif);
+    await approveViaApi(dewi, inspection.id, 'koordinator_k3l');
+
+    await loginViaUi(page, 'dewi');
+    await openApprovalModalFor(page, inspection.id); // baris masih ada di daftar dewi
+    const content = page.locator('#approvalContent');
+    await expect(page.locator('#approvalModalTitle')).toHaveText(/Status Persetujuan Inspeksi/);
+    await expect(content.locator('[data-action="approveStage"], [data-action="rejectStage"]')).toHaveCount(0);
+    await expect(content.getByTestId('stage-readonly')).toHaveCount(1);
+    await expect(content).toContainText('Menunggu persetujuan Manajer Bagian');
+
+    // Tahap miliknya tampil sebagai keputusan yang sudah diambil, dengan tanda tangannya (lewat API terotorisasi).
+    const koordinator = content.locator('.approval-stage', { has: page.locator('.stage-title', { hasText: 'Koordinator K3L Bagian' }) });
+    await expect(koordinator.locator('.stage-status')).toContainText('Disetujui');
+    await expect(koordinator.locator('.stage-detail')).toContainText('Dewi');
+    const signature = koordinator.getByTestId('stage-signature').locator('img:not(.signature-watermark)');
+    await expect.poll(() => signature.evaluate((img) => img.complete && img.naturalWidth)).toBeGreaterThan(0);
+    await page.keyboard.press('Escape');
+
+    const { csrfToken } = await (await page.request.get(`${API}/auth/me`)).json();
+    const rejectOwnStage = await page.request.post(`${API}/inspections/${inspection.id}/reject`, {
+        headers: { 'X-CSRF-Token': csrfToken },
+        data: { stageId: 'koordinator_k3l', reason: 'Menolak setelah menyetujui' },
+    });
+    expect([rejectOwnStage.status(), (await rejectOwnStage.json()).error]).toEqual([400, 'STAGE_NOT_CURRENT']);
+    const managerStage = await page.request.post(`${API}/inspections/${inspection.id}/reject`, {
+        headers: { 'X-CSRF-Token': csrfToken },
+        data: { stageId: 'manajer', reason: 'Bukan tahap saya' },
+    });
+    expect(managerStage.status()).toBe(403);
+
+    const body = await fetchInspection(page.request, inspection.id);
+    expect(body.approvalHistory, 'hanya persetujuan dewi').toHaveLength(1);
+    expect([body.status, body.currentApprovalStage]).toEqual(['in_review', 'manajer']);
+    await arif.context.dispose();
+    await dewi.context.dispose();
 });
 
 test('alur pengesahan tidak bisa dilompati lewat UI — hanya tahap yang sedang berjalan yang punya tombol aksi', async ({ page }) => {

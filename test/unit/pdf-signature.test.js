@@ -101,3 +101,46 @@ test('PDF footer: netral — tanpa klaim tanda tangan elektronik tersertifikasi/
     assert.match(footer, /bukan tanda tangan elektronik tersertifikasi/);
     assert.match(footer, /tercatat di sistem beserta nama penyetuju dan tanggal keputusannya/);
 });
+
+// =========================================================================
+// Dokumentasi Foto di PDF — foto sungguhan dari gambar yang disiapkan
+// (preparePhotoImages), bukan ikon kamera.
+// =========================================================================
+
+const withPhotos = (overrides = {}) => ({
+    id: 'INS-010', lokasi: 'IT', status: 'completed', temuan: [], perbaikan: [], approvalHistory: [],
+    fotoDekat: [{ id: 41, originalName: 'dekat.jpg' }], fotoJauh: [{ id: 42, originalName: 'jauh.png' }],
+    ...overrides,
+});
+
+test('PDF foto: setiap foto dokumentasi memakai gambar yang disiapkan, berurutan dekat -> jauh, dengan keterangan slot + nama', () => {
+    const html = buildInspectionReportHtml(withPhotos(), new Map(), new Map([[41, 'blob:foto-41'], [42, 'blob:foto-42']]));
+    assert.match(html, /Dokumentasi Foto/);
+    const sources = [...html.matchAll(/<img class="pdf-photo-img" src="([^"]+)"/g)].map((match) => match[1]);
+    assert.deepEqual(sources, ['blob:foto-41', 'blob:foto-42']);
+    assert.match(html, /Foto dekat · dekat\.jpg/);
+    assert.match(html, /Foto jauh · jauh\.png/);
+    assert.match(html, /2 foto/);
+    assert.ok(!html.includes('📷'), 'tanpa ikon kamera pengganti foto');
+    assert.ok(!html.includes('pdf-thumb'), 'tanpa kotak placeholder lama');
+});
+
+test('PDF foto: berkas yang tidak tersedia ditandai (bukan diganti ikon); tanpa foto -> "Tidak ada dokumentasi foto."', () => {
+    const partial = buildInspectionReportHtml(withPhotos(), new Map(), new Map([[41, 'blob:foto-41']]));
+    assert.equal((partial.match(/class="pdf-photo-img"/g) || []).length, 1);
+    assert.match(partial, /<div class="pdf-photo-missing">Berkas foto tidak tersedia<\/div>\s*<figcaption>Foto jauh · jauh\.png/);
+
+    const none = buildInspectionReportHtml(withPhotos({ fotoDekat: [], fotoJauh: [] }));
+    assert.match(none, /<p class="pdf-photo-empty">Tidak ada dokumentasi foto\.<\/p>/);
+    assert.ok(!none.includes('pdf-photo-row'), 'tanpa baris foto');
+});
+
+test('PDF foto: nama berkas & src di-escape (XSS)', () => {
+    const evil = '"><img src=x onerror=alert(1)>.jpg';
+    const html = buildInspectionReportHtml(
+        withPhotos({ fotoDekat: [{ id: 7, originalName: evil }], fotoJauh: [] }), new Map(), new Map([[7, 'blob:x" onerror="alert(2)']]),
+    );
+    assert.ok(!html.includes('<img src=x onerror'));
+    assert.ok(!html.includes('onerror="alert(2)"'));
+    assert.ok(html.includes('&lt;img src=x onerror=alert(1)&gt;'));
+});

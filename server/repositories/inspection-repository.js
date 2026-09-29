@@ -32,6 +32,8 @@ import { UPLOAD_DIR } from '../config/upload.js';
 import { isStoredSignaturePath, removeSignatureFile, storeSignatureFile } from '../config/signature-storage.js';
 import { formatDate } from '../../src/shared/date.js';
 import { visibilityScope } from '../../src/domain/inspection-policy.js';
+import { APPROVAL_DECISION, INSPECTION_STATUS } from '../../src/domain/statuses.js';
+import { formatInspectionStatus } from '../../src/shared/labels.js';
 import { buildInitialAction } from '../../src/domain/inspection-rules.js';
 
 function toDisplayId(numericId) {
@@ -159,15 +161,29 @@ const BASE_SELECT = `
  * inspeksi di luar cakupan tidak pernah dibaca dari database (Phase 17.3A).
  * Aturan siapa-melihat-apa TIDAK ditulis di sini, hanya dipetakan ke kolom.
  * Cakupan kosong -> '1 = 0' (tidak ada baris).
+ *
+ * Field kriteria yang tidak dikenal -> error, bukan diabaikan: kriteria yang
+ * kehilangan syarat justru MEMPERLUAS cakupan.
  */
+const VISIBILITY_FIELDS = new Set(['petugasUserId', 'plantId', 'statuses', 'currentApprovalStage', 'approvedBy']);
+
 function visibilityWhere(user) {
     const params = [];
     const clauses = visibilityScope(user).map((criterion) => {
+        const unknown = Object.keys(criterion).filter((field) => !VISIBILITY_FIELDS.has(field));
+        if (unknown.length > 0) throw new Error(`Kriteria visibilitas tidak dikenal: ${unknown.join(', ')}`);
         const conditions = [];
         if (criterion.petugasUserId != null) { conditions.push('i.petugas_user_id = ?'); params.push(criterion.petugasUserId); }
         if (criterion.plantId != null) { conditions.push('i.plant_id = ?'); params.push(criterion.plantId); }
         if (criterion.statuses) { conditions.push('i.status IN (?)'); params.push(criterion.statuses); }
         if (criterion.currentApprovalStage) { conditions.push('i.current_approval_stage = ?'); params.push(criterion.currentApprovalStage); }
+        if (criterion.approvedBy) {
+            // Riwayat pengesahan (append-only) sebagai dasar hak baca peninjau.
+            conditions.push(`EXISTS (SELECT 1 FROM approvals ah WHERE ah.inspection_id = i.id
+                AND ah.decision = ? AND ah.stage = ? AND ah.reviewer_user_id = ?)`);
+            params.push(APPROVAL_DECISION.APPROVED, criterion.approvedBy.stage, criterion.approvedBy.userId);
+        }
+        if (conditions.length === 0) throw new Error('Kriteria visibilitas kosong');
         return `(${conditions.join(' AND ')})`;
     });
     return { sql: clauses.length ? `(${clauses.join(' OR ')})` : '1 = 0', params };
@@ -178,6 +194,58 @@ export async function getAllVisibleTo(user) {
     const scope = visibilityWhere(user);
     const [rows] = await pool.query(`${BASE_SELECT} WHERE ${scope.sql} ORDER BY i.id DESC`, scope.params);
     return Promise.all(rows.map(loadFull));
+}
+
+/**
+ * Pencarian daftar berhalaman — field yang sama dengan pencarian tabel
+ * sebelumnya (di browser): id tampilan, plant, petugas, status (nilai &
+ * labelnya), due date dalam format tampilan D/M/YYYY. Tidak peka huruf
+ * besar/kecil; % dan _ dari isian dicari apa adanya, bukan wildcard.
+ */
+function searchWhere(search) {
+    if (!search) return { sql: '', params: [] };
+    const pattern = `%${search.toLowerCase().replace(/[\\%_]/g, '\\$&')}%`;
+    const statuses = Object.values(INSPECTION_STATUS);
+    const statusLabel = `CASE i.status ${statuses.map(() => 'WHEN ? THEN ?').join(' ')} END`;
+    return {
+        sql: ` AND (LOWER(CONCAT('INS-', IF(i.id < 1000, LPAD(i.id, 3, '0'), i.id))) LIKE ?
+                OR LOWER(p.name) LIKE ?
+                OR LOWER(i.petugas) LIKE ?
+                OR LOWER(i.status) LIKE ?
+                OR LOWER(${statusLabel}) LIKE ?
+                OR DATE_FORMAT(i.due_date, '%e/%c/%Y') LIKE ?)`,
+        params: [
+            pattern, pattern, pattern, pattern,
+            ...statuses.flatMap((status) => [status, formatInspectionStatus(status)]), pattern,
+            pattern,
+        ],
+    };
+}
+
+/**
+ * Satu halaman inspeksi yang boleh dilihat `user` — dipakai
+ * GET /api/inspections?page=. Cakupan visibilitas + pencarian menjadi SATU
+ * klausa WHERE yang dipakai COUNT dan SELECT sekaligus, sehingga total dan isi
+ * halaman tidak pernah memuat inspeksi di luar cakupan, halaman berapa pun
+ * yang diminta. Urutan sama dengan daftar penuh (id terbaru dulu — unik,
+ * jadi deterministik); LIMIT/OFFSET di database.
+ *
+ * @returns {Promise<{ items: object[], total: number }>}
+ */
+export async function getPageVisibleTo(user, { page, limit, search }) {
+    const scope = visibilityWhere(user);
+    const filter = searchWhere(search);
+    const where = `${scope.sql}${filter.sql}`;
+    const params = [...scope.params, ...filter.params];
+    const [[{ total }]] = await pool.query(
+        `SELECT COUNT(*) AS total FROM inspections i JOIN plants p ON p.id = i.plant_id WHERE ${where}`,
+        params,
+    );
+    const [rows] = await pool.query(
+        `${BASE_SELECT} WHERE ${where} ORDER BY i.id DESC LIMIT ? OFFSET ?`,
+        [...params, limit, (page - 1) * limit],
+    );
+    return { items: await Promise.all(rows.map(loadFull)), total: Number(total) };
 }
 
 /**

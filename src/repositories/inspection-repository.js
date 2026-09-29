@@ -42,6 +42,16 @@ export async function getAll() {
     return apiGet('/inspections');
 }
 
+/**
+ * Satu halaman inspeksi — cakupan, pencarian, urutan, dan LIMIT/OFFSET di
+ * server. @returns {{ items: object[], pagination: { page, limit, total, totalPages } }}
+ */
+export async function getPage({ page, limit, search = '' }) {
+    const params = new URLSearchParams({ page: String(page), limit: String(limit) });
+    if (search) params.set('q', search);
+    return apiGet(`/inspections?${params}`);
+}
+
 /** Satu inspeksi berdasarkan id, atau undefined bila tidak ada (404). */
 export async function findById(id) {
     try {
@@ -188,6 +198,14 @@ export async function updateCorrectiveActionStatus(inspectionId, actionId, _from
  */
 export async function fetchSignatureImage(inspectionId, approvalId) {
     return apiGetBlob(`/inspections/${encodeURIComponent(inspectionId)}/approvals/${encodeURIComponent(approvalId)}/signature`);
+}
+
+/**
+ * Berkas satu foto dokumentasi sebagai Blob — endpoint yang sama dengan
+ * Detail/lightbox (sesi + cakupan visibilitas inspeksi), untuk laporan PDF.
+ */
+export async function fetchPhotoImage(photoId) {
+    return apiGetBlob(`/inspections/photos/${encodeURIComponent(photoId)}/file`);
 }
 
 /** Jumlah inspeksi. Tidak ada endpoint hitung khusus — dihitung dari panjang array. */

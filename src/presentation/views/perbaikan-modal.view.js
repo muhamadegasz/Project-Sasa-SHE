@@ -14,6 +14,7 @@ import { ACTION_STATUS } from '../../domain/statuses.js';
 import { getRandomOfficer } from '../../data/officers.js';
 import * as inspectionRepository from '../../repositories/inspection-repository.js';
 import { bindModalClose, openModal } from '../components/modal.js';
+import { overdueIndicator } from '../components/overdue-indicator.js';
 import { canEditCorrectiveAction, isOwningOfficer } from '../../domain/inspection-policy.js';
 import { getCurrentUser } from '../../infrastructure/session.js';
 import { showToast } from '../components/toast.js';
@@ -85,7 +86,7 @@ export async function openPerbaikanModal(id) {
                 </div>
                 <div class="info-row">
                     <span class="label">Due Date Plant</span>
-                    <span class="value">${escapeHtml(item.dueDate || '-')} ${isOverdue(item.dueDate) ? '<span class="overdue-badge"><i class="fas fa-exclamation-circle"></i> OVERDUE</span>' : ''}</span>
+                    <span class="value">${escapeHtml(item.dueDate || '-')} ${isOverdue(item.dueDate) ? overdueIndicator() : ''}</span>
                 </div>
                 <div class="info-row">
                     <span class="label">Status</span>
