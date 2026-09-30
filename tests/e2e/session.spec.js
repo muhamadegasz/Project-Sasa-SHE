@@ -42,7 +42,7 @@ test('sesi yang tidak valid/hilang mengembalikan pengguna ke halaman login setel
     await page.reload();
 
     await expect(page.getByTestId('user-name')).not.toBeVisible();
-    await expect(page.getByLabel('Username')).toBeFocused();
+    await expect(page.getByLabel('Username', { exact: true })).toBeFocused();
 });
 
 // Phase 17.4C: GET /api/auth/me saat membuka halaman login tanpa sesi memang
@@ -59,7 +59,7 @@ test('kunjungan baru tanpa sesi: halaman login bersih, tanpa pesan palsu "Sesi b
     // #authLoading baru disembunyikan setelah restoreSession() selesai (legacy-app.js,
     // DOMContentLoaded) — saat itu penanganan 401-nya pasti sudah berjalan.
     await expect(page.locator('#authLoading')).toHaveClass(/hidden/);
-    await expect(page.getByLabel('Username')).toBeFocused();
+    await expect(page.getByLabel('Username', { exact: true })).toBeFocused();
 
     await expect(page.locator('#toastMessage')).not.toHaveClass(/show/);
     await expect(page.locator('#toastMessage')).not.toContainText('Sesi berakhir');
@@ -89,7 +89,7 @@ test('sesi yang berakhir DI TENGAH pemakaian (tanpa reload): permintaan berikutn
     // Release: pesan itu juga harus TERLIHAT di atas halaman login (dulu tertutup, z-index).
     await expectToastOnTop(page, 'Sesi berakhir, silakan login kembali');
     await expect(page.getByTestId('user-name')).not.toBeVisible();
-    await expect(page.getByLabel('Username')).toBeVisible();
+    await expect(page.getByLabel('Username', { exact: true })).toBeVisible();
     expect(pageErrors).toEqual([]);
 });
 
@@ -149,6 +149,6 @@ test('kunjungan baru tanpa sesi: halaman login tetap muncul penuh setelah overla
     await expect(page.locator('#authLoading')).toHaveClass(/hidden/);
     await expect(page.locator('#loginPage')).toHaveCSS('opacity', '1');
     await expect(page.locator('#loginPage')).toHaveCSS('pointer-events', 'auto');
-    await expect(page.getByLabel('Username')).toBeFocused();
+    await expect(page.getByLabel('Username', { exact: true })).toBeFocused();
     expect((await page.evaluate(() => window.__authReady)).mainApp).toBe('none');
 });

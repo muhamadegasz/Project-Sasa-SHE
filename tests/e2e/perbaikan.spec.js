@@ -27,7 +27,7 @@ async function switchAccountWithoutReload(page, username) {
     page.once('dialog', (dialog) => dialog.accept());
     await page.getByRole('button', { name: 'Logout' }).click();
     await expect(page.getByTestId('user-name')).not.toBeVisible();
-    await page.getByLabel('Username').fill(username);
+    await page.getByLabel('Username', { exact: true }).fill(username);
     await page.getByLabel('Password').fill(username);
     await page.getByRole('button', { name: 'Masuk' }).click();
     await expect(page.getByTestId('user-name')).toBeVisible();

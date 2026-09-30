@@ -13,11 +13,11 @@
 import * as inspectionRepository from '#repositories/inspection-repository.js';
 import * as plantRepository from '#repositories/plant-repository.js';
 import { submittedState } from '../domain/workflow-rules.js';
-import { buildInitialAction } from '../domain/inspection-rules.js';
+import { buildInitialAction, checkFindingCategory } from '../domain/inspection-rules.js';
 import {
     canDelete, canDeleteDraft, canEdit, canRevise, canSubmit, canView, isOwningOfficer,
 } from '../domain/inspection-policy.js';
-import { ROLE } from '../config/constants.js';
+import { FINDING_CATEGORY_OTHER, ROLE } from '../config/constants.js';
 import { INSPECTION_STATUS } from '../domain/statuses.js';
 import { formatDate } from '../shared/date.js';
 import { ACCESS_ERROR, fail, ok } from './result.js';
@@ -29,6 +29,12 @@ export const INSPECTION_ERROR = {
     PLANT_NOT_FOUND: 'PLANT_NOT_FOUND',
     FINDINGS_REQUIRED: 'FINDINGS_REQUIRED',
     DATE_REQUIRED: 'DATE_REQUIRED',
+    // Kategori temuan (domain/inspection-rules.js checkFindingCategory).
+    FINDING_CATEGORY_REQUIRED: 'FINDING_CATEGORY_REQUIRED',
+    FINDING_CATEGORY_INVALID: 'FINDING_CATEGORY_INVALID',
+    FINDING_OTHER_CATEGORY_REQUIRED: 'FINDING_OTHER_CATEGORY_REQUIRED',
+    FINDING_OTHER_CATEGORY_INVALID: 'FINDING_OTHER_CATEGORY_INVALID',
+    FINDING_OTHER_CATEGORY_TOO_LONG: 'FINDING_OTHER_CATEGORY_TOO_LONG',
     // Pemilik, tapi status inspeksi tidak mengizinkan aksi itu.
     NOT_EDITABLE: 'NOT_EDITABLE',
     NOT_SUBMITTABLE: 'NOT_SUBMITTABLE',
@@ -54,6 +60,50 @@ async function checkContent({ plantId, temuan, tanggal }) {
     const plant = await plantRepository.findById(plantId);
     if (!plant) return { failure: fail(INSPECTION_ERROR.PLANT_NOT_FOUND) };
     return { plant };
+}
+
+/** Kode domain checkFindingCategory -> kode service (juga dipakai form untuk pesan yang sama). */
+export const FINDING_CATEGORY_ERROR = {
+    CATEGORY_REQUIRED: INSPECTION_ERROR.FINDING_CATEGORY_REQUIRED,
+    CATEGORY_INVALID: INSPECTION_ERROR.FINDING_CATEGORY_INVALID,
+    OTHER_REQUIRED: INSPECTION_ERROR.FINDING_OTHER_CATEGORY_REQUIRED,
+    OTHER_INVALID: INSPECTION_ERROR.FINDING_OTHER_CATEGORY_INVALID,
+    OTHER_TOO_LONG: INSPECTION_ERROR.FINDING_OTHER_CATEGORY_TOO_LONG,
+};
+
+/**
+ * Kategori setiap temuan dari isian (buat/ubah — BUKAN saat mengajukan data
+ * yang sudah tersimpan). Hasilnya temuan yang dinormalkan: `kategoriLainnya`
+ * di-trim, dan null untuk kategori selain "Lainnya".
+ *
+ * Data lama: temuan "Lainnya" yang tersimpan sebelum migrasi 006 tidak punya
+ * penjelasan. Temuan seperti itu yang dikirim kembali TANPA perubahan (id yang
+ * sama, tetap "Lainnya", tanpa penjelasan) diterima apa adanya — merevisi
+ * inspeksi lama tidak dipaksa mengisi penjelasan untuk temuan yang tidak
+ * disentuh. Temuan baru, atau yang kategorinya diubah, selalu mengikuti aturan.
+ *
+ * @param {object[]} temuan isian
+ * @param {object[]} [stored] temuan yang sudah tersimpan (mode ubah)
+ * @returns {{ temuan: object[] }} atau {{ failure }}
+ */
+function checkFindings(temuan, stored = []) {
+    const legacyOtherIds = new Set(stored
+        .filter((finding) => finding.kategori === FINDING_CATEGORY_OTHER && !finding.kategoriLainnya)
+        .map((finding) => Number(finding.id)));
+    const normalized = [];
+    for (const finding of temuan) {
+        const unchangedLegacy = finding.id != null && legacyOtherIds.has(Number(finding.id))
+            && finding.kategori === FINDING_CATEGORY_OTHER
+            && (finding.kategoriLainnya === undefined || finding.kategoriLainnya === null || finding.kategoriLainnya === '');
+        if (unchangedLegacy) {
+            normalized.push({ ...finding, kategoriLainnya: null });
+            continue;
+        }
+        const checked = checkFindingCategory(finding);
+        if (checked.error) return { failure: fail(FINDING_CATEGORY_ERROR[checked.error]) };
+        normalized.push({ ...finding, ...checked.value });
+    }
+    return { temuan: normalized };
 }
 
 /**
@@ -83,6 +133,8 @@ async function loadForOwner(inspectionId, actor, isAllowed, stateError) {
 export async function create(input) {
     const { plant, failure } = await checkContent(input);
     if (failure) return failure;
+    const findings = checkFindings(input.temuan);
+    if (findings.failure) return findings.failure;
 
     const inspection = await inspectionRepository.add({
         lokasi: plant.name,
@@ -98,7 +150,7 @@ export async function create(input) {
         fotoDekat: input.fotoDekat || [],
         fotoJauh: input.fotoJauh || [],
         approvalHistory: [],
-        temuan: input.temuan,
+        temuan: findings.temuan,
         perbaikan: [],
     });
 
@@ -131,13 +183,15 @@ export async function update(inspectionId, input, actor) {
 
     const content = await checkContent(input);
     if (content.failure) return content.failure;
+    const findings = checkFindings(input.temuan, inspection.temuan || []);
+    if (findings.failure) return findings.failure;
 
     const saved = await inspectionRepository.update(inspection.id, {
         plantId: parseInt(input.plantId, 10),
         keteranganLokasi: input.keteranganLokasi || '-',
         tanggal: formatDate(input.tanggal),
         dueDate: formatDate(input.dueDate),
-        temuan: input.temuan,
+        temuan: findings.temuan,
         fotoDekat: input.fotoDekat || [],
         fotoJauh: input.fotoJauh || [],
     }, {

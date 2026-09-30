@@ -11,6 +11,36 @@
  */
 
 import { ACTION_STATUS, REPAIR_STATUS } from './statuses.js';
+import { FINDING_CATEGORIES, FINDING_CATEGORY_OTHER } from '../config/constants.js';
+
+/** Panjang maksimum penjelasan kategori "Lainnya" — sama dengan VARCHAR(100) findings.kategori_lainnya. */
+export const FINDING_OTHER_CATEGORY_MAX_LENGTH = 100;
+
+/**
+ * Memeriksa kategori satu temuan dari isian pengguna.
+ *
+ *   kategori              wajib, salah satu FINDING_CATEGORIES (ENUM findings.kategori)
+ *   kategori "Lainnya"    kategoriLainnya wajib: di-trim, tidak kosong, maks. 100 karakter
+ *   kategori lain         kategoriLainnya SELALU null — isian custom tidak ikut tersimpan
+ *
+ * Penjelasan tidak pernah menggantikan nilai kategori: kategori tetap "Lainnya".
+ *
+ * @returns {{ value: { kategori: string, kategoriLainnya: string|null } }
+ *   | { error: 'CATEGORY_REQUIRED' | 'CATEGORY_INVALID' | 'OTHER_REQUIRED' | 'OTHER_INVALID' | 'OTHER_TOO_LONG' }}
+ */
+export function checkFindingCategory({ kategori, kategoriLainnya } = {}) {
+    if (kategori === undefined || kategori === null || kategori === '') return { error: 'CATEGORY_REQUIRED' };
+    if (typeof kategori !== 'string' || !FINDING_CATEGORIES.includes(kategori)) return { error: 'CATEGORY_INVALID' };
+    if (kategori !== FINDING_CATEGORY_OTHER) return { value: { kategori, kategoriLainnya: null } };
+
+    if (kategoriLainnya === undefined || kategoriLainnya === null) return { error: 'OTHER_REQUIRED' };
+    if (typeof kategoriLainnya !== 'string') return { error: 'OTHER_INVALID' };
+    const value = kategoriLainnya.trim();
+    if (!value) return { error: 'OTHER_REQUIRED' };
+    // Dihitung per karakter (code point), sama seperti VARCHAR di database.
+    if (Array.from(value).length > FINDING_OTHER_CATEGORY_MAX_LENGTH) return { error: 'OTHER_TOO_LONG' };
+    return { value: { kategori, kategoriLainnya: value } };
+}
 
 /**
  * Urutan siklus hidup satu tindakan perbaikan (release): hanya MAJU —

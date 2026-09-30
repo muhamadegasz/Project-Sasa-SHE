@@ -266,3 +266,255 @@
     outline-offset: 2px;
 }
 
+/* ========== FORM BUAT / REVISI INSPEKSI (index.html .inspection-form) ==========
+   Satu form kerja: bagian berjudul dipisah garis tipis (fieldset.form-block), bukan
+   kartu per bagian; input berbingkai netral — merah hanya untuk fokus, aksi utama,
+   dan galat; daftar temuan berupa baris, bukan badge/kartu. Semua aturan diawali
+   .inspection-form: .form-group/.form-row di modal lain (jadwal, pengguna,
+   progres perbaikan) tidak berubah. */
+.inspection-form .revision-notice {
+    margin-bottom: 1.2rem;
+}
+
+/* Catatan revisi menyatu dengan form: garis aksen kiri, bukan kartu berbingkai. */
+.inspection-form .revision-info {
+    padding: 0.9rem 1.1rem;
+    border: 0;
+    border-left: 3px solid #c62828;
+    border-radius: 0;
+    background: #fdf7f7;
+}
+
+/* min-width 0: fieldset bawaannya selebar isi minimumnya (bisa melebar di ponsel). */
+.inspection-form .form-block {
+    min-width: 0;
+    margin: 0;
+    padding: 1.2rem 0 0.2rem;
+    border: 0;
+    border-top: 1px solid #eee2e2;
+}
+
+/* float + clear: legend tampil sebagai judul biasa, tidak menempel di garis fieldset. */
+.inspection-form .form-block-title {
+    float: left;
+    width: 100%;
+    margin-bottom: 0.9rem;
+    padding: 0;
+    font-size: 0.78rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: #7a3a3a;
+}
+
+/* Semua isi bagian di bawah judul (termasuk bila elemen pertamanya tersembunyi, mis.
+   catatan foto yang kosong). */
+.inspection-form .form-block > :not(.form-block-title) {
+    clear: both;
+}
+
+/* Jarak antarfield hanya dari margin .form-group: saat .form-row menjadi satu kolom
+   (layar sempit) field yang menumpuk tidak mendapat jarak ganda. */
+.inspection-form .form-row {
+    row-gap: 0;
+}
+
+.inspection-form .form-block-note {
+    margin: 0 0 0.8rem;
+    font-size: 0.78rem;
+    color: #8a6a6a;
+}
+
+.inspection-form .form-block-note:empty {
+    display: none;
+}
+
+.inspection-form .form-group label {
+    color: #4a3434;
+    font-weight: 600;
+}
+
+.inspection-form .required-mark {
+    color: #c62828;
+}
+
+.inspection-form .optional-mark {
+    font-weight: 400;
+    color: #8a6a6a;
+}
+
+.inspection-form .form-group input,
+.inspection-form .form-group select,
+.inspection-form .select-search-wrapper input {
+    padding: 0.65rem 0.85rem;
+    border: 1px solid #d8cdcd;
+    border-radius: 8px;
+}
+
+.inspection-form .select-search-wrapper input {
+    padding-right: 35px;
+}
+
+.inspection-form .form-group input:focus,
+.inspection-form .form-group select:focus,
+.inspection-form .select-search-wrapper input:focus {
+    border-color: #b31b1b;
+    box-shadow: 0 0 0 3px rgba(179, 27, 27, 0.12);
+}
+
+/* Galat plant (plant-select.js markInvalid) tetap merah, juga saat fokus. */
+.inspection-form .select-search-wrapper input.error {
+    border-color: #c62828;
+    box-shadow: 0 0 0 3px rgba(198, 40, 40, 0.15);
+}
+
+.inspection-form .form-group input[readonly] {
+    background: #f7f4f4;
+    color: #5a4a4a;
+}
+
+.inspection-form .form-group input[type="file"] {
+    padding: 0.45rem;
+    font-size: 0.8rem;
+}
+
+/* Plant terpilih: teks konfirmasi, bukan pill hijau. */
+.inspection-form .select-search-wrapper .selected-value {
+    margin-top: 0.35rem;
+    padding: 0;
+    border-radius: 0;
+    background: none;
+    font-size: 0.78rem;
+    font-weight: 500;
+}
+
+/* Isian temuan: deskripsi lebar, kategori, lalu Tambah sebaris (satu kolom di layar sempit). */
+.inspection-form .finding-entry {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 13rem auto;
+    align-items: end;
+    gap: 0 0.8rem;
+}
+
+/* Tambah tetap sebaris dengan deskripsi & kategori; "Kategori lainnya" (bila
+   kategori = Lainnya) tepat di bawah pilihan kategori. */
+.inspection-form .finding-entry-action {
+    grid-column: 3;
+    grid-row: 1;
+}
+
+.inspection-form .finding-entry-other {
+    grid-column: 2;
+    grid-row: 2;
+}
+
+.inspection-form .finding-add-btn {
+    padding: 0.62rem 1.1rem;
+    border: 1px solid #b31b1b;
+    border-radius: 8px;
+    background: #ffffff;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #b31b1b;
+    cursor: pointer;
+}
+
+.inspection-form .finding-add-btn:hover {
+    background: #fbf3f3;
+}
+
+.inspection-form .finding-add-btn:focus-visible,
+.inspection-form .finding-remove-btn:focus-visible {
+    outline: 2px solid #d42a2a;
+    outline-offset: 2px;
+}
+
+/* Daftar temuan: satu baris per temuan, kategori sekunder, Hapus di kanan, garis tipis. */
+.inspection-form .finding-list {
+    margin: 0.2rem 0 0;
+    padding: 0;
+    list-style: none;
+    border-top: 1px solid #eee2e2;
+}
+
+.inspection-form .finding-row {
+    display: grid;
+    grid-template-columns: 9rem minmax(0, 1fr) auto;
+    grid-template-areas: "category description remove";
+    align-items: baseline;
+    gap: 0.15rem 0.8rem;
+    padding: 0.65rem 0.2rem;
+    border-bottom: 1px solid #eee2e2;
+}
+
+.inspection-form .finding-category {
+    grid-area: category;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: #8a6a6a;
+}
+
+.inspection-form .finding-description {
+    grid-area: description;
+    font-size: 0.9rem;
+    color: #2a1a1a;
+    overflow-wrap: anywhere;
+}
+
+.inspection-form .finding-remove-btn {
+    grid-area: remove;
+    padding: 0.2rem 0.3rem;
+    border: 0;
+    background: none;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #b31b1b;
+    cursor: pointer;
+}
+
+.inspection-form .finding-remove-btn:hover {
+    text-decoration: underline;
+}
+
+.inspection-form .finding-empty {
+    padding: 0.8rem 0.2rem;
+    border-bottom: 1px solid #eee2e2;
+    font-size: 0.85rem;
+    color: #8a6a6a;
+}
+
+.inspection-form .finding-counter {
+    margin: 0.5rem 0 0;
+    font-size: 0.78rem;
+    color: #8a6a6a;
+}
+
+/* Baris aksi: dipisah garis tipis; tombol primary & secondary sama tinggi, sudut
+   sederhana, tanpa bayangan; Batal tetap tautan teks (.btn-text). */
+.inspection-form .form-actions {
+    margin-top: 1.2rem;
+    padding-top: 1.2rem;
+    border-top: 1px solid #eee2e2;
+}
+
+.inspection-form .form-actions .btn-submit {
+    margin-top: 0;
+    padding: 0.7rem 1.4rem;
+    border: 1px solid transparent;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    box-shadow: none;
+}
+
+.inspection-form .form-actions .btn-submit.btn-secondary {
+    border-color: #d9a3a3;
+}
+
+.inspection-form .form-actions .btn-submit:hover {
+    transform: none;
+}
+
+.inspection-form .form-actions .btn-text {
+    margin-top: 0;
+    padding: 0.7rem 0.6rem;
+}

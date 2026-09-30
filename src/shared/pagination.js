@@ -67,3 +67,28 @@ export function paginate(items, page, limit = DEFAULT_PAGE_LIMIT) {
         pagination: pageSummary(current, limit, total),
     };
 }
+
+/**
+ * Halaman aktif tabel yang datanya sudah dimuat penuh di browser (Penjadwalan,
+ * Perbaikan, Manajemen Pengguna): pencarian berjalan atas SELURUH data
+ * (setupSearch), lalu hasilnya dibagi per halaman di sini. Kata kunci berubah
+ * -> kembali ke halaman 1; data yang sama dirender ulang (refresh berkala,
+ * setelah aksi) -> halaman tetap, dijepit ke halaman terakhir yang masih ada.
+ */
+export function createClientPager() {
+    const state = { page: 1, query: null, data: [] };
+    return {
+        take(data, query) {
+            if (query !== state.query) state.page = 1;
+            state.query = query;
+            state.data = data;
+            const result = paginate(data, state.page);
+            state.page = result.pagination.page;
+            return result;
+        },
+        goTo(page) {
+            state.page = page;
+            return { data: state.data, query: state.query };
+        },
+    };
+}

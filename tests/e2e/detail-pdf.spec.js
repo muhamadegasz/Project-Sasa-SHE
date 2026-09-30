@@ -29,7 +29,7 @@ async function createWithPhotos(session, { dekat = [], jauh = [], plantId = 1 } 
     form.append('keteranganLokasi', `e2e foto ${Date.now()}`);
     form.append('tanggal', new Date().toISOString().slice(0, 10));
     form.append('dueDate', '2031-06-30');
-    form.append('temuan', JSON.stringify([{ deskripsi: 'Kabel terbuka', kategori: 'Lainnya' }, { deskripsi: 'APAR kosong', kategori: 'Lainnya' }]));
+    form.append('temuan', JSON.stringify([{ deskripsi: 'Kabel terbuka', kategori: 'Kelistrikan' }, { deskripsi: 'APAR kosong', kategori: 'Kebakaran' }]));
     for (const [field, files] of [['fotoDekat', dekat], ['fotoJauh', jauh]]) {
         for (const [name, bytes, type] of files) form.append(field, new Blob([bytes], { type }), name);
     }

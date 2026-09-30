@@ -7,7 +7,7 @@ import assert from 'node:assert/strict';
 
 import {
     canManageUsers, checkActiveFlag, checkDisplayName, checkPassword, checkRole, checkUsername,
-    normalizePlantAssignment, DISPLAY_NAME_MAX_LENGTH, PASSWORD_MAX_LENGTH,
+    matchesUsernameConfirmation, normalizePlantAssignment, DISPLAY_NAME_MAX_LENGTH, PASSWORD_MAX_LENGTH,
     PASSWORD_MIN_LENGTH, USERNAME_MAX_LENGTH,
 } from '../../src/domain/user-rules.js';
 
@@ -126,6 +126,16 @@ test('canManageUsers: hanya admin; role lain / tanpa user -> false', () => {
     }
     assert.equal(canManageUsers(null), false);
     assert.equal(canManageUsers(undefined), false);
+});
+
+test('matchesUsernameConfirmation (dialog hapus permanen): sama persis setelah trim; beda huruf/sebagian/kosong/bukan teks -> ditolak', () => {
+    assert.equal(matchesUsernameConfirmation('tulus', 'tulus'), true);
+    assert.equal(matchesUsernameConfirmation('  tulus \t', 'tulus'), true, 'spasi di tepi diabaikan');
+    for (const typed of ['Tulus', 'TULUS', 'tulu', 'tulus2', 'tu lus', '', '   ', null, undefined, 5]) {
+        assert.equal(matchesUsernameConfirmation(typed, 'tulus'), false, JSON.stringify(typed));
+    }
+    assert.equal(matchesUsernameConfirmation('', ''), false, 'target kosong tidak pernah cocok');
+    assert.equal(matchesUsernameConfirmation('tulus', undefined), false);
 });
 
 test('checkActiveFlag: hanya boolean sungguhan', () => {

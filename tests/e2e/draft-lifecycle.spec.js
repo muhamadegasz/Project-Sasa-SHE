@@ -33,6 +33,7 @@ test('draft -> ubah -> ajukan -> ditolak Manajer -> revisi pemilik -> ajukan ula
     await goToTab(page, 'Buat Inspeksi');
     await selectPlant(page, PLANT_SEARCH_PLACEHOLDER, 'Electrical dan Instrument');
     await page.getByPlaceholder('Contoh: Kabel terbuka').fill('E2E lifecycle: panel tanpa label');
+    await page.locator('#kategoriInput').selectOption('Kelistrikan'); // kategori wajib dipilih
     await page.locator('#panel-form').getByRole('button', { name: 'Tambah' }).click();
     await page.getByTestId('inspection-date').fill(new Date().toISOString().slice(0, 10));
     await page.getByRole('button', { name: 'Simpan Draft' }).click();
@@ -85,6 +86,7 @@ test('draft -> ubah -> ajukan -> ditolak Manajer -> revisi pemilik -> ajukan ula
     await expect(page.locator('#inspeksiFormTitle')).toHaveText(`Revisi ${id}`);
     await expect(page.locator('#revisionNotice')).toContainText('Lampirkan foto label panel yang sudah dipasang');
     await page.getByPlaceholder('Contoh: Kabel terbuka').fill('E2E lifecycle: label panel dipasang');
+    await page.locator('#kategoriInput').selectOption('Kelistrikan'); // kategori wajib dipilih
     await page.locator('#panel-form').getByRole('button', { name: 'Tambah' }).click();
     await page.getByRole('button', { name: 'Simpan & Ajukan Ulang' }).click();
     await expect(page.locator('#toastMessage')).toContainText('diajukan ulang ke Manajer Bagian', { timeout: 15_000 });

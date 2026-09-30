@@ -12,7 +12,7 @@
 import { escapeHtml } from './shared/html.js';
 import { reportError } from './shared/errors.js';
 
-import { APPROVAL_STAGES } from './config/constants.js';
+import { APPROVAL_STAGES, FINDING_CATEGORY_OTHER } from './config/constants.js';
 import { getRandomOfficer } from './data/officers.js';
 import * as inspectionRepository from './repositories/inspection-repository.js';
 import * as scheduleRepository from './repositories/schedule-repository.js';
@@ -21,7 +21,7 @@ import * as plantRepository from './repositories/plant-repository.js';
 import { apiPost, apiGet, ApiError } from './infrastructure/api-client.js';
 import { setSession, clearSession, getCsrfToken, getCurrentUser, onSessionExpired } from './infrastructure/session.js';
 
-import { allActionsClosed, countAllFindings } from './domain/inspection-rules.js';
+import { allActionsClosed, checkFindingCategory, countAllFindings } from './domain/inspection-rules.js';
 import { findStage, isFullyApproved } from './domain/approval-rules.js';
 import { canApprove, canEdit, canRevise } from './domain/inspection-policy.js';
 import { isAwaitingStage } from './domain/workflow-rules.js';
@@ -29,6 +29,7 @@ import { INSPECTION_STATUS } from './domain/statuses.js';
 import { localDateToIso } from './shared/date.js';
 import { formatActionStatus, formatRole, formatUserRole } from './shared/labels.js';
 import * as scheduleRules from './domain/schedule-rules.js';
+import { matchesUsernameConfirmation } from './domain/user-rules.js';
 
 import * as approvalService from './services/approval-service.js';
 import * as correctiveActionService from './services/corrective-action-service.js';
@@ -52,7 +53,11 @@ import {
     closeSignatureModal, getPendingApproval, openSignatureModal, setSignatureSubmitting, showSignatureError,
 } from './presentation/views/signature-modal.view.js';
 import { openDetailModal } from './presentation/views/detail-modal.view.js';
-import { closeUserModal, openUserModal, readUserForm, renderUsersTable } from './presentation/views/users.view.js';
+import {
+    USER_SEARCH_FIELDS, closeDeleteUserDialog, closeUserModal, goToUsersPage, openDeleteUserDialog, openUserModal,
+    readDeleteUserConfirmation, readUserForm, renderUsersTable, resetUsersPage, setDeleteUserBusy, showDeleteUserError,
+    toUserRows,
+} from './presentation/views/users.view.js';
 import { openPerbaikanModal } from './presentation/views/perbaikan-modal.view.js';
 import {
     renderJadwalTable,
@@ -170,14 +175,20 @@ const PESAN_GAGAL = {
     ACTION_STATUS_INVALID: '⚠️ Status tindakan tidak dikenal',
     ACTION_STATUS_NOT_FORWARD: '⚠️ Status tindakan hanya bisa maju: Open → On Progress → Closed',
     PLANT_REQUIRED: '⚠️ Silakan pilih Plant terlebih dahulu!',
+    // Kategori temuan (domain/inspection-rules.js checkFindingCategory).
+    FINDING_CATEGORY_REQUIRED: '⚠️ Pilih kategori temuan',
+    FINDING_CATEGORY_INVALID: '⚠️ Kategori temuan tidak dikenal',
+    FINDING_OTHER_CATEGORY_REQUIRED: '⚠️ Kategori "Lainnya" wajib dijelaskan — isi kategori lainnya',
+    FINDING_OTHER_CATEGORY_INVALID: '⚠️ Kategori lainnya harus berupa teks',
+    FINDING_OTHER_CATEGORY_TOO_LONG: '⚠️ Kategori lainnya maksimal 100 karakter',
     OFFICER_REQUIRED: '⚠️ Safety Officer wajib diisi!',
     YEAR_REQUIRED: '⚠️ Tahun wajib diisi!',
     DATE_REQUIRED: '⚠️ Tanggal Jadwal wajib diisi!',
     // Phase 18: pengelolaan akun (user-service.js).
-    USERNAME_REQUIRED: '⚠️ ID login wajib diisi',
-    USERNAME_INVALID: '⚠️ ID login hanya boleh berisi huruf, angka, titik, garis bawah, dan tanda hubung',
-    USERNAME_TOO_LONG: '⚠️ ID login maksimal 50 karakter',
-    USERNAME_TAKEN: '⚠️ ID login sudah dipakai akun lain',
+    USERNAME_REQUIRED: '⚠️ Username wajib diisi',
+    USERNAME_INVALID: '⚠️ Username hanya boleh berisi huruf, angka, titik, garis bawah, dan tanda hubung',
+    USERNAME_TOO_LONG: '⚠️ Username maksimal 50 karakter',
+    USERNAME_TAKEN: '⚠️ Username sudah dipakai akun lain',
     DISPLAY_NAME_REQUIRED: '⚠️ Nama tampilan wajib diisi',
     DISPLAY_NAME_INVALID: '⚠️ Nama tampilan tidak valid',
     DISPLAY_NAME_TOO_LONG: '⚠️ Nama tampilan maksimal 100 karakter',
@@ -193,7 +204,7 @@ const PESAN_GAGAL = {
     CANNOT_CHANGE_OWN_ROLE: '⛔ Anda tidak bisa mengganti role akun Anda sendiri',
     CANNOT_DELETE_SELF: '⛔ Anda tidak bisa menghapus akun Anda sendiri',
     USER_ACTIVE: '⚠️ Nonaktifkan akun terlebih dahulu sebelum menghapusnya secara permanen',
-    USER_HAS_OPEN_INSPECTIONS: '⚠️ Akun ini masih memiliki inspeksi yang belum selesai — tidak bisa dihapus permanen. Biarkan tetap nonaktif.',
+    USER_HAS_OPEN_INSPECTIONS: '⚠️ Pengguna tidak dapat dihapus karena masih memiliki inspeksi yang belum selesai.',
 };
 
 function pesanGagal(reason) {
@@ -823,19 +834,30 @@ async function ubahStatusPerbaikan(inspectionId, actionId, status) {
 
 let temuanList = [];
 
+/**
+ * Daftar temuan di form: satu baris per temuan — kategori sebagai metadata
+ * sekunder, deskripsi sebagai informasi utama, "Hapus" di kanan; garis tipis
+ * antarbaris (06-forms.css .finding-list), bukan badge/kartu per temuan.
+ */
+/** Label kategori di daftar: "Lainnya · Ergonomi" bila ada penjelasan, selain itu kategorinya saja. */
+function findingCategoryLabel(item) {
+    return item.kategori === FINDING_CATEGORY_OTHER && item.kategoriLainnya
+        ? `${item.kategori} · ${item.kategoriLainnya}`
+        : item.kategori;
+}
+
 function renderTemuanList() {
     const container = document.getElementById('temuanListContainer');
     const counter = document.getElementById('temuanCounter');
     if (temuanList.length === 0) {
-        container.innerHTML =
-            '<div style="padding:0.5rem;color:#8a6a6a;font-size:0.8rem;text-align:center;">Belum ada temuan ditambahkan</div>';
+        container.innerHTML = '<li class="finding-empty">Belum ada temuan ditambahkan</li>';
     } else {
         container.innerHTML = temuanList.map((item, index) => `
-                <div class="temuan-item" style="display:flex;justify-content:space-between;align-items:center;padding:0.4rem 0.6rem;border-bottom:1px solid #f0e0e0;">
-                    <span><span class="status-badge" style="font-size:0.6rem;">${escapeHtml(item.kategori)}</span> ${escapeHtml(item.deskripsi)}</span>
-                    <button class="btn-sm danger" data-action="hapusTemuan" data-index="${index}"><i class="fas fa-trash"></i></button>
-                </div>
-            `).join('');
+                <li class="finding-row" data-testid="finding-row">
+                    <span class="finding-category" data-testid="finding-category">${escapeHtml(findingCategoryLabel(item))}</span>
+                    <span class="finding-description">${escapeHtml(item.deskripsi)}</span>
+                    <button type="button" class="finding-remove-btn" data-action="hapusTemuan" data-index="${index}" aria-label="Hapus temuan: ${escapeHtml(item.deskripsi)}">Hapus</button>
+                </li>`).join('');
     }
     counter.textContent = `${temuanList.length} temuan ditambahkan`;
     document.getElementById('temuanData').value = JSON.stringify(temuanList);
@@ -846,21 +868,54 @@ function hapusTemuan(index) {
     renderTemuanList();
 }
 
+/**
+ * Field "Kategori lainnya" hanya tampil saat kategori "Lainnya"; berganti ke
+ * kategori lain menyembunyikan DAN mengosongkannya, supaya isian custom tidak
+ * ikut terkirim.
+ */
+function syncOtherCategoryField() {
+    const isOther = document.getElementById('kategoriInput').value === FINDING_CATEGORY_OTHER;
+    const otherInput = document.getElementById('kategoriLainnyaInput');
+    document.getElementById('kategoriLainnyaGroup').hidden = !isOther;
+    if (!isOther) otherInput.value = '';
+}
+
+/** Isian temuan kembali ke keadaan awal: deskripsi kosong, kategori belum dipilih. */
+function resetFindingEntry() {
+    document.getElementById('temuanInput').value = '';
+    document.getElementById('kategoriInput').value = '';
+    syncOtherCategoryField();
+}
+
+document.getElementById('kategoriInput').addEventListener('change', syncOtherCategoryField);
+
 document.getElementById('tambahTemuanBtn').addEventListener('click', function() {
     const input = document.getElementById('temuanInput');
-    const kategori = document.getElementById('kategoriInput');
     const deskripsi = input.value.trim();
     if (!deskripsi) { showToast('⚠️ Masukkan deskripsi temuan'); return; }
-    temuanList.push({ deskripsi: deskripsi, kategori: kategori.value });
-    input.value = '';
+    // Aturan kategori yang sama dengan service/server (domain/inspection-rules.js).
+    const checked = checkFindingCategory({
+        kategori: document.getElementById('kategoriInput').value,
+        kategoriLainnya: document.getElementById('kategoriLainnyaInput').value,
+    });
+    if (checked.error) {
+        showToast(pesanGagal(inspectionService.FINDING_CATEGORY_ERROR[checked.error]));
+        document.getElementById(checked.error.startsWith('OTHER_') ? 'kategoriLainnyaInput' : 'kategoriInput').focus();
+        return;
+    }
+    temuanList.push({ deskripsi, ...checked.value });
+    resetFindingEntry();
     renderTemuanList();
     showToast(`✅ Temuan "${deskripsi}" ditambahkan`);
 });
 
-document.getElementById('temuanInput').addEventListener('keypress', function(e) {
-    if (e.key === 'Enter') { e.preventDefault();
-        document.getElementById('tambahTemuanBtn').click(); }
-});
+// Enter di deskripsi atau penjelasan kategori = Tambah (bukan submit form = simpan draft).
+for (const id of ['temuanInput', 'kategoriLainnyaInput']) {
+    document.getElementById(id).addEventListener('keypress', function(e) {
+        if (e.key === 'Enter') { e.preventDefault();
+            document.getElementById('tambahTemuanBtn').click(); }
+    });
+}
 
 // ========================================================================
 // ========== SUBMIT FORM ==========
@@ -980,14 +1035,14 @@ function setFormMode(inspection) {
         notice.hidden = false;
     }
     const photoCount = (inspection.fotoDekat || []).length + (inspection.fotoJauh || []).length;
-    if (photoCount > 0) photoNote.textContent = `(${photoCount} foto sudah tersimpan — foto yang dipilih akan ditambahkan)`;
+    if (photoCount > 0) photoNote.textContent = `${photoCount} foto sudah tersimpan. Foto yang dipilih akan ditambahkan.`;
 }
 
 function resetInspeksiForm() {
     editingInspection = null;
     temuanList = [];
     renderTemuanList();
-    document.getElementById('temuanInput').value = '';
+    resetFindingEntry();
     document.getElementById('fotoDekat').value = '';
     document.getElementById('fotoJauh').value = '';
     document.getElementById('formKeteranganLokasi').value = '';
@@ -1027,7 +1082,11 @@ async function editInspeksi(id) {
     document.getElementById('formKeteranganLokasi').value = item.keteranganLokasi === '-' ? '' : (item.keteranganLokasi || '');
     document.getElementById('formTanggal').value = localDateToIso(item.tanggal) || '';
     document.getElementById('formDueDate').value = localDateToIso(item.dueDate) || '';
-    temuanList = (item.temuan || []).map((finding) => ({ id: finding.id, deskripsi: finding.deskripsi, kategori: finding.kategori }));
+    // kategoriLainnya ikut dimuat: temuan "Lainnya" tampil dengan penjelasannya dan
+    // terkirim kembali apa adanya saat disimpan.
+    temuanList = (item.temuan || []).map((finding) => ({
+        id: finding.id, deskripsi: finding.deskripsi, kategori: finding.kategori, kategoriLainnya: finding.kategoriLainnya ?? null,
+    }));
     renderTemuanList();
     setFormMode(item);
     switchTab('form');
@@ -1083,25 +1142,35 @@ async function hapusInspeksiAdmin(id) {
 let adminUsers = [];
 let adminPlants = [];
 let savingUser = false;
+/** Pencarian tabel akun — dipasang sekali, saat daftar akun pertama kali dimuat. */
+let adminSearch = null;
+/** Akun yang sedang dikonfirmasi di dialog hapus permanen: { id, username }. */
+let pendingUserDelete = null;
+let deletingUser = false;
 
 /**
  * Menjalankan satu aksi Admin: kegagalan dari service (browser) atau
- * penolakan server (ApiError 4xx) menjadi toast; 401 sudah ditangani
- * session.js. @returns data hasil, atau null bila gagal.
+ * penolakan server (ApiError 4xx) dilaporkan lewat `report` (bawaan: toast);
+ * 401 sudah ditangani session.js. @returns data hasil, atau null bila gagal.
  */
-async function runAdminAction(label, action) {
+async function runAdminAction(label, action, report = showToast) {
     try {
         const result = await action();
-        if (!result.ok) { showToast(pesanGagal(result.reason)); return null; }
+        if (!result.ok) { report(pesanGagal(result.reason)); return null; }
         return result.data;
     } catch (error) {
         if (error instanceof ApiError && error.status === 401) return null;
-        if (error instanceof ApiError && error.body?.error) { showToast(pesanGagal(error.body.error)); return null; }
-        showToast(reportError(label, error, '⚠️ Terjadi kesalahan. Coba ulangi beberapa saat lagi.'));
+        if (error instanceof ApiError && error.body?.error) { report(pesanGagal(error.body.error)); return null; }
+        report(reportError(label, error, '⚠️ Terjadi kesalahan. Coba ulangi beberapa saat lagi.'));
         return null;
     }
 }
 
+/**
+ * Memuat ulang daftar akun lalu menampilkannya LEWAT pencariannya: kata kunci
+ * yang sedang terisi tetap berlaku, dan halaman aktif tetap (dijepit ke
+ * halaman terakhir yang masih ada, mis. setelah akun dihapus).
+ */
 async function loadAdminPanel() {
     const data = await runAdminAction('muat daftar pengguna', async () => {
         const [result, plants] = await Promise.all([userService.list(getCurrentUser()), plantRepository.getAll()]);
@@ -1110,7 +1179,12 @@ async function loadAdminPanel() {
     });
     if (!data) return;
     adminUsers = data.users;
-    renderUsersTable(adminUsers, adminPlants, getCurrentUser());
+    if (adminSearch) { await adminSearch.refresh(); return; }
+    // Dipasang setelah data pertama tersedia (bukan di initApp): tanpa itu tabel
+    // sempat menampilkan "Belum ada pengguna" sebelum daftar selesai dimuat.
+    adminSearch = setupSearch('searchUsersInput', 'clearSearchUsers', 'searchUsersCount',
+        async () => toUserRows(adminUsers, adminPlants),
+        (rows, query) => renderUsersTable(rows, query, getCurrentUser()), USER_SEARCH_FIELDS);
 }
 
 function editUser(id) {
@@ -1135,6 +1209,12 @@ async function submitUser() {
             showMainApp(getCurrentUser());
         }
         showToast(id ? `✅ Pengguna ${data.user.username} diperbarui` : `✅ Pengguna ${data.user.username} dibuat`);
+        // Akun baru: pencarian dikosongkan dan tabel kembali ke halaman 1 — terbaru di
+        // atas, jadi akun ini langsung terlihat. Ubah akun: pencarian & halaman tetap.
+        if (!id) {
+            document.getElementById('searchUsersInput').value = '';
+            resetUsersPage();
+        }
         await loadAdminPanel();
     } finally {
         savingUser = false;
@@ -1150,15 +1230,38 @@ async function setUserActive(id, active, username) {
     await loadAdminPanel();
 }
 
-/** Hapus permanen: konfirmasi dengan mengetik ulang username (aksi yang tidak bisa dibatalkan). */
-async function hapusUserPermanen(id, username) {
-    const typed = prompt(`HAPUS PERMANEN akun "${username}"?\n\nAkun dihapus dan tidak bisa dipulihkan. Riwayat inspeksi, pengesahan, jadwal, dan foto tetap tersimpan dengan nama yang tercatat saat itu.\n\nKetik username "${username}" untuk mengonfirmasi:`);
-    if (typed === null) return;
-    if (typed.trim() !== username) { showToast('⚠️ Username tidak cocok — akun tidak dihapus'); return; }
-    const data = await runAdminAction('hapus pengguna', () => userService.remove(getCurrentUser(), id));
-    if (!data) return;
-    showToast(`🗑️ Akun ${username} dihapus permanen`);
-    await loadAdminPanel();
+/** Hapus permanen: dialog yang meminta username target diketik ulang (aksi yang tidak bisa dibatalkan). */
+function hapusUserPermanen(id, username) {
+    pendingUserDelete = { id, username };
+    openDeleteUserDialog(username);
+}
+
+/**
+ * Tombol "Hapus Permanen" di dialog. Pengaman siapa yang boleh dihapus (bukan
+ * akun sendiri, sudah nonaktif, tanpa inspeksi belum selesai) ada di
+ * user-service remove() dan diperiksa ulang server; penolakannya tampil di
+ * dalam dialog, bukan toast, supaya alasannya terbaca di tempat aksinya.
+ */
+async function confirmDeleteUser() {
+    if (!pendingUserDelete || deletingUser) return;
+    const { id, username } = pendingUserDelete;
+    if (!matchesUsernameConfirmation(readDeleteUserConfirmation(), username)) {
+        showDeleteUserError('Username tidak cocok — akun tidak dihapus.');
+        return;
+    }
+    deletingUser = true;
+    setDeleteUserBusy(true);
+    try {
+        const data = await runAdminAction('hapus pengguna', () => userService.remove(getCurrentUser(), id), showDeleteUserError);
+        if (!data) return;
+        pendingUserDelete = null;
+        closeDeleteUserDialog();
+        showToast(`🗑️ Akun ${username} dihapus permanen`);
+        await loadAdminPanel();
+    } finally {
+        deletingUser = false;
+        setDeleteUserBusy(false);
+    }
 }
 
 document.getElementById('submitUser').addEventListener('click', (e) => {
@@ -1369,6 +1472,8 @@ registerAction('openUserModal', () => openUserModal(null, adminPlants));
 registerAction('editUser', (el) => editUser(el.dataset.id));
 registerAction('setUserActive', (el) => setUserActive(el.dataset.id, el.dataset.active === 'true', el.dataset.username));
 registerAction('hapusUserPermanen', (el) => hapusUserPermanen(el.dataset.id, el.dataset.username));
+registerAction('confirmDeleteUser', () => confirmDeleteUser());
+registerAction('usersPage', (el) => goToUsersPage(Number(el.dataset.page), getCurrentUser()));
 initActionDispatcher();
 
 /* Ekspor murni untuk pengujian (lihat scratchpad test-*.mjs) — BUKAN untuk

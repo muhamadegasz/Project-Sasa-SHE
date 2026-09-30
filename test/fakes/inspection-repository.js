@@ -81,7 +81,7 @@ export async function update(inspectionId, fields, options) {
     const existingIds = new Set((inspection.temuan || []).map((finding) => finding.id));
     const temuan = fields.temuan.map((finding, index) => {
         if (existingIds.has(finding.id)) return { ...finding };
-        const created = { deskripsi: finding.deskripsi, kategori: finding.kategori, id: nextFindingId++ };
+        const created = { deskripsi: finding.deskripsi, kategori: finding.kategori, kategoriLainnya: finding.kategoriLainnya ?? null, id: nextFindingId++ };
         if (options.initialActionsForNewFindings) {
             inspection.perbaikan.push({ findingId: created.id, action: `Temuan ${index + 1}: ${finding.deskripsi}`, status: 'open', pic: options.pic, foto: [] });
         }

@@ -60,7 +60,7 @@ export async function createInspectionFixture(session, overrides = {}, { submit 
             keteranganLokasi: tag,
             tanggal: today,
             dueDate: today,
-            temuan: [{ deskripsi: `Temuan fixture ${tag}`, kategori: 'Lainnya' }],
+            temuan: [{ deskripsi: `Temuan fixture ${tag}`, kategori: 'Kelistrikan' }],
             ...overrides,
         },
     });

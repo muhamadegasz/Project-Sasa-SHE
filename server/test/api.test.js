@@ -424,7 +424,7 @@ async function createInspectionWithPhoto(officer, plantId) {
         .field('keteranganLokasi', `visibilitas plant ${plantId}`)
         .field('tanggal', '2026-09-20')
         .field('dueDate', '2026-10-01')
-        .field('temuan', JSON.stringify([{ deskripsi: `Temuan plant ${plantId}`, kategori: 'Lainnya' }]))
+        .field('temuan', JSON.stringify([{ deskripsi: `Temuan plant ${plantId}`, kategori: 'Kesehatan' }]))
         .attach('fotoDekat', FIXTURE_JPEG);
     assert.equal(res.status, 201, JSON.stringify(res.body));
     return submitInspection(officer, res.body.inspection.id);
@@ -826,7 +826,7 @@ const DRAFT_CONTENT = {
     keteranganLokasi: 'Draft awal',
     tanggal: '2026-09-21',
     dueDate: '2026-10-05',
-    temuan: [{ deskripsi: 'Temuan draft A', kategori: 'Kelistrikan' }, { deskripsi: 'Temuan draft B', kategori: 'Lainnya' }],
+    temuan: [{ deskripsi: 'Temuan draft A', kategori: 'Kelistrikan' }, { deskripsi: 'Temuan draft B', kategori: 'Kesehatan' }],
 };
 
 test('draft: dibuat sebagai DRAFT milik pengguna login — tanpa tahap/pengajuan/riwayat/tindakan; privat; isian status & pemilik diabaikan', async () => {
@@ -884,7 +884,7 @@ test('ubah draft: hanya pemilik; status tetap DRAFT; temuan diperbarui/ditambah/
     // Id temuan milik inspeksi LAIN tidak bisa dipakai untuk menyentuhnya — diperlakukan sebagai temuan baru.
     const other = await createInspection(tulus, DRAFT_CONTENT, { submit: false });
     const foreignId = other.temuan[0].id;
-    const withForeign = await putDraft(arif, draft.id, { ...DRAFT_CONTENT, temuan: [{ id: foreignId, deskripsi: 'Mencoba menimpa', kategori: 'Lainnya' }] });
+    const withForeign = await putDraft(arif, draft.id, { ...DRAFT_CONTENT, temuan: [{ id: foreignId, deskripsi: 'Mencoba menimpa', kategori: 'Kesehatan' }] });
     assert.equal(withForeign.status, 200);
     const [[foreignRow]] = await pool.query('SELECT deskripsi, inspection_id FROM findings WHERE id = ?', [foreignId]);
     assert.equal(foreignRow.deskripsi, 'Temuan draft A', 'temuan milik inspeksi lain tidak berubah');
@@ -1595,10 +1595,13 @@ test('users: hanya Admin — role lain 403, tanpa login 401, tanpa CSRF 403; tid
         assert.equal(create.status, 403, `${username} create`);
         assert.equal((await putUser(session, target.id, { displayName: 'X', role: 'admin' })).status, 403, `${username} update`);
         assert.equal((await putActive(session, target.id, false)).status, 403, `${username} deactivate`);
+        assert.equal((await deleteUser(session, target.id)).status, 403, `${username} delete`);
         assert.equal((await session.agent.get('/api/users')).status, 403, `${username} list`);
     }
     assert.equal((await request(app).post('/api/users').send({ username: 'x' })).status, 401);
+    assert.equal((await request(app).delete(`/api/users/${target.id}`)).status, 401, 'hapus tanpa login');
     assert.equal((await admin.agent.post('/api/users').send({ username: uniqueUsername('x'), displayName: 'X', role: 'admin', password: 'rahasia' })).status, 403, 'tanpa CSRF');
+    assert.equal((await admin.agent.delete(`/api/users/${target.id}`)).status, 403, 'hapus tanpa CSRF');
 
     assert.deepEqual(await userRow(target.id), before);
     const [[{ total: countAfter }]] = await pool.query('SELECT COUNT(*) total FROM users');
@@ -1786,6 +1789,33 @@ test('users: hapus permanen — hanya akun nonaktif tanpa inspeksi belum selesai
     assert.equal((await request(app).post('/api/auth/login').send({ username: officerName, password: officerName })).status, 401);
 });
 
+test('users: hapus permanen ditolak selama akun (sudah nonaktif) masih memiliki satu inspeksi DRAFT, IN_REVIEW, atau REVISION_REQUIRED — masing-masing; akun tetap ada', async () => {
+    const admin = await loginAs('admin');
+    const dewi = await loginAs('dewi'); // Koordinator plant 1
+    const andi = await loginAs('andi');
+    const owners = {};
+    for (const status of ['draft', 'in_review', 'revision_required']) {
+        const user = await createOfficer(admin);
+        const officer = await loginAs(user.username);
+        const inspection = await createInspection(officer, {}, { submit: status !== 'draft' });
+        if (status === 'revision_required') {
+            assert.equal((await approveWith(dewi, inspection.id, 'koordinator_k3l')).status, 200);
+            assert.equal((await decide(andi, inspection.id, 'reject', { stageId: 'manajer', reason: 'Lengkapi foto area' })).status, 200);
+        }
+        const [[row]] = await pool.query('SELECT status FROM inspections WHERE id = ?', [toNumeric(inspection.id)]);
+        assert.equal(row.status, status);
+        assert.equal((await putActive(admin, user.id, false)).status, 200);
+        owners[status] = user;
+    }
+
+    for (const [status, user] of Object.entries(owners)) {
+        const res = await deleteUser(admin, user.id);
+        assert.deepEqual({ status: res.status, error: res.body.error, data: res.body.data },
+            { status: 400, error: 'USER_HAS_OPEN_INSPECTIONS', data: { openInspections: 1 } }, status);
+        assert.equal((await userRow(user.id)).is_active, 0, `${status}: akun tetap ada (nonaktif)`);
+    }
+});
+
 // =========================================================================
 // Phase 18 — Admin menghapus inspeksi non-draft (inspection-policy canDelete)
 // =========================================================================
@@ -1942,4 +1972,92 @@ test('status tindakan perbaikan: penjaga repository (satu UPDATE) — status lam
     await pool.query("UPDATE inspections SET status = 'completed', current_approval_stage = NULL WHERE id = ?", [toNumeric(inspection.id)]);
     assert.equal(await updateCorrectiveActionStatus(inspection.id, actionId, 'open', 'closed', arif.user.id), false, 'inspeksi COMPLETED');
     assert.equal((await actionRow(actionId)).status, 'open');
+});
+
+// =========================================================================
+// Kategori temuan "Lainnya" — penjelasan di findings.kategori_lainnya (migrasi 006)
+// =========================================================================
+
+async function findingRows(inspectionId) {
+    const [rows] = await pool.query(
+        'SELECT id, deskripsi, kategori, kategori_lainnya FROM findings WHERE inspection_id = ? ORDER BY id', [toNumeric(inspectionId)],
+    );
+    return rows;
+}
+
+test('kategori "Lainnya": penjelasan tersimpan TERPISAH (kategori tetap "Lainnya"); kategori baku -> NULL; GET membawa kategoriLainnya', async () => {
+    const arif = await loginAs('arif');
+    const draft = await createInspection(arif, {
+        temuan: [
+            { deskripsi: 'Kursi kerja tidak ergonomis', kategori: 'Lainnya', kategoriLainnya: '  Ergonomi  ' },
+            { deskripsi: 'Kabel terbuka', kategori: 'Kelistrikan', kategoriLainnya: 'tidak ikut tersimpan' },
+        ],
+    }, { submit: false });
+    assert.deepEqual((await findingRows(draft.id)).map(({ kategori, kategori_lainnya: other }) => [kategori, other]),
+        [['Lainnya', 'Ergonomi'], ['Kelistrikan', null]]);
+    const detail = (await arif.agent.get(`/api/inspections/${draft.id}`)).body;
+    assert.deepEqual(detail.temuan.map(({ kategori, kategoriLainnya }) => [kategori, kategoriLainnya]), [['Lainnya', 'Ergonomi'], ['Kelistrikan', null]]);
+});
+
+test('kategori tidak valid -> 400 dengan kode jelas (bukan 500 dari ENUM); tidak ada yang tersimpan', async () => {
+    const arif = await loginAs('arif');
+    const [[{ total: before }]] = await pool.query('SELECT COUNT(*) AS total FROM inspections');
+    for (const [finding, error] of [
+        [{ deskripsi: 'x' }, 'FINDING_CATEGORY_REQUIRED'],
+        [{ deskripsi: 'x', kategori: '' }, 'FINDING_CATEGORY_REQUIRED'],
+        [{ deskripsi: 'x', kategori: 'Ergonomi' }, 'FINDING_CATEGORY_INVALID'],
+        [{ deskripsi: 'x', kategori: 'Lainnya' }, 'FINDING_OTHER_CATEGORY_REQUIRED'],
+        [{ deskripsi: 'x', kategori: 'Lainnya', kategoriLainnya: '    ' }, 'FINDING_OTHER_CATEGORY_REQUIRED'],
+        [{ deskripsi: 'x', kategori: 'Lainnya', kategoriLainnya: 'k'.repeat(101) }, 'FINDING_OTHER_CATEGORY_TOO_LONG'],
+    ]) {
+        const res = await withCsrf(arif.agent.post('/api/inspections'), arif.csrfToken)
+            .send({ plantId: 1, tanggal: '2026-09-29', dueDate: '2026-10-10', temuan: [finding] });
+        assert.deepEqual([res.status, res.body.error], [400, error], JSON.stringify(finding));
+    }
+    const [[{ total: after }]] = await pool.query('SELECT COUNT(*) AS total FROM inspections');
+    assert.equal(after, before);
+    const ok = await withCsrf(arif.agent.post('/api/inspections'), arif.csrfToken)
+        .send({ plantId: 1, tanggal: '2026-09-29', temuan: [{ deskripsi: 'x', kategori: 'Lainnya', kategoriLainnya: 'k'.repeat(100) }] });
+    assert.equal(ok.status, 201, 'tepat 100 karakter diterima');
+});
+
+test('ubah draft & revisi: "Lainnya" -> baku mengosongkan penjelasan; penjelasan bertahan sampai diajukan ulang; data lama tanpa penjelasan tetap bisa dikirim ulang apa adanya', async () => {
+    const arif = await loginAs('arif');
+    const dewi = await loginAs('dewi');
+    const andi = await loginAs('andi');
+    const draft = await createInspection(arif, {
+        temuan: [{ deskripsi: 'Kursi', kategori: 'Lainnya', kategoriLainnya: 'Ergonomi' }, { deskripsi: 'Tangga licin', kategori: 'Kecelakaan' }],
+    }, { submit: false });
+    const [chair, stairs] = (await arif.agent.get(`/api/inspections/${draft.id}`)).body.temuan;
+
+    // Draft: berganti ke kategori baku -> kolom penjelasan NULL; kembali ke "Lainnya" tanpa penjelasan ditolak.
+    const base = { plantId: 1, tanggal: '2026-09-29', dueDate: '2026-10-10' };
+    assert.equal((await putDraft(arif, draft.id, { ...base, temuan: [{ ...chair, kategori: 'Kesehatan' }, stairs] })).status, 200);
+    assert.deepEqual((await findingRows(draft.id)).map(({ kategori, kategori_lainnya: other }) => [kategori, other]), [['Kesehatan', null], ['Kecelakaan', null]]);
+    const missing = await putDraft(arif, draft.id, { ...base, temuan: [{ ...chair, kategori: 'Lainnya', kategoriLainnya: null }, stairs] });
+    assert.deepEqual([missing.status, missing.body.error], [400, 'FINDING_OTHER_CATEGORY_REQUIRED']);
+    assert.equal((await putDraft(arif, draft.id, { ...base, temuan: [{ ...chair, kategori: 'Lainnya', kategoriLainnya: 'Ergonomi' }, stairs] })).status, 200);
+
+    // Data lama (pra-migrasi 006): "Lainnya" tanpa penjelasan.
+    await pool.query("UPDATE findings SET kategori = 'Lainnya', kategori_lainnya = NULL WHERE id = ?", [stairs.id]);
+    const legacyStairs = { ...stairs, kategori: 'Lainnya', kategoriLainnya: null };
+
+    // Ajukan -> Koordinator setuju -> Manajer tolak -> revisi (dikirim apa adanya) -> ajukan ulang.
+    await submitInspection(arif, draft.id);
+    assert.equal((await decide(dewi, draft.id, 'approve', { stageId: 'koordinator_k3l' })).status, 200);
+    assert.equal((await decide(andi, draft.id, 'reject', { stageId: 'manajer', reason: 'Lengkapi foto' })).status, 200);
+    const revising = (await arif.agent.get(`/api/inspections/${draft.id}`)).body;
+    assert.equal(revising.status, 'revision_required');
+    assert.deepEqual(revising.temuan.map(({ kategori, kategoriLainnya }) => [kategori, kategoriLainnya]), [['Lainnya', 'Ergonomi'], ['Lainnya', null]]);
+
+    const saved = await putDraft(arif, draft.id, { ...base, temuan: revising.temuan });
+    assert.equal(saved.status, 200, JSON.stringify(saved.body));
+    const newWithout = await putDraft(arif, draft.id, { ...base, temuan: [...revising.temuan, { deskripsi: 'Baru', kategori: 'Lainnya' }] });
+    assert.deepEqual([newWithout.status, newWithout.body.error], [400, 'FINDING_OTHER_CATEGORY_REQUIRED'], 'temuan baru tetap wajib dijelaskan');
+
+    await submitInspection(arif, draft.id);
+    const resubmitted = (await arif.agent.get(`/api/inspections/${draft.id}`)).body;
+    assert.deepEqual([resubmitted.status, resubmitted.currentApprovalStage], ['in_review', 'manajer']);
+    assert.deepEqual((await findingRows(draft.id)).map(({ id, kategori, kategori_lainnya: other }) => [id, kategori, other]),
+        [[chair.id, 'Lainnya', 'Ergonomi'], [legacyStairs.id, 'Lainnya', null]]);
 });

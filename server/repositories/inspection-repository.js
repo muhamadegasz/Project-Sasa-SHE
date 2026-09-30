@@ -65,7 +65,7 @@ function toNumericId(id) {
 async function loadFull(row) {
     const numericId = row.id;
     const [findings] = await pool.query(
-        'SELECT id, deskripsi, kategori FROM findings WHERE inspection_id = ? ORDER BY id',
+        'SELECT id, deskripsi, kategori, kategori_lainnya FROM findings WHERE inspection_id = ? ORDER BY id',
         [numericId],
     );
     const [actions] = await pool.query(
@@ -136,7 +136,8 @@ async function loadFull(row) {
         fotoDekat: dekatPhotos.map((p) => ({ id: p.id, originalName: p.original_name })),
         fotoJauh: jauhPhotos.map((p) => ({ id: p.id, originalName: p.original_name })),
         approvalHistory,
-        temuan: findings.map((f) => ({ id: f.id, deskripsi: f.deskripsi, kategori: f.kategori })),
+        // kategoriLainnya: penjelasan kategori "Lainnya" (migrasi 006), null untuk kategori lain.
+        temuan: findings.map((f) => ({ id: f.id, deskripsi: f.deskripsi, kategori: f.kategori, kategoriLainnya: f.kategori_lainnya ?? null })),
         perbaikan: actions.map((a) => ({
             id: a.id,
             tgl: formatDate(a.tgl),
@@ -335,8 +336,8 @@ export async function add(inspection) {
         const findingIds = [];
         for (const finding of inspection.temuan || []) {
             const [findingResult] = await connection.query(
-                'INSERT INTO findings (inspection_id, deskripsi, kategori) VALUES (?, ?, ?)',
-                [numericId, finding.deskripsi, finding.kategori],
+                'INSERT INTO findings (inspection_id, deskripsi, kategori, kategori_lainnya) VALUES (?, ?, ?, ?)',
+                [numericId, finding.deskripsi, finding.kategori, finding.kategoriLainnya ?? null],
             );
             findingIds.push(findingResult.insertId);
         }
@@ -493,15 +494,15 @@ export async function update(inspectionId, fields, options) {
             const findingId = Number(finding.id);
             if (existingIds.has(findingId) && !keptIds.has(findingId)) {
                 await connection.query(
-                    'UPDATE findings SET deskripsi = ?, kategori = ? WHERE id = ? AND inspection_id = ?',
-                    [finding.deskripsi, finding.kategori, findingId, numericId],
+                    'UPDATE findings SET deskripsi = ?, kategori = ?, kategori_lainnya = ? WHERE id = ? AND inspection_id = ?',
+                    [finding.deskripsi, finding.kategori, finding.kategoriLainnya ?? null, findingId, numericId],
                 );
                 keptIds.add(findingId);
                 continue;
             }
             const [inserted] = await connection.query(
-                'INSERT INTO findings (inspection_id, deskripsi, kategori) VALUES (?, ?, ?)',
-                [numericId, finding.deskripsi, finding.kategori],
+                'INSERT INTO findings (inspection_id, deskripsi, kategori, kategori_lainnya) VALUES (?, ?, ?, ?)',
+                [numericId, finding.deskripsi, finding.kategori, finding.kategoriLainnya ?? null],
             );
             keptIds.add(inserted.insertId);
             if (options.initialActionsForNewFindings) {

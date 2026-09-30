@@ -328,87 +328,102 @@
 
             <!-- PANEL FORM -->
             <div id="panel-form" class="panel no-print">
-                <div class="form-section">
-                    <h4><i class="fas fa-plus-circle"></i> <span id="inspeksiFormTitle">Buat Inspeksi Baru</span></h4>
+                <!-- Satu form kerja: judul, (catatan revisi), tiga bagian berjudul yang
+                     dipisah garis tipis — bukan kartu per bagian — lalu baris aksi.
+                     Gaya khusus form ini: 06-forms.css ".inspection-form". -->
+                <div class="form-section inspection-form">
+                    <h4 class="inspection-form-title"><span id="inspeksiFormTitle">Buat Inspeksi Baru</span></h4>
                     <!-- Phase 17.3B: tampil saat merevisi inspeksi yang ditolak — permintaan revisi
                          yang sedang berlaku (components/revision-info.js, sama dengan modal Detail). -->
                     <div id="revisionNotice" class="revision-notice" hidden></div>
                     <form id="inspeksiForm" onsubmit="return false;">
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Lokasi Inspeksi <span style="color:#c62828;">*</span></label>
-                                <div class="select-search-wrapper" id="plantSelectWrapper">
-                                    <input type="text" id="plantSearchInput" placeholder="Cari plant... (ketik nama plant)" autocomplete="off">
-                                    <button class="clear-selection" id="clearPlantSelection">&times;</button>
-                                    <div class="dropdown-list" id="plantDropdown"></div>
-                                    <div id="selectedPlantDisplay"></div>
-                                    <input type="hidden" id="selectedPlant" value="">
+                        <fieldset class="form-block">
+                            <legend class="form-block-title">Informasi Inspeksi</legend>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="plantSearchInput">Lokasi / Plant <span class="required-mark" aria-hidden="true">*</span></label>
+                                    <div class="select-search-wrapper" id="plantSelectWrapper">
+                                        <input type="text" id="plantSearchInput" placeholder="Cari plant... (ketik nama plant)" autocomplete="off">
+                                        <button class="clear-selection" id="clearPlantSelection" type="button" aria-label="Hapus pilihan plant">&times;</button>
+                                        <div class="dropdown-list" id="plantDropdown"></div>
+                                        <div id="selectedPlantDisplay"></div>
+                                        <input type="hidden" id="selectedPlant" value="">
+                                    </div>
+                                </div>
+                                <div class="form-group">
+                                    <label for="formKeteranganLokasi">Keterangan Lokasi <span class="optional-mark">(opsional)</span></label>
+                                    <input type="text" id="formKeteranganLokasi" placeholder="Detail tambahan lokasi">
                                 </div>
                             </div>
-                            <div class="form-group">
-                                <label>Keterangan Lokasi <span style="font-weight:400;color:#8a6a6a;">(opsional)</span></label>
-                                <input type="text" id="formKeteranganLokasi" placeholder="Detail tambahan lokasi">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="formTanggal">Tanggal Inspeksi</label>
+                                    <input type="date" id="formTanggal" data-testid="inspection-date">
+                                </div>
+                                <div class="form-group">
+                                    <label for="formPetugas">Safety Officer</label>
+                                    <input type="text" id="formPetugas" data-testid="inspection-officer-display" placeholder="Nama Safety Officer" readonly title="Selalu diisi dari akun yang sedang login — server memaksa nilai ini, lihat docs/DECISIONS.md Phase 14">
+                                </div>
                             </div>
-                        </div>
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Tanggal Inspeksi</label>
-                                <input type="date" id="formTanggal" data-testid="inspection-date">
+                            <!-- Phase 17.2: tidak ada lagi pilihan "Status Inspeksi" — status
+                                 hanya berubah lewat alur pengajuan/pengesahan, bukan isian form. -->
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="formDueDate">Due Date ke Plant</label>
+                                    <input type="date" id="formDueDate" data-testid="inspection-duedate">
+                                </div>
                             </div>
-                            <div class="form-group">
-                                <label>Safety Officer</label>
-                                <input type="text" id="formPetugas" data-testid="inspection-officer-display" placeholder="Nama Safety Officer" readonly title="Selalu diisi dari akun yang sedang login — server memaksa nilai ini, lihat docs/DECISIONS.md Phase 14">
-                            </div>
-                        </div>
-                        <!-- Phase 17.2: tidak ada lagi pilihan "Status Inspeksi" — status
-                             hanya berubah lewat alur pengajuan/pengesahan, bukan isian form. -->
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label>Due Date ke Plant</label>
-                                <input type="date" id="formDueDate" data-testid="inspection-duedate">
-                            </div>
-                        </div>
+                        </fieldset>
 
-                        <div class="form-group full">
-                            <label>Dokumentasi Foto Lokasi <span id="existingPhotoNote" style="font-weight:400;color:#8a6a6a;"></span></label>
-                            <div class="file-input-group">
-                                <div class="file-item">
-                                    <label><i class="fas fa-camera"></i> Foto Jarak Dekat</label>
+                        <fieldset class="form-block">
+                            <legend class="form-block-title">Dokumentasi Lokasi</legend>
+                            <p class="form-block-note" id="existingPhotoNote"></p>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="fotoDekat">Foto Jarak Dekat</label>
                                     <input type="file" id="fotoDekat" accept="image/*" multiple>
                                 </div>
-                                <div class="file-item">
-                                    <label><i class="fas fa-camera"></i> Foto Jarak Jauh</label>
+                                <div class="form-group">
+                                    <label for="fotoJauh">Foto Jarak Jauh</label>
                                     <input type="file" id="fotoJauh" accept="image/*" multiple>
                                 </div>
                             </div>
-                        </div>
+                        </fieldset>
 
-                        <div class="form-group full">
-                            <label><i class="fas fa-list"></i> Daftar Temuan</label>
-                            <div class="form-row" style="margin-bottom:0.5rem;">
-                                <div class="form-group" style="margin-bottom:0.3rem;">
-                                    <label style="font-size:0.7rem;">Deskripsi Temuan</label>
+                        <fieldset class="form-block">
+                            <legend class="form-block-title">Temuan Inspeksi</legend>
+                            <div class="finding-entry">
+                                <div class="form-group finding-entry-description">
+                                    <label for="temuanInput">Deskripsi Temuan</label>
                                     <input type="text" id="temuanInput" placeholder="Contoh: Kabel terbuka">
                                 </div>
-                                <div class="form-group" style="margin-bottom:0.3rem;">
-                                    <label style="font-size:0.7rem;">Kategori</label>
+                                <div class="form-group finding-entry-category">
+                                    <label for="kategoriInput">Kategori <span class="required-mark" aria-hidden="true">*</span></label>
+                                    <!-- Tanpa pilihan bawaan: kategori wajib dipilih sendiri untuk setiap temuan. -->
                                     <select id="kategoriInput">
+                                        <option value="" selected>Pilih kategori...</option>
                                         <option value="Kebakaran">Kebakaran</option>
-                                        <option value="Kecelakaan" selected>Kecelakaan</option>
+                                        <option value="Kecelakaan">Kecelakaan</option>
                                         <option value="Kebocoran">Kebocoran</option>
                                         <option value="Kesehatan">Kesehatan</option>
                                         <option value="Kelistrikan">Kelistrikan</option>
                                         <option value="Lainnya">Lainnya</option>
                                     </select>
                                 </div>
-                                <div class="form-group" style="margin-bottom:0.3rem;display:flex;align-items:flex-end;">
-                                    <button type="button" class="btn-sm primary" id="tambahTemuanBtn" style="padding:0.5rem 1.2rem;font-size:0.8rem;"><i class="fas fa-plus"></i> Tambah</button>
+                                <!-- Hanya saat kategori "Lainnya" (legacy-app.js syncOtherCategoryField),
+                                     tepat di bawah pilihan kategori (06-forms.css: posisi grid). -->
+                                <div class="form-group finding-entry-other" id="kategoriLainnyaGroup" hidden>
+                                    <label for="kategoriLainnyaInput">Kategori lainnya <span class="required-mark" aria-hidden="true">*</span></label>
+                                    <input type="text" id="kategoriLainnyaInput" maxlength="100" placeholder="Masukkan kategori temuan..." aria-required="true">
+                                </div>
+                                <div class="form-group finding-entry-action">
+                                    <button type="button" class="finding-add-btn" id="tambahTemuanBtn">Tambah</button>
                                 </div>
                             </div>
-                            <div id="temuanListContainer" class="temuan-list" style="border:1px solid #f0e0e0;border-radius:12px;padding:0.5rem;max-height:200px;overflow-y:auto;background:#faf8f8;"></div>
-                            <div class="temuan-counter" id="temuanCounter" style="font-size:0.8rem;color:#8a6a6a;margin-top:0.3rem;">0 temuan ditambahkan</div>
+                            <ul id="temuanListContainer" class="finding-list" aria-label="Daftar temuan"></ul>
+                            <p class="finding-counter" id="temuanCounter">0 temuan ditambahkan</p>
                             <input type="hidden" id="temuanData" value="">
-                        </div>
+                        </fieldset>
 
                         <!-- Phase 17.3B: menyimpan tidak lagi otomatis mengajukan. "Simpan Draft"
                              menyimpan (draft / revisi) tanpa mengubah status; "Simpan & Ajukan"
@@ -432,13 +447,19 @@
                     <div class="table-header">
                         <h4><i class="fas fa-users-cog"></i> Manajemen Pengguna</h4>
                         <div class="table-header-right">
+                            <div class="search-wrapper" id="searchUsers">
+                                <i class="fas fa-search search-icon"></i>
+                                <input type="text" placeholder="Cari pengguna..." id="searchUsersInput" aria-label="Cari pengguna">
+                                <button class="clear-search" id="clearSearchUsers">&times;</button>
+                                <span class="search-count" id="searchUsersCount"></span>
+                            </div>
                             <button class="btn-sm primary" data-action="openUserModal" data-testid="add-user-btn"><i class="fas fa-user-plus"></i> Tambah Pengguna</button>
                         </div>
                     </div>
                     <table>
                         <thead>
                             <tr>
-                                <th>ID Login</th>
+                                <th>Username</th>
                                 <th>Nama</th>
                                 <th>Role</th>
                                 <th>Plant</th>
@@ -448,6 +469,9 @@
                         </thead>
                         <tbody id="usersTableBody"></tbody>
                     </table>
+                    <!-- Berhalaman di browser setelah pencarian atas seluruh akun (users.view.js). -->
+                    <nav class="table-pagination" id="usersPagination" aria-label="Halaman Manajemen Pengguna"></nav>
+                    <p class="users-table-note">Hapus permanen hanya untuk akun yang sudah dinonaktifkan dan tidak lagi memiliki inspeksi yang belum selesai.</p>
                 </div>
             </div>
 
@@ -463,7 +487,7 @@
                 <input type="hidden" id="userFormId" value="">
                 <div class="form-row">
                     <div class="form-group">
-                        <label for="userFormUsername">ID Login <span style="color:#c62828;">*</span></label>
+                        <label for="userFormUsername">Username <span style="color:#c62828;">*</span></label>
                         <input type="text" id="userFormUsername" autocomplete="off" maxlength="50">
                     </div>
                     <div class="form-group">
@@ -489,6 +513,26 @@
                 </div>
                 <button type="submit" class="btn-submit" id="submitUser"><i class="fas fa-save"></i> Simpan Pengguna</button>
             </form>
+        </div>
+    </div>
+
+    <!-- MODAL HAPUS PENGGUNA: konfirmasi dengan mengetik ulang username. Pengamannya
+         (bukan akun sendiri, sudah nonaktif, tanpa inspeksi belum selesai) di server — user-service.js remove(). -->
+    <div class="modal-overlay no-print" id="deleteUserModal">
+        <div class="modal-box delete-user-box" role="alertdialog" aria-labelledby="deleteUserModalTitle" aria-describedby="deleteUserWarning">
+            <button class="close-modal" id="closeDeleteUserModal" aria-label="Tutup">&times;</button>
+            <h3 id="deleteUserModalTitle"><i class="fas fa-trash-alt"></i> Hapus pengguna</h3>
+            <p class="delete-user-warning" id="deleteUserWarning">Tindakan ini permanen dan tidak dapat dibatalkan.</p>
+            <p class="delete-user-note">Riwayat inspeksi, pengesahan, jadwal, dan foto tetap tersimpan dengan nama yang tercatat saat itu.</p>
+            <div class="form-group">
+                <label for="deleteUserConfirmInput">Untuk melanjutkan, ketik username: <strong id="deleteUserTarget"></strong></label>
+                <input type="text" id="deleteUserConfirmInput" autocomplete="off" autocapitalize="off" spellcheck="false">
+            </div>
+            <p class="delete-user-error" id="deleteUserError" role="alert" hidden></p>
+            <div class="delete-user-actions">
+                <button type="button" class="btn-sm" id="cancelDeleteUser">Batal</button>
+                <button type="button" class="btn-sm danger" id="confirmDeleteUser" data-action="confirmDeleteUser" disabled>Hapus Permanen</button>
+            </div>
         </div>
     </div>
 

@@ -31,7 +31,7 @@ import { getRepairStatus } from '../../domain/inspection-rules.js';
 import { ACTION_STATUS } from '../../domain/statuses.js';
 import { isFullyApproved, countApproved } from '../../domain/approval-rules.js';
 import { formatApprovalStatus, formatInspectionStatus, formatInspectionStatusDetail, formatRepairStatus } from '../../shared/labels.js';
-import { DEFAULT_PAGE_LIMIT, paginate } from '../../shared/pagination.js';
+import { DEFAULT_PAGE_LIMIT, createClientPager } from '../../shared/pagination.js';
 import { renderPaginationNav } from '../components/pagination-nav.js';
 import { reportError } from '../../shared/errors.js';
 import * as scheduleRules from '../../domain/schedule-rules.js';
@@ -211,30 +211,7 @@ function renderInspeksiTable(data, tbodyId, isFull, highlightQuery = '') {
     }).join('');
 }
 
-/**
- * Halaman aktif tabel yang datanya sudah dimuat penuh di browser (Penjadwalan,
- * Perbaikan): pencarian berjalan atas SELURUH data (setupSearch), lalu hasilnya
- * dibagi per halaman di sini. Kata kunci berubah -> kembali ke halaman 1; data
- * yang sama dirender ulang (refresh berkala, setelah aksi) -> halaman tetap.
- */
-function createClientPager() {
-    const state = { page: 1, query: null, data: [] };
-    return {
-        take(data, query) {
-            if (query !== state.query) state.page = 1;
-            state.query = query;
-            state.data = data;
-            const result = paginate(data, state.page);
-            state.page = result.pagination.page;
-            return result;
-        },
-        goTo(page) {
-            state.page = page;
-            return { data: state.data, query: state.query };
-        },
-    };
-}
-
+// Pencarian atas seluruh data lalu dibagi per halaman (shared/pagination.js).
 const jadwalPager = createClientPager();
 const perbaikanPager = createClientPager();
 

@@ -48,6 +48,18 @@
     .form-group .file-input-group {
         flex-direction: column;
     }
+    /* Form inspeksi: isian temuan satu kolom, Tambah di bawahnya. */
+    .inspection-form .finding-entry {
+        grid-template-columns: minmax(0, 1fr);
+    }
+    .inspection-form .finding-entry-action,
+    .inspection-form .finding-entry-other {
+        grid-column: auto;
+        grid-row: auto;
+    }
+    .inspection-form .finding-entry-action {
+        justify-self: start;
+    }
     .detail-grid {
         grid-template-columns: 1fr;
         gap: 0.5rem;
@@ -214,6 +226,24 @@
     /* Ringkasan singkat "1–10 dari 57" (tanpa "Menampilkan" / "inspeksi"). */
     .pagination-summary-long {
         display: none;
+    }
+    /* Form inspeksi: ruang isi lebih lega; kategori temuan di atas deskripsi; tombol
+       aksi selebar layar (Batal tetap tautan teks di bawahnya). */
+    .inspection-form {
+        padding: 1.2rem 1rem;
+    }
+    .inspection-form .finding-row {
+        grid-template-columns: minmax(0, 1fr) auto;
+        grid-template-areas:
+            "category remove"
+            "description remove";
+    }
+    .inspection-form .form-actions {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    .inspection-form .form-actions .btn-text {
+        align-self: center;
     }
     /* Modal Perbaikan: informasi satu kolom; tiap tindakan menjadi blok baris
        label–nilai (label dari data-label, pola modal Detail Jadwal). Tanpa

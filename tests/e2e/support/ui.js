@@ -4,10 +4,13 @@
 
 import { expect } from '@playwright/test';
 
-/** Login lewat form sungguhan (bukan API) — dipakai tiap kali sebuah test butuh browser dalam keadaan sudah login. Password seed = username (server/db/seed.js). */
+/**
+ * Login lewat form sungguhan (bukan API) — dipakai tiap kali sebuah test butuh browser dalam keadaan sudah login. Password seed = username (server/db/seed.js).
+ * Label "Username" dicocokkan persis: panel Admin juga punya label "Username *" dan "…ketik username: …" (tersembunyi, tapi tetap di DOM).
+ */
 export async function loginViaUi(page, username) {
     await page.goto('/');
-    await page.getByLabel('Username').fill(username);
+    await page.getByLabel('Username', { exact: true }).fill(username);
     await page.getByLabel('Password').fill(username);
     await page.getByRole('button', { name: 'Masuk' }).click();
     await expect(page.getByTestId('user-name')).toBeVisible();

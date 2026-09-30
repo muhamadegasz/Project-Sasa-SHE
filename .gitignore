@@ -4,3 +4,5 @@ uploads/
 test-results/
 playwright-report/
 .claude/
+.env-prod
+.env.test

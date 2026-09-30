@@ -33,7 +33,7 @@ test('sesi berlaku + server menjawab 200: dashboard, tanpa pesan galat', async (
 test('tanpa sesi (401): halaman login bersih — tanpa "Sesi berakhir" dan tanpa pesan server', async ({ page }) => {
     await page.goto('/');
     await waitForAuthKnown(page);
-    await expect(page.getByLabel('Username')).toBeFocused();
+    await expect(page.getByLabel('Username', { exact: true })).toBeFocused();
     await expect(page.locator('#toastMessage')).not.toHaveClass(/show/);
     await expect(page.locator('#toastMessage')).not.toContainText('Sesi berakhir');
     await expect(page.locator('#toastMessage')).not.toContainText('Server tidak dapat dihubungi');
@@ -51,7 +51,7 @@ test('sesi berlaku tapi server tidak terjangkau saat reload: dashboard tetap ter
     await waitForAuthKnown(page);
     await expect(page.locator('#mainApp')).toBeHidden();
     await expect(page.locator('#loginPage')).toHaveCSS('opacity', '1');
-    await expect(page.getByLabel('Username')).toBeFocused();
+    await expect(page.getByLabel('Username', { exact: true })).toBeFocused();
     await expectToastOnTop(page, RESTORE_MESSAGE);
     await expect(page.locator('#toastMessage')).not.toContainText('Sesi berakhir');
     expect(apiCalls, 'hanya pemeriksaan sesi — tidak ada data yang diminta').toEqual(['/api/auth/me']);
@@ -75,7 +75,7 @@ test('server menjawab 5xx saat pemulihan sesi: diperlakukan sebagai tidak terjan
 test('login dengan password salah: tetap senyap seperti sebelumnya (tanpa pesan apa pun)', async ({ page }) => {
     await page.goto('/');
     await waitForAuthKnown(page);
-    await page.getByLabel('Username').fill('arif');
+    await page.getByLabel('Username', { exact: true }).fill('arif');
     await page.getByLabel('Password').fill('password-salah');
     const [response] = await Promise.all([
         page.waitForResponse((res) => res.url().endsWith('/api/auth/login')),
@@ -90,7 +90,7 @@ test('login saat server tidak terjangkau: pesan jelas (tanpa galat mentah), teta
     await page.goto('/');
     await waitForAuthKnown(page);
     await page.route('**/api/auth/login', (route) => route.abort('connectionrefused'));
-    await page.getByLabel('Username').fill('arif');
+    await page.getByLabel('Username', { exact: true }).fill('arif');
     await page.getByLabel('Password').fill('arif');
     await page.getByRole('button', { name: 'Masuk' }).click();
 

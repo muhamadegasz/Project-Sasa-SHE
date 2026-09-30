@@ -20,7 +20,7 @@ import { loginViaUi } from './support/ui.js';
 
 test('login dengan password salah tetap di halaman login, field password dikosongkan', async ({ page }) => {
     await page.goto('/');
-    await page.getByLabel('Username').fill('arif');
+    await page.getByLabel('Username', { exact: true }).fill('arif');
     await page.getByLabel('Password').fill('password-salah');
     await page.getByRole('button', { name: 'Masuk' }).click();
 

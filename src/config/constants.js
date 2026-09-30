@@ -33,6 +33,14 @@ export const APPROVAL_STAGES = [
     { id: APPROVAL_STAGE.KETUA_P2K3, role: ROLE.KETUA_P2K3, name: 'Ketua P2K3', title: 'Ketua P2K3', order: 3 },
 ];
 
+/**
+ * Kategori temuan — sama persis dengan ENUM findings.kategori (migrasi 001).
+ * "Lainnya" wajib disertai penjelasan di findings.kategori_lainnya (migrasi 006;
+ * aturannya di domain/inspection-rules.js checkFindingCategory).
+ */
+export const FINDING_CATEGORY_OTHER = 'Lainnya';
+export const FINDING_CATEGORIES = ['Kebakaran', 'Kecelakaan', 'Kebocoran', 'Kesehatan', 'Kelistrikan', FINDING_CATEGORY_OTHER];
+
 /** Periode triwulanan, dipakai pada penjadwalan inspeksi. */
 export const PERIODE_LIST = [
     { id: 1, name: 'Periode 1', months: 'Jan - Mar' },

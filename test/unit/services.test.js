@@ -330,7 +330,7 @@ test('update: pemilik mengubah draft — status tetap DRAFT, temuan diganti, sta
     const result = await inspectionService.update(draft.id, {
         ...validContent,
         keteranganLokasi: 'Area baru',
-        temuan: [{ id: draft.temuan[0].id, deskripsi: 'Temuan A diperbarui', kategori: 'Lainnya' }, { deskripsi: 'Temuan C', kategori: 'Kebocoran' }],
+        temuan: [{ id: draft.temuan[0].id, deskripsi: 'Temuan A diperbarui', kategori: 'Kesehatan' }, { deskripsi: 'Temuan C', kategori: 'Kebocoran' }],
         status: 'completed', currentApprovalStage: 'ketua_p2k3', petugasUserId: 999,
     }, owner);
     assert.equal(result.ok, true, JSON.stringify(result));
@@ -394,7 +394,7 @@ test('revisi & ajukan ulang: kembali ke tahap YANG MENOLAK, riwayat utuh, temuan
     const revising = await inspectionFake.findById(draft.id);
     const revised = await inspectionService.update(draft.id, {
         ...validContent, plantId: '9',
-        temuan: [...revising.temuan, { deskripsi: 'Temuan tambahan', kategori: 'Lainnya' }],
+        temuan: [...revising.temuan, { deskripsi: 'Temuan tambahan', kategori: 'Kesehatan' }],
     }, owner);
     assert.equal(revised.ok, true, JSON.stringify(revised));
     assert.equal((await inspectionFake.findById(draft.id)).status, 'revision_required', 'menyimpan revisi bukan mengajukan ulang');
@@ -546,7 +546,9 @@ test('sanitizeCell: menetralkan awalan pemicu formula (= + - @), tidak menyentuh
 test('S-04 jalur sungguhan: inspeksi dengan payload formula-injection diekspor dalam bentuk dinetralkan', async () => {
     const created = await inspectionService.create({
         plantId: '3', tanggal: '2026-09-19', petugas: '=CMD()', status: 'proses', dueDate: '2026-10-01',
-        keteranganLokasi: '@evil', temuan: [{ deskripsi: '=1+1', kategori: '+X' }],
+        // Kategori kini ENUM tervalidasi (domain checkFindingCategory) — payload formula tidak
+        // bisa lagi masuk lewat kategori; teks bebas lain tetap diuji di bawah.
+        keteranganLokasi: '@evil', temuan: [{ deskripsi: '=1+1', kategori: 'Kelistrikan' }],
     });
     const evil = created.data.inspection;
 
@@ -555,14 +557,14 @@ test('S-04 jalur sungguhan: inspeksi dengan payload formula-injection diekspor d
     const findingRow = capturedSheets[0][0];
     assert.equal(findingsResult.count, 1);
     assert.equal(findingRow['Deskripsi Temuan'], "'=1+1");
-    assert.equal(findingRow['Kategori'], "'+X");
+    assert.equal(findingRow['Kategori'], 'Kelistrikan');
     assert.equal(findingRow['Safety Officer'], "'=CMD()");
     assert.equal(findingRow['Keterangan Lokasi'], "'@evil");
     assert.ok(findingsResult.filename.includes(evil.id));
 
     capturedSheets.length = 0;
     excel.exportInspections([evil], 'uji.xlsx');
-    assert.equal(capturedSheets[0][0]['Daftar Temuan'], "'=1+1 (+X)");
+    assert.equal(capturedSheets[0][0]['Daftar Temuan'], "'=1+1 (Kelistrikan)");
 });
 
 // =========================================================================

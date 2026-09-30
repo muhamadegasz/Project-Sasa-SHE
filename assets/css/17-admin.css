@@ -16,12 +16,6 @@
     color: #9a8a8a;
 }
 
-.user-actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.3rem;
-}
-
 .user-self-note {
     font-size: 0.65rem;
     font-style: italic;
@@ -33,4 +27,51 @@
     margin-top: 0.2rem;
     font-size: 0.65rem;
     color: #8a6a6a;
+}
+
+/* Keterangan di bawah tabel: kapan "Hapus" tersedia (tombolnya hanya ada di baris akun nonaktif). */
+.users-table-note {
+    margin-top: 0.7rem;
+    font-size: 0.72rem;
+    color: #8a6a6a;
+}
+
+/* Dialog hapus permanen: konfirmasi singkat, bukan formulir — kotaknya sempit. */
+.modal-box.delete-user-box {
+    max-width: 440px;
+}
+
+.delete-user-warning {
+    margin-bottom: 0.35rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: #b31b1b;
+}
+
+.delete-user-note {
+    margin-bottom: 1rem;
+    font-size: 0.78rem;
+    color: #7a5a5a;
+}
+
+.delete-user-error {
+    margin: -0.3rem 0 0.9rem;
+    font-size: 0.78rem;
+    color: #c62828;
+}
+
+.delete-user-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+}
+
+.delete-user-actions .btn-sm {
+    padding: 0.45rem 1.1rem;
+    font-size: 0.78rem;
+}
+
+.delete-user-actions .btn-sm:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }

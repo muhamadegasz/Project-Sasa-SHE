@@ -27,6 +27,7 @@ test('safety officer bisa membuat inspeksi baru lewat form sebagai DRAFT (pilih 
     await selectPlant(page, PLANT_SEARCH_PLACEHOLDER, 'Electrical dan Instrument');
 
     await page.getByPlaceholder('Contoh: Kabel terbuka').fill('E2E: kabel terkelupas di panel utama');
+    await page.locator('#kategoriInput').selectOption('Kelistrikan'); // kategori wajib dipilih
     await page.locator('#panel-form').getByRole('button', { name: 'Tambah' }).click();
     await expect(page.locator('#temuanListContainer')).toContainText('E2E: kabel terkelupas di panel utama');
 
@@ -55,6 +56,7 @@ test('identitas petugas yang dipakai adalah user yang sedang login, bukan input 
 
     await selectPlant(page, PLANT_SEARCH_PLACEHOLDER, 'UTILITY');
     await page.getByPlaceholder('Contoh: Kabel terbuka').fill('E2E: verifikasi identitas petugas');
+    await page.locator('#kategoriInput').selectOption('Kelistrikan'); // kategori wajib dipilih
     await page.locator('#panel-form').getByRole('button', { name: 'Tambah' }).click();
     await page.getByTestId('inspection-date').fill(new Date().toISOString().slice(0, 10));
     await page.getByRole('button', { name: 'Simpan Draft' }).click();
@@ -78,6 +80,7 @@ test('inspeksi tanpa plant dipilih ditolak dengan pesan validasi, tidak tersimpa
     await goToTab(page, 'Buat Inspeksi');
 
     await page.getByPlaceholder('Contoh: Kabel terbuka').fill('E2E: seharusnya ditolak');
+    await page.locator('#kategoriInput').selectOption('Kelistrikan'); // kategori wajib dipilih
     await page.locator('#panel-form').getByRole('button', { name: 'Tambah' }).click();
     await page.getByTestId('inspection-date').fill(new Date().toISOString().slice(0, 10));
 
@@ -94,6 +97,7 @@ test('foto sungguhan yang diunggah bisa dilihat kembali lewat lightbox (bukan pl
 
     await selectPlant(page, PLANT_SEARCH_PLACEHOLDER, 'Packing');
     await page.getByPlaceholder('Contoh: Kabel terbuka').fill('E2E: verifikasi upload foto sungguhan');
+    await page.locator('#kategoriInput').selectOption('Kelistrikan'); // kategori wajib dipilih
     await page.locator('#panel-form').getByRole('button', { name: 'Tambah' }).click();
     await page.getByTestId('inspection-date').fill(new Date().toISOString().slice(0, 10));
     await page.locator('#fotoDekat').setInputFiles(FIXTURE_JPEG);
@@ -139,6 +143,7 @@ test('kegagalan API (500) saat submit menampilkan pesan aman, bukan detail error
 
     await selectPlant(page, PLANT_SEARCH_PLACEHOLDER, 'Logistic');
     await page.getByPlaceholder('Contoh: Kabel terbuka').fill('E2E: simulasi kegagalan backend');
+    await page.locator('#kategoriInput').selectOption('Kelistrikan'); // kategori wajib dipilih
     await page.locator('#panel-form').getByRole('button', { name: 'Tambah' }).click();
     await page.getByTestId('inspection-date').fill(new Date().toISOString().slice(0, 10));
     await page.getByRole('button', { name: 'Simpan Draft' }).click();

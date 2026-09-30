@@ -26,6 +26,16 @@ export function canManageUsers(user) {
     return Boolean(user) && user.role === ROLE.ADMIN;
 }
 
+/**
+ * Konfirmasi hapus permanen di UI: Admin mengetik ulang username target —
+ * sama persis setelah di-trim (peka huruf besar/kecil, seperti username
+ * login). Hanya pengaman terhadap salah klik; aturan siapa yang boleh
+ * dihapus tetap di user-service.js remove() dan diperiksa ulang server.
+ */
+export function matchesUsernameConfirmation(typed, username) {
+    return typeof typed === 'string' && typeof username === 'string' && username !== '' && typed.trim() === username;
+}
+
 /** Status aktif dari isian: hanya boolean sungguhan — bukan 'false', 0, atau 'yes'. */
 export function checkActiveFlag(isActive) {
     if (typeof isActive !== 'boolean') return { error: 'INVALID' };
