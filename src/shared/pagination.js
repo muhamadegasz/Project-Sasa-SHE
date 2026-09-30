@@ -50,3 +50,20 @@ export function pageWindow(page, totalPages, size = 5) {
     const end = Math.min(totalPages, start + size - 1);
     return Array.from({ length: end - start + 1 }, (_, index) => start + index);
 }
+
+/**
+ * Satu halaman dari daftar yang SUDAH dimuat penuh di browser (tabel
+ * Penjadwalan & Perbaikan — datanya sudah diambil utuh untuk kalender,
+ * statistik, dan pencarian atas seluruh data). Bentuk `pagination` sama
+ * dengan respons server. Halaman di luar jangkauan dijepit ke halaman terakhir
+ * yang ada (mis. data berkurang setelah dihapus), minimal 1.
+ */
+export function paginate(items, page, limit = DEFAULT_PAGE_LIMIT) {
+    const total = items.length;
+    const totalPages = Math.ceil(total / limit);
+    const current = Math.min(Math.max(1, page), Math.max(1, totalPages));
+    return {
+        items: items.slice((current - 1) * limit, current * limit),
+        pagination: pageSummary(current, limit, total),
+    };
+}

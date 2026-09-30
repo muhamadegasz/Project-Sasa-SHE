@@ -25,6 +25,7 @@ Struktur `updateNotifBadge(count)` dipertahankan apa adanya sampai aturannya dit
 
 Yang **tidak diubah**: D-7 (generator jadwal) dan fakta bahwa `syncToGoogleSheets()` tidak
 benar-benar menghubungi Google Sheets — keduanya perilaku yang dirancang, bukan kerusakan.
+*(Pembaruan 2026-09-30: fitur Sync kemudian dihapus seluruhnya — lihat KNOWN-ISSUES.md D-5.)*
 
 **Alasan:** brief refactoring mencantumkan "Gallery/lightbox" sebagai fitur yang wajib tetap
 tersedia, padahal fitur itu saat ini mati total. Mempertahankan perilaku yang rusak bukanlah
@@ -77,6 +78,8 @@ sebagai teks `=1+1`, bukan dievaluasi sebagai formula.
 
 Berlaku untuk keempat jalur ekspor: `exportTemuanPerItem`, `exportAllTemuan`,
 `exportToExcel`, dan `syncToGoogleSheets`. Diuji lewat `VERIFICATION.md` item K-7.
+*(Pembaruan 2026-09-30: `syncToGoogleSheets` dihapus bersama fitur Sync — mitigasi tetap
+berlaku untuk tiga jalur ekspor yang tersisa; lihat KNOWN-ISSUES.md D-5.)*
 
 ---
 
@@ -710,7 +713,9 @@ tidak ada.
 
 ## K-16 — Phase 11: D-5 (label tombol Sync), D-6 (colspan), dan penghapusan dead code
 
-**Tanggal:** 2026-09-20 · **Status:** disetujui (bagian dari K-1, dieksekusi di Phase 11)
+**Tanggal:** 2026-09-20 · **Status:** disetujui (bagian dari K-1, dieksekusi di Phase 11) ·
+**Pembaruan 2026-09-30:** bagian D-5 di bawah kini catatan sejarah — fitur Sync dihapus
+seluruhnya (KNOWN-ISSUES.md D-5), termasuk uji label Sync pada Verifikasi.
 
 ### D-5: hanya bagian label yang diperbaiki
 

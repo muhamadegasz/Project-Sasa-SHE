@@ -11,7 +11,7 @@ import path from 'node:path';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { test, expect } from './support/test.js';
-import { loginViaUi, goToTab } from './support/ui.js';
+import { loginViaUi, allInspeksiRow } from './support/ui.js';
 import { apiLogin, createInspectionFixture } from './support/api.js';
 
 /**
@@ -97,8 +97,7 @@ test('PDF inspeksi selesai: tanda tangan ketiga tahap tertanam; watermark di pos
     page.on('requestfailed', (req) => { if (req.url().includes('company_logo.png')) logoFailures.push(req.url()); });
     page.on('response', (res) => { if (res.url().includes('company_logo.png') && res.status() >= 400) logoFailures.push(`${res.status()} ${res.url()}`); });
     await loginViaUi(page, 'arif');
-    await goToTab(page, 'Inspeksi');
-    const row = page.locator('#allInspeksiTable').getByRole('row', { name: inspection.id });
+    const row = await allInspeksiRow(page, inspection.id);
     const signatureRequests = [];
     page.on('request', (req) => { if (/\/approvals\/\d+\/signature$/.test(req.url())) signatureRequests.push(req.url()); });
     const [download] = await Promise.all([
@@ -148,12 +147,13 @@ test('PDF: persetujuan lama tanpa tanda tangan diberi keterangan; inspeksi yang 
     const inReview = await createInspectionFixture(arif);
 
     await loginViaUi(page, 'admin');
-    await goToTab(page, 'Inspeksi');
-    await expect(page.locator('#allInspeksiTable').getByRole('row', { name: inReview.id }).locator('.btn-pdf')).toBeDisabled();
+    // Belum selesai: tombol PDF tidak dirender sama sekali (bukan tombol nonaktif).
+    await expect((await allInspeksiRow(page, inReview.id)).locator('.btn-pdf, [data-action="cetakPDF"]')).toHaveCount(0);
 
+    const legacyRow = await allInspeksiRow(page, legacy.id);
     const [download] = await Promise.all([
         page.waitForEvent('download', { timeout: 30_000 }),
-        page.locator('#allInspeksiTable').getByRole('row', { name: legacy.id }).locator('[data-action="cetakPDF"]').click(),
+        legacyRow.locator('[data-action="cetakPDF"]').click(),
     ]);
     expectRenderedPdf(readFileSync(await download.path()));
     const unsignedStages = legacy.approvalHistory.filter((entry) => entry.decision === 'approved' && !entry.hasSignature).length;

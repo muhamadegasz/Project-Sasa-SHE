@@ -68,15 +68,34 @@ test('pemilik memajukan status tindakan open -> on-progress -> closed tanpa foto
     await arif.context.dispose();
 });
 
-test('Safety Officer lain melihat timeline tanpa tombol ubah status', async ({ page }) => {
+test('Safety Officer lain: tanpa tombol "Perbaikan & Progres" (Inspeksi Terbaru & halaman Perbaikan); server tetap menolak ubah status/tambah tindakan', async ({ page }) => {
     const arif = await apiLogin('arif');
     const inspection = await createInspectionFixture(arif);
+    const actionId = (await fetchInspection(arif, inspection.id)).perbaikan[0].id;
 
     await loginViaUi(page, 'tulus');
     await expect(page.locator('#statTotalInspeksi')).not.toHaveText('0', { timeout: 10_000 });
-    await openPerbaikan(page, inspection.id);
-    await expect(page.locator('#modalContent [data-testid="perbaikan-item"]').first()).toBeVisible();
-    await expect(page.locator('#modalContent').getByTestId('action-status-btn')).toHaveCount(0);
-    await expect(page.getByTestId('perbaikan-view-only')).toBeVisible();
-    await arif.context.dispose();
+    const recent = page.locator('#inspeksiTableBody').getByRole('row', { name: inspection.id });
+    await expect(recent.getByTestId('row-detail-btn')).toBeVisible();
+    await expect(recent.locator('[data-action="openPerbaikanModal"]')).toHaveCount(0);
+
+    await page.getByText('Perbaikan', { exact: true }).click();
+    await page.locator('#searchPerbaikanInput').fill(inspection.id);
+    const row = page.locator('#perbaikanTableBody tr', { has: page.locator('td:first-child', { hasText: inspection.id }) });
+    await expect(row).toHaveCount(1);
+    await expect(row.locator('[data-action="openDetailModal"]')).toBeVisible();
+    await expect(row.getByTestId('perbaikan-open-btn')).toHaveCount(0);
+
+    // Tampilan bukan otorisasi: kepemilikan tetap ditegakkan server.
+    const tulus = await apiLogin('tulus');
+    const put = await tulus.context.put(`/api/inspections/${inspection.id}/corrective-actions/${actionId}`, {
+        headers: { 'X-CSRF-Token': tulus.csrfToken }, data: { status: 'on-progress' },
+    });
+    expect(put.status()).toBe(403);
+    const post = await tulus.context.post(`/api/inspections/${inspection.id}/corrective-actions`, {
+        headers: { 'X-CSRF-Token': tulus.csrfToken }, multipart: { action: 'Bukan milik saya', status: 'open', pic: 'Tulus' },
+    });
+    expect(post.status()).toBe(403);
+    expect((await fetchInspection(arif, inspection.id)).perbaikan.map((action) => action.status)).toEqual(['open']);
+    for (const session of [arif, tulus]) await session.context.dispose();
 });

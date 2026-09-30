@@ -58,7 +58,11 @@ import {
     renderJadwalTable,
     bindRecentInspectionsSearch,
     loadRecentInspections,
-    renderAllInspeksiWithSearch,
+    bindAllInspectionsSearch,
+    loadAllInspections,
+    goToSchedulesPage,
+    goToPerbaikanPage,
+    perbaikanDataset,
     renderJadwalWithSearch,
     renderPerbaikanWithSearch,
 } from './presentation/views/tables.view.js';
@@ -921,11 +925,11 @@ async function saveInspeksi({ submit }) {
         if (!saved.ok) { showFormValidation(saved.reason); return; }
 
         const id = saved.data.inspection.id;
-        let message = editingInspection ? `✅ ${id} berhasil disimpan.` : `✅ Draft ${id} berhasil disimpan.`;
+        let message = `✅ Inspeksi ${id} berhasil disimpan.`;
         if (submit) {
             const submitted = await inspectionService.submit(id, user);
             if (!submitted.ok) {
-                resetInspeksiForm();
+                closeInspeksiForm();
                 await refreshAll();
                 showToast(`⚠️ ${id} tersimpan, tapi belum diajukan: ${pesanGagal(submitted.reason)}`);
                 return;
@@ -933,7 +937,7 @@ async function saveInspeksi({ submit }) {
             message = submittedMessage(id, submitted.data);
         }
 
-        resetInspeksiForm();
+        closeInspeksiForm();
         await refreshAll();
         showToast(message);
     } catch (error) {
@@ -994,6 +998,18 @@ function resetInspeksiForm() {
 }
 
 /**
+ * Selesai dengan form (tersimpan, diajukan, atau Batal): form dikosongkan lalu
+ * kembali ke daftar Inspeksi, bukan tetap di form "Buat Inspeksi Baru" —
+ * dulu form hanya di-reset di tempat dan tidak pernah kembali ke daftar.
+ * Pencarian & halaman daftar tetap (loadAllInspections mempertahankan halaman
+ * bila kata kuncinya sama).
+ */
+function closeInspeksiForm() {
+    resetInspeksiForm();
+    switchTab('inspeksi');
+}
+
+/**
  * Membuka draft / revisi milik sendiri di form (tombol "Edit"/"Revisi" di
  * tabel, atau "Revisi Inspeksi" di modal Detail).
  */
@@ -1045,7 +1061,7 @@ document.getElementById('submitAjukanInspeksi').addEventListener('click', (e) =>
     e.preventDefault();
     saveInspeksi({ submit: true });
 });
-document.getElementById('batalEditInspeksi').addEventListener('click', () => resetInspeksiForm());
+document.getElementById('batalEditInspeksi').addEventListener('click', () => closeInspeksiForm());
 
 /**
  * Phase 18: Admin menghapus inspeksi non-draft beserta temuan, tindakan
@@ -1217,36 +1233,8 @@ document.getElementById('exportAllTemuan').addEventListener('click', async () =>
     }
 });
 
-// ========================================================================
-// ========== SYNC ==========
-// ========================================================================
-
-async function syncToGoogleSheets(btn) {
-    try {
-        if (btn) {
-            btn.disabled = true;
-            btn.innerHTML = '<i class="fas fa-spinner fa-pulse"></i> Menyiapkan...';
-        }
-        showToast('🔄 Menyiapkan data...');
-        excelExporter.downloadInspectionsWorkbook(await inspectionRepository.getAll());
-        showToast('✅ File Excel siap! Upload ke Google Sheets.');
-    } catch (error) {
-        showToast(reportError('siapkan file Excel', error, '⚠️ Gagal menyiapkan file Excel. Coba ulangi beberapa saat lagi.'));
-    } finally {
-        if (btn) {
-            btn.disabled = false;
-            btn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> Sync';
-        }
-    }
-}
-
-// Tombol Sync di Inspeksi Terbaru dihapus (data sudah dari database/API; Export
-// XLSX tetap ada). Sync di Semua Data Inspeksi & Perbaikan masih memakai handler ini.
-document.querySelectorAll('#syncToSheets2, #syncToSheets3').forEach(btn => {
-    btn.addEventListener('click', function() {
-        syncToGoogleSheets(this);
-    });
-});
+// Fitur "Sync" (menyiapkan .xlsx untuk diunggah manual ke Google Sheets, peninggalan
+// era spreadsheet) dihapus seluruhnya: sumber data kini database. Export XLSX tetap ada.
 
 // ========================================================================
 // ========== INIT APP ==========
@@ -1270,26 +1258,31 @@ async function initApp() {
 
         initPlantSelect();
 
-        // Inspeksi Terbaru: berhalaman & dicari di server (bukan menyaring daftar penuh di browser).
+        // Inspeksi Terbaru & Semua Data Inspeksi: berhalaman & dicari di server
+        // (bukan menyaring daftar penuh di browser).
         bindRecentInspectionsSearch();
+        bindAllInspectionsSearch();
 
-        setupSearch('searchAllInspeksiInput', 'clearSearchAllInspeksi', 'searchAllInspeksiCount',
-            () => inspectionRepository.getAll(), renderAllInspeksiWithSearch, ['id', 'lokasi', 'keteranganLokasi', 'petugas',
-                'status'
-            ]);
+        // Penjadwalan & Perbaikan: dicari atas seluruh data di browser, lalu
+        // dibagi per halaman oleh tabelnya (tables.view.js).
+        const jadwalSearch = setupSearch('searchJadwalInput', 'clearSearchJadwal', 'searchJadwalCount',
+            // id (SCH-…) ikut dicari, sama seperti pencarian inspeksi.
+            () => scheduleRepository.getAll(), renderJadwalWithSearch, ['id', 'plantName', 'officer', 'status']);
 
-        setupSearch('searchJadwalInput', 'clearSearchJadwal', 'searchJadwalCount',
-            () => scheduleRepository.getAll(), renderJadwalWithSearch, ['plantName', 'officer', 'status']);
-
+        // Dataset Perbaikan (hanya inspeksi bertindakan perbaikan) — penghitung "x dari y"
+        // dan pagination sama-sama menghitung data yang memang tampil di tabel.
         setupSearch('searchPerbaikanInput', 'clearSearchPerbaikan', 'searchPerbaikanCount',
-            () => inspectionRepository.getAll(), renderPerbaikanWithSearch, ['id', 'lokasi', 'petugas', 'dueDate']);
+            async () => perbaikanDataset(await inspectionRepository.getAll()), renderPerbaikanWithSearch, ['id', 'lokasi', 'petugas', 'dueDate']);
 
         setInterval(() => {
             // Refresh berkala di latar belakang — kegagalan (mis. sesi
             // kedaluwarsa saat tab dibiarkan idle) sudah ditangani
             // notifySessionExpired() di session.js; di sini cukup jangan
             // sampai jadi unhandled rejection yang mencemari console.
-            Promise.all([renderJadwalTable(), renderCalendar()]).catch(() => {});
+            // Tabel jadwal dimuat ulang LEWAT pencariannya: dulu renderJadwalTable()
+            // tanpa kata kunci menampilkan semua jadwal tiap 10 detik walau kotak
+            // pencarian terisi (dan kini juga akan mengembalikan halaman ke 1).
+            Promise.all([jadwalSearch ? jadwalSearch.refresh() : renderJadwalTable(), renderCalendar()]).catch(() => {});
         }, 10000);
     }
 
@@ -1344,6 +1337,12 @@ registerAction('switchTab', (el) => switchTab(el.dataset.panel));
 registerAction('openJadwalModal', () => openJadwalModal());
 registerAction('recentInspectionsPage', (el) => loadRecentInspections({ page: Number(el.dataset.page) })
     .catch((error) => { reportError('muat halaman inspeksi terbaru', error, ''); }));
+registerAction('allInspectionsPage', (el) => loadAllInspections({ page: Number(el.dataset.page) })
+    .catch((error) => { reportError('muat halaman semua data inspeksi', error, ''); }));
+registerAction('schedulesPage', (el) => goToSchedulesPage(Number(el.dataset.page))
+    .catch((error) => { reportError('muat halaman jadwal', error, ''); }));
+registerAction('perbaikanPage', (el) => goToPerbaikanPage(Number(el.dataset.page))
+    .catch((error) => { reportError('muat halaman perbaikan', error, ''); }));
 registerAction('setRealisasiHariIni', () => setRealisasiHariIni());
 registerAction('changeCalendarMonth', (el) => changeCalendarMonth(Number(el.dataset.delta)));
 registerAction('showDayEvents', (el) => showDayEvents(el.dataset.date));

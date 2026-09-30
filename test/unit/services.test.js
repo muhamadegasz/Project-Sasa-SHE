@@ -35,14 +35,7 @@ globalThis.XLSX = {
         json_to_sheet: (rows) => { capturedSheets.push(rows); return { rows }; },
         book_append_sheet: (workbook, sheet, name) => { workbook.sheets.push({ name, sheet }); },
     },
-    write: () => new Uint8Array([1, 2, 3]),
     writeFile: () => {},
-};
-globalThis.Blob = class {};
-globalThis.URL = { createObjectURL: () => 'blob:fake', revokeObjectURL: () => {} };
-globalThis.document = {
-    createElement: () => ({ click: () => {}, href: '', download: '' }),
-    body: { appendChild: () => {}, removeChild: () => {} },
 };
 const excel = await import('../../src/infrastructure/excel-exporter.js');
 

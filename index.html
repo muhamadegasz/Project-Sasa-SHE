@@ -170,7 +170,9 @@
                 <div class="table-wrap" style="margin-bottom:1.5rem;">
                     <div class="table-header">
                         <h4><i class="fas fa-calendar-alt"></i> Jadwal Inspeksi Mingguan</h4>
-                        <button class="btn-sm primary" data-action="switchTab" data-panel="jadwal"><i class="fas fa-arrow-right"></i> Kelola</button>
+                        <!-- Hanya role yang boleh mengelola jadwal (schedule-rules.js SCHEDULE_EDITOR_ROLES);
+                             peninjau memakai tab Penjadwalan untuk melihat. -->
+                        <button class="btn-sm primary" data-action="switchTab" data-panel="jadwal" data-roles="safety_officer,admin" data-testid="calendar-manage-btn" hidden><i class="fas fa-arrow-right"></i> Kelola</button>
                     </div>
                     <div class="calendar-container" id="calendarContainer"></div>
                 </div>
@@ -243,11 +245,14 @@
                                 <th>Tanggal Realisasi</th>
                                 <th>Safety Officer</th>
                                 <th>Status</th>
-                                <th>Aksi</th>
+                                <!-- Hanya untuk role yang boleh mengelola jadwal (renderJadwalTable). -->
+                                <th id="jadwalAksiHeader" hidden>Aksi</th>
                             </tr>
                         </thead>
                         <tbody id="jadwalTableBody"></tbody>
                     </table>
+                    <!-- Berhalaman di browser setelah pencarian atas seluruh jadwal (tables.view.js). -->
+                    <nav class="table-pagination" id="jadwalPagination" aria-label="Halaman Penjadwalan"></nav>
                 </div>
             </div>
 
@@ -263,7 +268,6 @@
                                 <button class="clear-search" id="clearSearchAllInspeksi">&times;</button>
                                 <span class="search-count" id="searchAllInspeksiCount"></span>
                             </div>
-                            <button class="btn-sync" id="syncToSheets2"><i class="fas fa-cloud-upload-alt"></i> Sync</button>
                             <button class="btn-export" id="exportAllTemuan"><i class="fas fa-file-excel"></i> Export Semua Temuan</button>
                         </div>
                     </div>
@@ -283,6 +287,8 @@
                         </thead>
                         <tbody id="allInspeksiTable"></tbody>
                     </table>
+                    <!-- Berhalaman & dicari di server, sama dengan Inspeksi Terbaru (tables.view.js). -->
+                    <nav class="table-pagination" id="allInspeksiPagination" aria-label="Halaman Semua Data Inspeksi"></nav>
                 </div>
             </div>
 
@@ -298,7 +304,6 @@
                                 <button class="clear-search" id="clearSearchPerbaikan">&times;</button>
                                 <span class="search-count" id="searchPerbaikanCount"></span>
                             </div>
-                            <button class="btn-sync" id="syncToSheets3"><i class="fas fa-cloud-upload-alt"></i> Sync</button>
                         </div>
                     </div>
                     <table>
@@ -316,6 +321,8 @@
                         </thead>
                         <tbody id="perbaikanTableBody"></tbody>
                     </table>
+                    <!-- Berhalaman di browser setelah pencarian atas seluruh data (tables.view.js). -->
+                    <nav class="table-pagination" id="perbaikanPagination" aria-label="Halaman Perbaikan"></nav>
                 </div>
             </div>
 
@@ -405,11 +412,14 @@
 
                         <!-- Phase 17.3B: menyimpan tidak lagi otomatis mengajukan. "Simpan Draft"
                              menyimpan (draft / revisi) tanpa mengubah status; "Simpan & Ajukan"
-                             menyimpan lalu mengajukan ke tahap pengesahan. -->
-                        <div style="display:flex;gap:0.6rem;flex-wrap:wrap;">
-                            <button type="submit" class="btn-submit" id="submitInspeksi"><i class="fas fa-save"></i> Simpan Draft</button>
+                             menyimpan lalu mengajukan ke tahap pengesahan.
+                             Hierarki: satu primary (Simpan & Ajukan / Ajukan Ulang), secondary
+                             (Simpan Draft), tertiary (Batal, hanya saat mengubah). "Simpan Draft"
+                             tetap satu-satunya type="submit" (Enter di isian = simpan draft). -->
+                        <div class="form-actions">
                             <button type="button" class="btn-submit" id="submitAjukanInspeksi"><i class="fas fa-paper-plane"></i> Simpan &amp; Ajukan</button>
-                            <button type="button" class="btn-sm" id="batalEditInspeksi" style="display:none;"><i class="fas fa-times"></i> Batal Edit</button>
+                            <button type="submit" class="btn-submit btn-secondary" id="submitInspeksi"><i class="fas fa-save"></i> Simpan Draft</button>
+                            <button type="button" class="btn-text" id="batalEditInspeksi" style="display:none;">Batal</button>
                         </div>
                     </form>
                 </div>

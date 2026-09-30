@@ -198,8 +198,10 @@ export async function getAllVisibleTo(user) {
 
 /**
  * Pencarian daftar berhalaman — field yang sama dengan pencarian tabel
- * sebelumnya (di browser): id tampilan, plant, petugas, status (nilai &
- * labelnya), due date dalam format tampilan D/M/YYYY. Tidak peka huruf
+ * sebelumnya (di browser): id tampilan, plant, keterangan lokasi, petugas,
+ * status (nilai & labelnya), due date dalam format tampilan D/M/YYYY.
+ * Keterangan lokasi ikut sejak tabel Semua Data Inspeksi juga berhalaman di
+ * server (dulu dicari di browser termasuk kolom itu). Tidak peka huruf
  * besar/kecil; % dan _ dari isian dicari apa adanya, bukan wildcard.
  */
 function searchWhere(search) {
@@ -210,12 +212,13 @@ function searchWhere(search) {
     return {
         sql: ` AND (LOWER(CONCAT('INS-', IF(i.id < 1000, LPAD(i.id, 3, '0'), i.id))) LIKE ?
                 OR LOWER(p.name) LIKE ?
+                OR LOWER(COALESCE(i.keterangan_lokasi, '')) LIKE ?
                 OR LOWER(i.petugas) LIKE ?
                 OR LOWER(i.status) LIKE ?
                 OR LOWER(${statusLabel}) LIKE ?
                 OR DATE_FORMAT(i.due_date, '%e/%c/%Y') LIKE ?)`,
         params: [
-            pattern, pattern, pattern, pattern,
+            pattern, pattern, pattern, pattern, pattern,
             ...statuses.flatMap((status) => [status, formatInspectionStatus(status)]), pattern,
             pattern,
         ],

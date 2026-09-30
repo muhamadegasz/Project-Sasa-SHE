@@ -31,6 +31,22 @@ export async function goToTab(page, tabName) {
 }
 
 /**
+ * Baris sebuah inspeksi di tabel Semua Data Inspeksi (tab Inspeksi). Tabel itu
+ * berhalaman & dicari di server, jadi inspeksinya DICARI dulu — baris yang
+ * dituju selalu ada di halaman tampil, berapa pun data uji lain yang dibuat
+ * worker paralel. Menunggu "1 hasil" supaya tabel sudah dirender ulang dari
+ * hasil pencarian (bukan baris dari daftar sebelumnya).
+ */
+export async function allInspeksiRow(page, inspectionId) {
+    await goToTab(page, 'Inspeksi');
+    await page.locator('#searchAllInspeksiInput').fill(inspectionId);
+    await expect(page.locator('#searchAllInspeksiCount')).toHaveText('1 hasil');
+    const row = page.locator('#allInspeksiTable').getByRole('row', { name: inspectionId });
+    await expect(row).toHaveCount(1);
+    return row;
+}
+
+/**
  * Cari dan pilih sebuah plant lewat kotak pencarian ber-placeholder tertentu.
  *
  * `renderDropdown()` (plant-select.js) menandai dropdown "show" SEKETIKA saat

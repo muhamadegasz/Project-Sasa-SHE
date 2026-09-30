@@ -9,15 +9,28 @@
 
 import { API } from './support/env.js';
 import { test, expect } from './support/test.js';
-import { loginViaUi, goToTab } from './support/ui.js';
+import { loginViaUi, allInspeksiRow } from './support/ui.js';
 import { apiLogin, approveViaApi, createInspectionFixture } from './support/api.js';
 
 
+/** Tombol Pengesahan (stempel) di tab Inspeksi — hanya ada untuk peninjau yang berwenang atas tahap berjalan. */
 async function openApprovalModalFor(page, inspectionId) {
-    await goToTab(page, 'Inspeksi');
-    const row = page.locator('#allInspeksiTable').getByRole('row', { name: inspectionId });
+    const row = await allInspeksiRow(page, inspectionId);
     await row.getByTestId('row-approve-btn').click();
     await expect(page.locator('#approvalModal')).toHaveClass(/show/);
+}
+
+/**
+ * Pengguna yang bukan peninjau tahap berjalan tidak mendapat tombol Pengesahan
+ * (tidak lagi modal "Status Persetujuan" untuk semua); status & riwayatnya
+ * dibaca di Detail ("Lihat"), yang hanya-baca untuk siapa pun.
+ */
+async function openReadOnlyStatusFor(page, inspectionId) {
+    const row = await allInspeksiRow(page, inspectionId);
+    await expect(row.getByTestId('row-approve-btn')).toHaveCount(0);
+    await row.getByTestId('row-detail-btn').click();
+    await expect(page.locator('#detailModal')).toHaveClass(/show/);
+    return page.locator('#detailContent');
 }
 
 /**
@@ -102,7 +115,7 @@ test('koordinator K3L bisa menolak dengan alasan — inspeksi perlu revisi, taha
     expect(body.approvalHistory[0]).toMatchObject({ stage: 'koordinator_k3l', decision: 'rejected', rejectionReason: 'Foto area kurang jelas' });
 });
 
-test('Safety Officer: modal status hanya-baca (tanpa Setujui/Tolak) dengan riwayat; persetujuan/penolakan langsung tetap ditolak server', async ({ page }) => {
+test('Safety Officer: tanpa tombol Pengesahan; status & riwayat hanya-baca di Detail (tanpa Setujui/Tolak); persetujuan/penolakan langsung tetap ditolak server', async ({ page }) => {
     const arif = await apiLogin('arif');
     const dewi = await apiLogin('dewi');
     const inspection = await createInspectionFixture(arif);
@@ -116,22 +129,13 @@ test('Safety Officer: modal status hanya-baca (tanpa Setujui/Tolak) dengan riway
 
     // arif (safety_officer) — pembuat inspeksi, BUKAN tahap pengesahan.
     await loginViaUi(page, 'arif');
-    await openApprovalModalFor(page, inspection.id);
-    const content = page.locator('#approvalContent');
-    await expect(page.locator('#approvalModalTitle')).toHaveText(/Status Persetujuan Inspeksi/);
+    const content = await openReadOnlyStatusFor(page, inspection.id);
     await expect(content.getByRole('button', { name: /Setujui|Tolak/ })).toHaveCount(0);
     await expect(content.locator('[data-action="approveStage"], [data-action="rejectStage"]')).toHaveCount(0);
-    await expect(content.getByTestId('stage-readonly')).toHaveCount(1);
     await expect(content).toContainText('Menunggu persetujuan Koordinator K3L Bagian');
     await expect(content.getByTestId('stage-attempt')).toHaveCount(1);
     await expect(content.getByTestId('stage-attempt')).toContainText('Alasan: Lengkapi foto area');
     await page.keyboard.press('Escape');
-
-    // Modal detail memakai tampilan tahap yang sama: juga tanpa tombol aksi.
-    await goToTab(page, 'Dashboard');
-    await page.locator('#inspeksiTableBody').getByRole('row', { name: inspection.id }).getByTestId('row-detail-btn').click();
-    await expect(page.locator('#detailModal')).toHaveClass(/show/);
-    await expect(page.locator('#detailModal').locator('[data-action="approveStage"], [data-action="rejectStage"]')).toHaveCount(0);
 
     // Pemeriksaan di browser bukan otorisasi: kirim langsung ke server dengan
     // sesi arif sendiri — server yang harus menolak, tanpa perubahan apa pun.
@@ -154,7 +158,7 @@ test('Safety Officer: modal status hanya-baca (tanpa Setujui/Tolak) dengan riway
     await dewi.context.dispose();
 });
 
-test('peninjau berwenang: Koordinator plant-nya melihat "Pengesahan Inspeksi" dengan Setujui DAN Tolak di tahapnya saja; Admin hanya-baca', async ({ page }) => {
+test('peninjau berwenang: Koordinator plant-nya melihat "Pengesahan Inspeksi" dengan Setujui DAN Tolak di tahapnya saja; Admin tanpa tombol Pengesahan, Detail hanya-baca', async ({ page }) => {
     const arif = await apiLogin('arif');
     const inspection = await createInspectionFixture(arif);
 
@@ -175,10 +179,9 @@ test('peninjau berwenang: Koordinator plant-nya melihat "Pengesahan Inspeksi" de
     await page.getByRole('button', { name: 'Logout' }).click();
     await expect(page.getByTestId('user-name')).not.toBeVisible();
     await loginViaUi(page, 'admin');
-    await openApprovalModalFor(page, inspection.id);
-    await expect(page.locator('#approvalModalTitle')).toHaveText(/Status Persetujuan Inspeksi/);
-    await expect(content.locator('[data-action="approveStage"], [data-action="rejectStage"]')).toHaveCount(0);
-    await expect(content.getByTestId('stage-readonly')).toHaveCount(1);
+    const detail = await openReadOnlyStatusFor(page, inspection.id);
+    await expect(detail.locator('[data-action="approveStage"], [data-action="rejectStage"]')).toHaveCount(0);
+    await expect(detail).toContainText('Menunggu persetujuan Koordinator K3L Bagian');
     await arif.context.dispose();
 });
 
@@ -189,11 +192,9 @@ test('Koordinator yang sudah menyetujui tetap melihat inspeksinya di tahap Manaj
     await approveViaApi(dewi, inspection.id, 'koordinator_k3l');
 
     await loginViaUi(page, 'dewi');
-    await openApprovalModalFor(page, inspection.id); // baris masih ada di daftar dewi
-    const content = page.locator('#approvalContent');
-    await expect(page.locator('#approvalModalTitle')).toHaveText(/Status Persetujuan Inspeksi/);
+    // Baris masih ada di daftar dewi (riwayat persetujuannya), tanpa tombol Pengesahan.
+    const content = await openReadOnlyStatusFor(page, inspection.id);
     await expect(content.locator('[data-action="approveStage"], [data-action="rejectStage"]')).toHaveCount(0);
-    await expect(content.getByTestId('stage-readonly')).toHaveCount(1);
     await expect(content).toContainText('Menunggu persetujuan Manajer Bagian');
 
     // Tahap miliknya tampil sebagai keputusan yang sudah diambil, dengan tanda tangannya (lewat API terotorisasi).

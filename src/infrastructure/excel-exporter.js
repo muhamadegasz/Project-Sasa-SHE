@@ -145,34 +145,3 @@ export function exportInspections(inspections, filename) {
     XLSX.writeFile(buildWorkbook(rows, 'Inspeksi'), filename);
     return { count: rows.length, filename };
 }
-
-/**
- * Menyiapkan berkas ringkasan inspeksi untuk diunggah ke Google Sheets.
- *
- * Meski namanya "sync", tidak ada sambungan ke Google Sheets — berkas .xlsx
- * dibuat lalu diunduh, dan pengguna yang mengunggahnya sendiri. Perilaku ini
- * memang begitu sejak awal; lihat docs/KNOWN-ISSUES.md D-5.
- *
- * Memakai Blob dan elemen <a> sementara, bukan XLSX.writeFile, supaya nama
- * berkasnya dapat ditentukan sendiri. Menyentuh DOM di sini dapat diterima:
- * ini lapisan infrastruktur, dan mengunduh berkas memang butuh DOM.
- *
- * @returns {{count: number, filename: string}}
- */
-export function downloadInspectionsWorkbook(inspections) {
-    const rows = inspections.map(toInspectionRow);
-    const workbook = buildWorkbook(rows, 'Inspeksi K3');
-    const output = XLSX.write(workbook, { bookType: 'xlsx', type: 'array' });
-    const blob = new Blob([output], { type: 'application/octet-stream' });
-    const filename = `Inspeksi_K3_${todayStamp()}.xlsx`;
-
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(link.href);
-
-    return { count: rows.length, filename };
-}

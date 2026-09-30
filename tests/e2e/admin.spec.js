@@ -7,7 +7,7 @@
  */
 
 import { test, expect } from './support/test.js';
-import { loginViaUi, goToTab } from './support/ui.js';
+import { loginViaUi, goToTab, allInspeksiRow } from './support/ui.js';
 import { apiLogin, createInspectionFixture } from './support/api.js';
 
 const uniqueUsername = (prefix) => `${prefix}${Date.now().toString(36)}${Math.floor(Math.random() * 1000)}`;
@@ -141,9 +141,7 @@ test('Admin menghapus inspeksi non-draft lewat UI (konfirmasi eksplisit); Safety
 
     // Safety Officer pemilik: tidak ada tombol hapus Admin, tidak ada tombol hapus jadwal.
     await loginViaUi(page, 'arif');
-    await goToTab(page, 'Inspeksi');
-    const officerRow = page.locator('#allInspeksiTable').getByRole('row', { name: inspection.id });
-    await expect(officerRow).toBeVisible();
+    const officerRow = await allInspeksiRow(page, inspection.id);
     await expect(officerRow.getByTestId('row-admin-delete-btn')).toHaveCount(0);
     await goToTab(page, 'Penjadwalan');
     await expect(page.locator('#jadwalTableBody tr').first()).toBeVisible();
@@ -156,8 +154,7 @@ test('Admin menghapus inspeksi non-draft lewat UI (konfirmasi eksplisit); Safety
     await loginViaUi(page, 'admin');
     await goToTab(page, 'Penjadwalan');
     await expect(page.locator('#jadwalTableBody').getByTestId('schedule-delete-btn').first()).toBeVisible();
-    await goToTab(page, 'Inspeksi');
-    const adminRow = page.locator('#allInspeksiTable').getByRole('row', { name: inspection.id });
+    const adminRow = await allInspeksiRow(page, inspection.id);
     const deleteButton = adminRow.getByTestId('row-admin-delete-btn');
 
     page.once('dialog', (dialog) => dialog.dismiss());

@@ -38,6 +38,16 @@ async function expectToast(page, { variant, title, description }) {
     await expect(toast, 'tanpa emoji sebagai ikon utama').not.toContainText(/[✅⚠❌⛔🎉]/u);
 }
 
+/**
+ * Tabel Penjadwalan berhalaman (10 per halaman, urut id — jadwal baru di
+ * halaman terakhir): jadwal yang dituju DICARI dulu (id / plant ikut dicari
+ * atas seluruh jadwal), lalu menunggu tabel dirender ulang dari hasilnya.
+ */
+async function searchSchedules(page, query) {
+    await page.locator('#searchJadwalInput').fill(query);
+    await expect(page.locator('#searchJadwalCount')).toHaveText(/^\d+ dari \d+$/);
+}
+
 async function openAddScheduleModal(page) {
     await goToTab(page, 'Penjadwalan');
     await page.getByTestId('schedule-add-btn').click();
@@ -61,6 +71,7 @@ test('Safety Officer menambah jadwal lewat UI: toast berhasil, modal tertutup, t
 
     const stored = await fetchSchedule(arif, id);
     expect(stored).toMatchObject({ plantId: 9, minggu: 3, periode: 2, tahun: 2026, tanggalJadwal: '2026-10-12', tanggalRealisasi: null });
+    await searchSchedules(page, id);
     await expect(page.locator(`[data-action="editJadwal"][data-id="${id}"]`)).toBeVisible();
     await arif.context.dispose();
 });
@@ -71,6 +82,7 @@ test('Edit jadwal: Tanggal Realisasi tersimpan — tetap ada setelah reload, sta
 
     await loginViaUi(page, 'arif');
     await goToTab(page, 'Penjadwalan');
+    await searchSchedules(page, schedule.id);
     await page.locator(`[data-action="editJadwal"][data-id="${schedule.id}"]`).click();
     await expect(page.locator('#jadwalModal')).toHaveClass(/show/);
     await expect(page.locator('#jadwalTanggal')).toHaveValue('2026-10-05');
@@ -83,6 +95,7 @@ test('Edit jadwal: Tanggal Realisasi tersimpan — tetap ada setelah reload, sta
     await page.reload();
     await expect(page.getByTestId('user-name')).toBeVisible();
     await goToTab(page, 'Penjadwalan');
+    await searchSchedules(page, schedule.id);
     const row = page.locator('#jadwalTableBody tr', { has: page.locator(`[data-id="${schedule.id}"]`) });
     await expect(row).toContainText('Selesai');
     await row.locator('[data-action="editJadwal"]').click();
@@ -90,15 +103,19 @@ test('Edit jadwal: Tanggal Realisasi tersimpan — tetap ada setelah reload, sta
     await arif.context.dispose();
 });
 
-test('role tanpa izin (Manajer): tidak ada tombol Tambah/Edit; server tetap menolak 403', async ({ page }) => {
+test('role tanpa izin (Manajer): tidak ada tombol Tambah/Edit dan tanpa kolom Aksi; server tetap menolak 403', async ({ page }) => {
     const arif = await apiLogin('arif');
     const schedule = await createScheduleFixture(arif);
 
     await loginViaUi(page, 'andi');
     await goToTab(page, 'Penjadwalan');
+    await searchSchedules(page, 'Logistic');
     await expect(page.locator('#jadwalTableBody')).toContainText('Logistic');
     await expect(page.getByTestId('schedule-add-btn')).toBeHidden();
     await expect(page.locator('#jadwalTableBody [data-action="editJadwal"]')).toHaveCount(0);
+    // Hanya melihat: kolom Aksi tidak dirender sama sekali (bukan kolom berisi "-").
+    await expect(page.locator('#panel-jadwal thead th:visible')).toHaveText(['Plant', 'Periode', 'Minggu', 'Tanggal Jadwal', 'Tanggal Realisasi', 'Safety Officer', 'Status']);
+    await expect(page.locator('#jadwalTableBody tr').first().locator('td')).toHaveCount(7);
 
     // Pemeriksaan di browser bukan otorisasi: kirim langsung dengan sesi andi.
     const { csrfToken } = await (await page.request.get(`${API}/auth/me`)).json();

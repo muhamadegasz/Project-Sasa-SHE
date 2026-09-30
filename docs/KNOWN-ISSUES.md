@@ -136,8 +136,8 @@ Selama refactoring: struktur `updateNotifBadge(count)` dipertahankan apa adanya.
 | | |
 |---|---|
 | Severity | LOW |
-| Status | **SELESAI (sebagian)** — Phase 11 |
-| Lokasi | `src/legacy-app.js:588` (`syncToGoogleSheets`), `src/legacy-app.js:602` (relabel di blok `finally`) |
+| Status | **SELESAI — fitur dihapus** (2026-09-30). Phase 11 memperbaiki label (butir 1); butir 2 tuntas karena fitur Sync kemudian dihapus seluruhnya — lihat "Pembaruan" di bawah. |
+| Lokasi | *Historis, kode sudah dihapus:* `src/legacy-app.js:588` (`syncToGoogleSheets`), `src/legacy-app.js:602` (relabel di blok `finally`) |
 
 Dua hal berbeda:
 
@@ -151,6 +151,16 @@ Dua hal berbeda:
 
 Diuji lewat `test-cosmetic.mjs`: klik tombol Sync, pastikan label akhir persis "Sync" (bukan
 "Sync Google Sheets") dan tombol tidak lagi `disabled`.
+
+**Pembaruan 2026-09-30 — fitur Sync dihapus.** Sumber data aplikasi kini database, sehingga
+"Sync" (menyiapkan `.xlsx` untuk diunggah manual ke Google Sheets) hanya menggandakan Export
+XLSX. Tombol Sync (panel Inspeksi & Perbaikan), fungsi `syncToGoogleSheets()`, helper
+`downloadInspectionsWorkbook()` di `src/infrastructure/excel-exporter.js`, dan CSS `.btn-sync`
+dihapus. Keputusan produk yang ditunda pada butir 2 dengan demikian selesai: fiturnya tidak
+diganti nama, melainkan ditiadakan. Export XLSX (Dashboard), Export Semua Temuan (panel
+Inspeksi), dan ekspor temuan per inspeksi tetap ada. Uji label di atas tidak berlaku lagi; E2E
+kini memastikan tombol Sync tidak ada (`recent-inspections.spec.js`, `perbaikan.spec.js`,
+`role-ux.spec.js`).
 
 ---
 

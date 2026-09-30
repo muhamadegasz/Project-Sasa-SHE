@@ -93,42 +93,6 @@
     transform: scale(1.02);
 }
 
-.btn-pdf:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    transform: none;
-}
-
-.btn-sync {
-    background: #1a73e8;
-    color: white;
-    border: none;
-    padding: 0.4rem 1.2rem;
-    border-radius: 60px;
-    font-weight: 600;
-    font-size: 0.8rem;
-    cursor: pointer;
-    transition: 0.15s;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.btn-sync:hover {
-    background: #1557b0;
-    transform: scale(1.02);
-}
-
-.btn-sync i {
-    color: white;
-}
-
-.btn-sync:disabled {
-    opacity: 0.6;
-    cursor: not-allowed;
-    transform: none;
-}
-
 .search-wrapper {
     display: flex;
     align-items: center;
@@ -405,8 +369,8 @@ td {
     white-space: nowrap;
 }
 
-/* Tabel Perbaikan: tombol Lihat & Perbaikan tetap sebaris. */
-.perbaikan-aksi {
+/* Kolom Aksi tabel Perbaikan & Penjadwalan: tombol tetap sebaris. */
+.cell-actions {
     white-space: nowrap;
 }
 

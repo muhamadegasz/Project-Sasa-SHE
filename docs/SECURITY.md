@@ -110,9 +110,10 @@ diawali `=`, `+`, `-`, atau `@` dengan menyisipkan tanda kutip tunggal di depann
 memperlakukannya sebagai penanda teks dan tidak menampilkannya, sehingga `=1+1` tersimpan
 sebagai `'=1+1` dan tampil sebagai teks.
 
-Berlaku otomatis untuk **keempat** jalur ekspor, karena semuanya kini melewati satu fungsi
-pembangun workbook: ekspor temuan per inspeksi, ekspor semua temuan, ekspor ringkasan
-inspeksi, dan tombol Sync.
+Berlaku otomatis untuk **ketiga** jalur ekspor, karena semuanya melewati satu fungsi
+pembangun workbook: ekspor temuan per inspeksi, ekspor semua temuan, dan ekspor ringkasan
+inspeksi. (Saat Phase 6 ada jalur keempat, tombol Sync; jalur itu dihapus bersama fitur Sync
+pada 2026-09-30 — KNOWN-ISSUES.md D-5.)
 
 Angka tidak disentuh — hanya string yang dapat memicu formula. Tanda `=` di tengah nilai juga
 tidak disentuh, karena Excel hanya mengevaluasi yang berada di awal sel.
@@ -192,4 +193,4 @@ diterima secara sadar dengan dasar berikut:
 - saat ada fitur yang MEMBACA/mengimpor berkas spreadsheet — upgrade harus dilakukan lebih dulu;
 - pada fase pemeliharaan berikutnya: ganti URL ke rilis 0.20.2 atau lebih baru dari
   `cdn.sheetjs.com`, perbarui hash `integrity` di `index.html`, lalu uji ulang seluruh jalur ekspor
-  (ekspor per inspeksi, semua temuan, ringkasan, dan tombol Sync).
+  (ekspor per inspeksi, semua temuan, dan ringkasan).

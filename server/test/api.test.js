@@ -728,12 +728,19 @@ test('pagination mengikuti cakupan visibilitas setiap role: gabungan semua halam
     assert.equal((await fetchPage(dewi, { page: 1, limit: 100, q: plant9 })).pagination.total, 0, 'mencari id-nya pun tidak menemukannya');
 });
 
-test('pagination + pencarian di server: id, plant, petugas, status (nilai & label), due date; total = hasil saring daftar penuh; % dan _ literal', async () => {
+test('pagination + pencarian di server: id, plant, keterangan lokasi, petugas, status (nilai & label), due date; total = hasil saring daftar penuh; % dan _ literal', async () => {
+    const arif = await loginAs('arif');
+    const marker = `Gudang Timur ${Date.now()}`;
+    const described = await createInspection(arif, { plantId: 1, keteranganLokasi: marker });
     const admin = await loginAs('admin');
     const full = (await admin.agent.get('/api/inspections')).body;
     const { formatInspectionStatus } = await import('../../src/shared/labels.js');
-    const matches = (item, q) => [item.id, item.lokasi, item.petugas, item.status, formatInspectionStatus(item.status), item.dueDate]
+    const matches = (item, q) => [item.id, item.lokasi, item.keteranganLokasi, item.petugas, item.status, formatInspectionStatus(item.status), item.dueDate]
         .some((value) => String(value ?? '').toLowerCase().includes(q.toLowerCase()));
+
+    // Keterangan lokasi (sejak tabel Semua Data Inspeksi dicari di server).
+    const byDescription = await fetchPage(admin, { page: 1, q: marker.toLowerCase() });
+    assert.deepEqual(byDescription.items.map((item) => item.id), [described.id], 'keterangan lokasi ikut dicari');
 
     for (const q of ['Logistic', 'logistic', 'Tulus', 'INS-00', 'in_review', 'Dalam Review', 'perlu revisi', full[0].dueDate]) {
         const expected = full.filter((item) => matches(item, q)).map((item) => item.id);

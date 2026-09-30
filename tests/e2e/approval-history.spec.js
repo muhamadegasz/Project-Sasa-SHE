@@ -6,8 +6,8 @@
  * lewat API sungguhan; tampilan hanya membaca riwayat append-only.
  */
 
-import { test, expect } from './support/test.js';
-import { loginViaUi, goToTab } from './support/ui.js';
+import { test, expect, newIsolatedPage } from './support/test.js';
+import { loginViaUi, allInspeksiRow } from './support/ui.js';
 import { apiLogin, approveViaApi, createInspectionFixture } from './support/api.js';
 
 async function rejectViaApi(session, inspectionId, stageId, reason) {
@@ -41,7 +41,7 @@ async function expectKoordinatorHistory(container, reason) {
     await expect(stageBlock(container, 'Manajer Bagian').getByTestId('stage-history')).toHaveCount(0);
 }
 
-test('penolakan lalu persetujuan ulang: kedua attempt tampil urut dengan alasan, di modal pengesahan dan detail', async ({ page }) => {
+test('penolakan lalu persetujuan ulang: kedua attempt tampil urut dengan alasan — di modal pengesahan peninjau dan di Detail pemilik', async ({ page, browser }) => {
     const arif = await apiLogin('arif');
     const dewi = await apiLogin('dewi');
     const reason = `Foto kurang jelas ${Date.now()}`;
@@ -49,30 +49,25 @@ test('penolakan lalu persetujuan ulang: kedua attempt tampil urut dengan alasan,
     await rejectViaApi(dewi, inspection.id, 'koordinator_k3l', reason);
     await resubmitViaApi(arif, inspection.id);
 
-    await loginViaUi(page, 'arif');
-    await goToTab(page, 'Inspeksi');
-    const row = page.locator('#allInspeksiTable').getByRole('row', { name: inspection.id });
-
-    // Diajukan ulang, menunggu Koordinator lagi: penolakan sebelumnya tetap terlihat.
-    await row.getByTestId('row-approve-btn').click();
-    const approvalContent = page.locator('#approvalContent');
-    const waiting = stageBlock(approvalContent, 'Koordinator K3L Bagian');
+    // Diajukan ulang, menunggu Koordinator lagi: di modal pengesahan Koordinator,
+    // penolakan sebelumnya tetap terlihat, ditutup attempt berikutnya yang menunggu.
+    const reviewerPage = await newIsolatedPage(browser);
+    await loginViaUi(reviewerPage, 'dewi');
+    const reviewerRow = await allInspeksiRow(reviewerPage, inspection.id);
+    await reviewerRow.getByTestId('row-approve-btn').click();
+    const waiting = stageBlock(reviewerPage.locator('#approvalContent'), 'Koordinator K3L Bagian');
     await expect(waiting.locator('.stage-status')).toContainText('Menunggu Persetujuan');
     await expect(waiting.getByTestId('stage-attempt')).toHaveCount(1);
     await expect(waiting.getByTestId('stage-attempt')).toContainText(`Alasan: ${reason}`);
-    await page.keyboard.press('Escape');
-    await expect(page.locator('#approvalModal')).not.toHaveClass(/show/);
+    await expect(waiting.getByTestId('stage-attempt-pending')).toHaveText(/Percobaan 2\s+Menunggu persetujuan Koordinator K3L Bagian/);
+    await reviewerPage.close();
 
+    // Setelah disetujui: pemilik membaca riwayat lengkap di Detail (tanpa tombol Pengesahan).
     await approveViaApi(dewi, inspection.id, 'koordinator_k3l');
-    await page.reload();
-    await expect(page.getByTestId('user-name')).toBeVisible();
-    await goToTab(page, 'Inspeksi');
-    await page.locator('#allInspeksiTable').getByRole('row', { name: inspection.id }).getByTestId('row-approve-btn').click();
-    await expectKoordinatorHistory(approvalContent, reason);
-    await page.keyboard.press('Escape');
-
-    await goToTab(page, 'Dashboard');
-    await page.locator('#inspeksiTableBody').getByRole('row', { name: inspection.id }).getByTestId('row-detail-btn').click();
+    await loginViaUi(page, 'arif');
+    const row = await allInspeksiRow(page, inspection.id);
+    await expect(row.getByTestId('row-approve-btn')).toHaveCount(0);
+    await row.getByTestId('row-detail-btn').click();
     await expect(page.locator('#detailModal')).toHaveClass(/show/);
     await expectKoordinatorHistory(page.locator('#detailModal'), reason);
 

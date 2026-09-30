@@ -4,8 +4,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
-    DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT, checkPageRequest, pageRange, pageSummary, pageWindow,
+    DEFAULT_PAGE_LIMIT, MAX_PAGE_LIMIT, checkPageRequest, pageRange, pageSummary, pageWindow, paginate,
 } from '../../src/shared/pagination.js';
+import { renderPaginationNav } from '../../src/presentation/components/pagination-nav.js';
 
 test('checkPageRequest: page wajib bilangan bulat >= 1; limit bawaan 10, maks 100; q di-trim', () => {
     assert.deepEqual(checkPageRequest({ page: '2' }), { value: { page: 2, limit: DEFAULT_PAGE_LIMIT, search: '' } });
@@ -34,4 +35,31 @@ test('pageWindow: paling banyak 5 nomor di sekitar halaman aktif, tidak keluar b
     assert.deepEqual(pageWindow(5, 20), [3, 4, 5, 6, 7]);
     assert.deepEqual(pageWindow(2, 3), [1, 2, 3]);
     assert.deepEqual(pageWindow(1, 0), []);
+});
+
+test('paginate: daftar yang sudah dimuat penuh -> satu halaman; bentuk pagination sama dengan server; halaman dijepit', () => {
+    const items = Array.from({ length: 23 }, (_, index) => index + 1);
+    assert.deepEqual(paginate(items, 1), { items: items.slice(0, 10), pagination: { page: 1, limit: DEFAULT_PAGE_LIMIT, total: 23, totalPages: 3 } });
+    assert.deepEqual(paginate(items, 3).items, [21, 22, 23]);
+    assert.equal(paginate(items, 9).pagination.page, 3, 'di luar jangkauan -> halaman terakhir');
+    assert.equal(paginate(items, 0).pagination.page, 1);
+    assert.deepEqual(paginate([], 4), { items: [], pagination: { page: 1, limit: DEFAULT_PAGE_LIMIT, total: 0, totalPages: 0 } });
+});
+
+test('renderPaginationNav: pola Inspeksi Terbaru — ringkasan (teks panjang hanya untuk layar lebar), nomor halaman, ringkas N / M, aksi per tabel', () => {
+    const nav = { innerHTML: '' };
+    renderPaginationNav(nav, pageSummary(2, 10, 57), { action: 'schedulesPage', noun: 'jadwal', testId: 'jadwal-summary' });
+    const text = (html) => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    const summary = nav.innerHTML.match(/<p class="pagination-summary" data-testid="jadwal-summary">([\s\S]*?)<\/p>/)[1];
+    assert.equal(text(summary), 'Menampilkan 11–20 dari 57 jadwal');
+    assert.equal(text(summary.replace(/<span class="pagination-summary-long">[^<]*<\/span>/g, '')), '11–20 dari 57', 'layar sempit');
+    assert.deepEqual([...nav.innerHTML.matchAll(/data-action="(\w+)" data-page="(\d+)"/g)].map((m) => [m[1], Number(m[2])]),
+        [['schedulesPage', 1], ['schedulesPage', 1], ['schedulesPage', 3], ['schedulesPage', 4], ['schedulesPage', 5], ['schedulesPage', 3]]);
+    assert.match(nav.innerHTML, /<span class="pagination-btn current" aria-current="page">2<\/span>/);
+    assert.match(nav.innerHTML, /<span class="pagination-compact">2 \/ 6<\/span>/);
+
+    renderPaginationNav(nav, pageSummary(1, 10, 4), { action: 'x', noun: 'inspeksi' });
+    assert.ok(!nav.innerHTML.includes('pagination-controls'), 'satu halaman: ringkasan saja');
+    renderPaginationNav(nav, pageSummary(1, 10, 0), { action: 'x', noun: 'inspeksi' });
+    assert.equal(nav.innerHTML, '', 'tanpa data: kosong');
 });

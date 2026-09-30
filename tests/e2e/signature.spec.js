@@ -10,7 +10,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { API } from './support/env.js';
 import { test, expect, newIsolatedPage } from './support/test.js';
-import { loginViaUi, goToTab } from './support/ui.js';
+import { loginViaUi, goToTab, allInspeksiRow } from './support/ui.js';
 import { apiLogin, approveViaApi, createInspectionFixture } from './support/api.js';
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures');
@@ -18,8 +18,7 @@ const PNG_BYTES = readFileSync(path.join(FIXTURES, 'signature.png'));
 const JPEG_BYTES = readFileSync(path.join(FIXTURES, 'signature.jpg'));
 
 async function openSignatureModalFor(page, inspectionId) {
-    await goToTab(page, 'Inspeksi');
-    await page.locator('#allInspeksiTable').getByRole('row', { name: inspectionId }).getByTestId('row-approve-btn').click();
+    await (await allInspeksiRow(page, inspectionId)).getByTestId('row-approve-btn').click();
     await expect(page.locator('#approvalModal')).toHaveClass(/show/);
     await page.locator('#approvalContent').getByRole('button', { name: /Setujui/ }).click();
     const modal = page.locator('#signatureModal');
@@ -189,10 +188,9 @@ test('Ketua menyetujui lewat UI -> COMPLETED tanpa aksi Setujui lagi; tanda tang
     await ownerPage.keyboard.press('Escape');
     await expect(ownerPage.locator('#detailModal')).not.toHaveClass(/show/);
 
-    // Selesai: tidak ada lagi tombol Setujui.
-    await goToTab(ownerPage, 'Inspeksi');
-    await ownerPage.locator('#allInspeksiTable').getByRole('row', { name: inspection.id }).getByTestId('row-approve-btn').click();
-    await expect(ownerPage.locator('#approvalContent').getByRole('button', { name: /Setujui/ })).toHaveCount(0);
+    // Selesai: tidak ada lagi tombol Pengesahan/Setujui.
+    const ownerRow = await allInspeksiRow(ownerPage, inspection.id);
+    await expect(ownerRow.getByTestId('row-approve-btn')).toHaveCount(0);
     await ownerPage.close();
 
     // Koordinator plant lain: URL yang sama -> 404.

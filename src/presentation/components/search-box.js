@@ -15,12 +15,14 @@ import { filterByFields } from '../../services/search-service.js';
  * @param {() => Promise<object[]>} dataGetter sejak Phase 14: repository async (fetch ke backend)
  * @param {(items: object[], query: string) => void|Promise<void>} renderFunction
  * @param {string[]} searchFields
+ * @returns {{ refresh: () => Promise<void> } | undefined} refresh: muat ulang
+ *   data & tampilkan lagi dengan kata kunci yang SEDANG terisi (refresh berkala)
  */
 export function setupSearch(inputId, clearId, countId, dataGetter, renderFunction, searchFields) {
     const input = document.getElementById(inputId);
     const clearBtn = document.getElementById(clearId);
     const countEl = document.getElementById(countId);
-    if (!input) return;
+    if (!input) return undefined;
 
     async function doSearch() {
         const query = input.value.trim().toLowerCase();
@@ -43,4 +45,5 @@ export function setupSearch(inputId, clearId, countId, dataGetter, renderFunctio
         input.focus();
     });
     doSearch();
+    return { refresh: doSearch };
 }

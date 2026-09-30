@@ -223,4 +223,46 @@
     cursor: not-allowed;
     transform: none;
 }
+/* Aksi form inspeksi (index.html .form-actions): satu primary (.btn-submit —
+   Simpan & Ajukan / Ajukan Ulang), secondary (.btn-secondary — Simpan Draft),
+   tertiary (.btn-text — Batal). Hanya modifier; .btn-submit lain tidak berubah. */
+.form-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.6rem;
+}
+
+.btn-submit.btn-secondary {
+    background: #ffffff;
+    color: #b31b1b;
+    border: 1px solid #d9a3a3;
+    box-shadow: none;
+}
+
+.btn-submit.btn-secondary:hover {
+    background: #fbf3f3;
+    transform: none;
+}
+
+.btn-text {
+    margin-top: 0.5rem;
+    padding: 0.8rem 1rem;
+    border: 0;
+    background: none;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #8a6a6a;
+    cursor: pointer;
+}
+
+.btn-text:hover {
+    color: #3a2a2a;
+    text-decoration: underline;
+}
+
+.btn-text:focus-visible {
+    outline: 2px solid #d42a2a;
+    outline-offset: 2px;
+}
 
