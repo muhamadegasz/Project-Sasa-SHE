@@ -153,7 +153,7 @@ test('ditolak Manajer: pemilik melihat alasan + Revisi (tabel & Detail), merevis
 
     await approveViaApi(andi, inspection.id, 'manajer');
     const approved = await fetchAs(arif, inspection.id);
-    expect(approved.currentApprovalStage).toBe('ketua_p2k3');
+    expect(approved.currentApprovalStage).toBe('manajer_she');
     expect(historyOf(approved)).toEqual([
         ['koordinator_k3l', 1, 'approved', null], ['manajer', 1, 'rejected', reason], ['manajer', 2, 'approved', null],
     ]);
@@ -161,10 +161,12 @@ test('ditolak Manajer: pemilik melihat alasan + Revisi (tabel & Detail), merevis
 });
 
 test('ditolak Ketua: pengguna selain pemilik hanya melihat informasi revisi (tanpa tombol Revisi); diajukan ulang -> kembali ke Ketua, bukan Koordinator', async ({ page }) => {
+    // Tujuh login lewat UI (empat peninjau/Admin, dua di luar cakupan, Ketua): melewati batas 30 dtk saat paralel.
+    test.slow();
     const arif = await apiLogin('arif');
     const reason = `Lengkapi tanggal pemasangan APAR ${Date.now()}`;
     const inspection = await createInspectionFixture(arif);
-    for (const [username, stage] of [['dewi', 'koordinator_k3l'], ['andi', 'manajer']]) {
+    for (const [username, stage] of [['dewi', 'koordinator_k3l'], ['andi', 'manajer'], ['sari', 'manajer_she']]) {
         const session = await apiLogin(username);
         await approveViaApi(session, inspection.id, stage);
         await session.context.dispose();
@@ -172,8 +174,8 @@ test('ditolak Ketua: pengguna selain pemilik hanya melihat informasi revisi (tan
     const hadi = await apiLogin('hadi');
     await rejectViaApi(hadi, inspection.id, 'ketua_p2k3', reason);
 
-    // Peninjau yang pernah menyetujui (Koordinator plant-nya, Manajer) dan Admin tetap melihat — hanya informasi.
-    for (const username of ['dewi', 'andi', 'admin']) {
+    // Peninjau yang pernah menyetujui (Koordinator plant-nya, Manajer Bagian, Manajer SHE) dan Admin tetap melihat — hanya informasi.
+    for (const username of ['dewi', 'andi', 'sari', 'admin']) {
         await loginViaUi(page, username);
         const row = await recentRow(page, inspection.id);
         await expect(row.getByTestId('recent-status'), username).toHaveText('Perlu Revisi');
@@ -201,7 +203,7 @@ test('ditolak Ketua: pengguna selain pemilik hanya melihat informasi revisi (tan
     const resubmitted = await fetchAs(arif, inspection.id);
     expect([resubmitted.status, resubmitted.currentApprovalStage]).toEqual(['in_review', 'ketua_p2k3']);
     expect(historyOf(resubmitted).map(([stage, attempt, decision]) => [stage, attempt, decision])).toEqual([
-        ['koordinator_k3l', 1, 'approved'], ['manajer', 1, 'approved'], ['ketua_p2k3', 1, 'rejected'],
+        ['koordinator_k3l', 1, 'approved'], ['manajer', 1, 'approved'], ['manajer_she', 1, 'approved'], ['ketua_p2k3', 1, 'rejected'],
     ]);
 
     await loginViaUi(page, 'hadi');

@@ -4,13 +4,16 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { ROLE } from '../../src/config/constants.js';
-import { formatActionStatus, formatInspectionStatusDetail, formatRepairStatus, formatRole, formatUserRole } from '../../src/shared/labels.js';
+import {
+    formatActionStatus, formatApprovalStatus, formatInspectionStatusDetail, formatRepairStatus, formatRole, formatUserRole,
+} from '../../src/shared/labels.js';
 import { REPAIR_STATUS } from '../../src/domain/statuses.js';
 
 test('label role: istilah yang sama untuk header dan pengelolaan akun', () => {
     assert.equal(formatRole(ROLE.SAFETY_OFFICER), 'Safety Officer');
     assert.equal(formatRole(ROLE.KOORDINATOR_K3L), 'Koordinator K3L');
     assert.equal(formatRole(ROLE.MANAJER_BAGIAN), 'Manajer Bagian');
+    assert.equal(formatRole(ROLE.MANAJER_SHE), 'Manajer SHE');
     assert.equal(formatRole(ROLE.KETUA_P2K3), 'Ketua P2K3');
     assert.equal(formatRole(ROLE.ADMIN), 'Administrator');
 });
@@ -18,7 +21,7 @@ test('label role: istilah yang sama untuk header dan pengelolaan akun', () => {
 test('role di header: plant hanya untuk Koordinator K3L', () => {
     assert.equal(formatUserRole({ role: ROLE.KOORDINATOR_K3L, plantId: 8 }, 'IT'), 'Koordinator K3L · IT');
     assert.equal(formatUserRole({ role: ROLE.KOORDINATOR_K3L, plantId: 8 }), 'Koordinator K3L', 'nama plant belum/tidak tersedia');
-    for (const role of [ROLE.SAFETY_OFFICER, ROLE.MANAJER_BAGIAN, ROLE.KETUA_P2K3, ROLE.ADMIN]) {
+    for (const role of [ROLE.SAFETY_OFFICER, ROLE.MANAJER_BAGIAN, ROLE.MANAJER_SHE, ROLE.KETUA_P2K3, ROLE.ADMIN]) {
         assert.equal(formatUserRole({ role, plantId: 8 }, 'IT'), formatRole(role), `${role} tidak menampilkan plant`);
     }
 });
@@ -26,6 +29,7 @@ test('role di header: plant hanya untuk Koordinator K3L', () => {
 test('keterangan status: Dalam Review menyebut tahap yang ditunggu (currentApprovalStage); Perlu Revisi menunggu Safety Officer; lainnya kosong', () => {
     assert.equal(formatInspectionStatusDetail({ status: 'in_review', currentApprovalStage: 'koordinator_k3l' }), 'Menunggu Koordinator K3L Bagian');
     assert.equal(formatInspectionStatusDetail({ status: 'in_review', currentApprovalStage: 'manajer' }), 'Menunggu Manajer Bagian');
+    assert.equal(formatInspectionStatusDetail({ status: 'in_review', currentApprovalStage: 'manajer_she' }), 'Menunggu Manajer SHE');
     assert.equal(formatInspectionStatusDetail({ status: 'in_review', currentApprovalStage: 'ketua_p2k3' }), 'Menunggu Ketua P2K3');
     assert.equal(formatInspectionStatusDetail({ status: 'revision_required', currentApprovalStage: 'manajer' }), 'Menunggu revisi Safety Officer');
     assert.equal(formatInspectionStatusDetail({ status: 'completed', currentApprovalStage: null }), '');
@@ -39,4 +43,15 @@ test('status perbaikan inspeksi: kosakata yang sama dengan status tindakan — M
     assert.equal(formatRepairStatus(REPAIR_STATUS.PERBAIKAN), 'Progres');
     assert.equal(formatRepairStatus(REPAIR_STATUS.SELESAI), 'Selesai');
     assert.deepEqual(['open', 'on-progress', 'closed'].map(formatActionStatus), ['Menunggu', 'Progres', 'Selesai']);
+});
+
+test('ringkasan pengesahan "x/y": empat tahap untuk inspeksi baru; inspeksi lama yang tidak melalui Manajer SHE tetap "x/3"', () => {
+    const approved = (stage) => ({ stage, attempt: 1, decision: 'approved' });
+    assert.equal(formatApprovalStatus({ status: 'in_review', currentApprovalStage: 'manajer_she', approvalHistory: [approved('koordinator_k3l'), approved('manajer')] }), '2/4');
+    assert.equal(formatApprovalStatus({ status: 'completed', currentApprovalStage: null,
+        approvalHistory: ['koordinator_k3l', 'manajer', 'manajer_she', 'ketua_p2k3'].map(approved) }), '(4/4)');
+    assert.equal(formatApprovalStatus({ status: 'completed', currentApprovalStage: null,
+        approvalHistory: ['koordinator_k3l', 'manajer', 'ketua_p2k3'].map(approved) }), '(3/3)', 'selesai sebelum Manajer SHE ada');
+    assert.equal(formatApprovalStatus({ status: 'in_review', currentApprovalStage: 'ketua_p2k3',
+        approvalHistory: ['koordinator_k3l', 'manajer'].map(approved) }), '2/3', 'sudah di Ketua sebelum Manajer SHE ada');
 });

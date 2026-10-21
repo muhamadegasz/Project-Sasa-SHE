@@ -101,9 +101,13 @@ export async function openDetailModal(id) {
                         <span class="label"><i class="fas fa-user"></i> Safety Officer</span>
                         <span class="value">${escapeHtml(item.petugas)}</span>
                     </div>
-                    <div class="detail-item" style="grid-column:1/3;">
+                    <div class="detail-item">
                         <span class="label"><i class="fas fa-clock"></i> Due Date ke Plant</span>
                         <span class="value">${escapeHtml(item.dueDate || '-')} ${overdueBadge}</span>
+                    </div>
+                    <div class="detail-item" data-testid="detail-schedule">
+                        <span class="label"><i class="fas fa-calendar-check"></i> Jadwal Inspeksi</span>
+                        <span class="value">${escapeHtml(item.scheduleId || 'Tanpa jadwal')}</span>
                     </div>
                 </div>
 
@@ -121,7 +125,7 @@ export async function openDetailModal(id) {
                 </div>
 
                 <div class="detail-section">
-                    <div class="section-title"><i class="fas fa-stamp"></i> Pengesahan (${totalStages()} Tahap)</div>
+                    <div class="section-title"><i class="fas fa-stamp"></i> Pengesahan (${totalStages(item)} Tahap)</div>
                     ${renderApprovalStages(item, undefined, { readOnly: true })}
                 </div>
             </div>

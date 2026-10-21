@@ -149,7 +149,7 @@ test('kanvas: kosong/ketukan ditolak; Hapus; ganti cara membuang data lama; core
     expect(approveRequests[0].headers()['content-type']).toMatch(/^multipart\/form-data; boundary=/);
 
     const saved = await fetchInspection(arif, inspection.id);
-    expect(saved.currentApprovalStage).toBe('ketua_p2k3');
+    expect(saved.currentApprovalStage).toBe('manajer_she');
     expect(saved.approvalHistory.map((entry) => [entry.stage, entry.signatureMethod])).toEqual([
         ['koordinator_k3l', 'upload'], ['manajer', 'canvas'],
     ]);
@@ -159,11 +159,39 @@ test('kanvas: kosong/ketukan ditolak; Hapus; ganti cara membuang data lama; core
     expect([...stored.bytes.subarray(0, 8)]).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 });
 
+test('Manajer SHE (tahap ke-3 dari 4) menyetujui lewat UI setelah Manajer Bagian -> inspeksi pindah ke Ketua P2K3; Ketua belum bisa memutuskan sebelumnya', async ({ page }) => {
+    const arif = await apiLogin('arif');
+    const inspection = await createInspectionFixture(arif);
+    await approveViaApi(await apiLogin('dewi'), inspection.id, 'koordinator_k3l');
+    await approveViaApi(await apiLogin('andi'), inspection.id, 'manajer');
+    expect((await fetchInspection(arif, inspection.id)).currentApprovalStage).toBe('manajer_she');
+
+    // Ketua belum melihat inspeksi ini (tahapnya belum tiba).
+    const hadi = await apiLogin('hadi');
+    expect((await hadi.context.get(`/api/inspections/${inspection.id}`)).status()).toBe(404);
+
+    await loginViaUi(page, 'sari');
+    await expect(page.getByTestId('user-role')).toHaveText('Manajer SHE');
+    const modal = await openSignatureModalFor(page, inspection.id);
+    await modal.getByRole('radio', { name: 'Upload Tanda Tangan' }).check();
+    await page.locator('#signatureFile').setInputFiles({ name: 'she.png', mimeType: 'image/png', buffer: PNG_BYTES });
+    await modal.getByRole('button', { name: 'Setujui' }).click();
+    await expect(page.locator('#toastMessage')).toContainText('menyetujui inspeksi');
+
+    const saved = await fetchInspection(arif, inspection.id);
+    expect([saved.status, saved.currentApprovalStage]).toEqual(['in_review', 'ketua_p2k3']);
+    expect(saved.approvalHistory.map((entry) => [entry.stage, entry.reviewerName])).toEqual([
+        ['koordinator_k3l', 'Dewi'], ['manajer', 'Andi'], ['manajer_she', 'Sari'],
+    ]);
+    expect((await hadi.context.get(`/api/inspections/${inspection.id}`)).status()).toBe(200);
+});
+
 test('Ketua menyetujui lewat UI -> COMPLETED tanpa aksi Setujui lagi; tanda tangan tampil di riwayat lewat API terotorisasi; plant lain tidak bisa mengambilnya', async ({ page, browser }) => {
     const arif = await apiLogin('arif');
     const inspection = await createInspectionFixture(arif);
     await approveViaApi(await apiLogin('dewi'), inspection.id, 'koordinator_k3l');
     await approveViaApi(await apiLogin('andi'), inspection.id, 'manajer', 'canvas');
+    await approveViaApi(await apiLogin('sari'), inspection.id, 'manajer_she');
 
     await loginViaUi(page, 'hadi');
     const modal = await openSignatureModalFor(page, inspection.id);
@@ -173,13 +201,13 @@ test('Ketua menyetujui lewat UI -> COMPLETED tanpa aksi Setujui lagi; tanda tang
     await expect(page.locator('#toastMessage')).toContainText('Semua tahap pengesahan telah disetujui');
     expect((await fetchInspection(arif, inspection.id)).status).toBe('completed');
 
-    // Pemilik membuka detail: tiga gambar tanda tangan, dari endpoint API (bukan /uploads), benar-benar termuat.
+    // Pemilik membuka detail: empat gambar tanda tangan, dari endpoint API (bukan /uploads), benar-benar termuat.
     const ownerPage = await newIsolatedPage(browser);
     await loginViaUi(ownerPage, 'arif');
     await goToTab(ownerPage, 'Dashboard');
     await ownerPage.locator('#inspeksiTableBody').getByRole('row', { name: inspection.id }).getByTestId('row-detail-btn').click();
     const signatures = ownerPage.locator('#detailModal').getByTestId('stage-signature').locator('img:not(.signature-watermark)');
-    await expect(signatures).toHaveCount(3);
+    await expect(signatures).toHaveCount(4);
     for (const img of await signatures.all()) {
         await expect(img).toHaveAttribute('src', new RegExp(`/api/inspections/${inspection.id}/approvals/\\d+/signature$`));
         await expect.poll(() => img.evaluate((node) => node.complete && node.naturalWidth)).toBeGreaterThan(0);

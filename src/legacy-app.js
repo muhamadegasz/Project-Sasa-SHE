@@ -26,7 +26,7 @@ import { findStage, isFullyApproved } from './domain/approval-rules.js';
 import { canApprove, canEdit, canRevise } from './domain/inspection-policy.js';
 import { isAwaitingStage } from './domain/workflow-rules.js';
 import { INSPECTION_STATUS } from './domain/statuses.js';
-import { localDateToIso } from './shared/date.js';
+import { formatDate, localDateToIso } from './shared/date.js';
 import { formatActionStatus, formatRole, formatUserRole } from './shared/labels.js';
 import * as scheduleRules from './domain/schedule-rules.js';
 import { matchesUsernameConfirmation } from './domain/user-rules.js';
@@ -181,7 +181,18 @@ const PESAN_GAGAL = {
     FINDING_OTHER_CATEGORY_REQUIRED: '⚠️ Kategori "Lainnya" wajib dijelaskan — isi kategori lainnya',
     FINDING_OTHER_CATEGORY_INVALID: '⚠️ Kategori lainnya harus berupa teks',
     FINDING_OTHER_CATEGORY_TOO_LONG: '⚠️ Kategori lainnya maksimal 100 karakter',
-    OFFICER_REQUIRED: '⚠️ Safety Officer wajib diisi!',
+    OFFICER_REQUIRED: '⚠️ Safety Officer wajib dipilih!',
+    // Migrasi 008: jadwal <-> laporan inspeksi.
+    OFFICER_INVALID: '⚠️ Safety Officer harus akun Safety Officer yang aktif',
+    SCHEDULE_REALIZED: '🔒 Jadwal sudah Terlaksana — tidak bisa diubah atau dihapus',
+    SCHEDULE_LINKED: '🔒 Jadwal sudah tertaut laporan inspeksi yang diajukan — tidak bisa dihapus',
+    SCHEDULE_REQUIRED: '⚠️ Pilih jadwal inspeksi terlebih dahulu — laporan inspeksi harus berasal dari jadwal Anda',
+    SCHEDULE_NOT_FOUND: '⚠️ Jadwal tidak ditemukan — pilih ulang jadwal',
+    SCHEDULE_NOT_ASSIGNED: '⛔ Jadwal ini bukan jadwal Anda — pilih jadwal yang ditugaskan kepada Anda',
+    SCHEDULE_PLANT_MISMATCH: '⚠️ Plant inspeksi harus sama dengan plant jadwal',
+    SCHEDULE_ALREADY_LINKED: '⚠️ Jadwal ini sudah dipakai laporan inspeksi lain — pilih jadwal lain',
+    SCHEDULE_ALREADY_REALIZED: '⚠️ Jadwal ini sudah Terlaksana — pilih jadwal lain',
+    SCHEDULE_UNAVAILABLE: '⚠️ Jadwal berubah sebelum laporan diajukan — tidak ada yang diajukan. Muat ulang lalu pilih jadwal lagi',
     YEAR_REQUIRED: '⚠️ Tahun wajib diisi!',
     DATE_REQUIRED: '⚠️ Tanggal Jadwal wajib diisi!',
     // Phase 18: pengelolaan akun (user-service.js).
@@ -467,6 +478,7 @@ function switchTab(tabName) {
     const panel = document.getElementById(`panel-${tabName}`);
     if (panel) panel.classList.add('active');
     if (tabName === 'admin') loadAdminPanel();
+    if (tabName === 'form') loadScheduleOptions().catch((error) => reportError('muat jadwal untuk form inspeksi', error, ''));
     setTimeout(() => {
         const activePanel = document.querySelector('.panel.active');
         if (activePanel) {
@@ -681,10 +693,22 @@ function exportToExcel(data, filename = 'Data_Inspeksi_K3.xlsx') {
 // ========== JADWAL FUNCTIONS ==========
 // ========================================================================
 
-function setRealisasiHariIni() {
-    const today = new Date().toISOString().split('T')[0];
-    document.getElementById('jadwalRealisasi').value = today;
-    showToast('📅 Tanggal realisasi diisi hari ini');
+/**
+ * Pilihan petugas jadwal: akun Safety Officer aktif (migrasi 008). Jadwal yang
+ * diubah hanya terpilih otomatis bila memang ditugaskan ke akun itu (id DAN
+ * nama — jadwal lama menyimpan id pembuatnya, lihat schedule-rules.js
+ * isAssignedTo); jadwal baru: akun sendiri bila Safety Officer.
+ */
+async function fillScheduleOfficers(schedule) {
+    const select = document.getElementById('jadwalPetugas');
+    const officers = await scheduleRepository.listAssignableOfficers();
+    select.replaceChildren(new Option('— Pilih Safety Officer —', ''),
+        ...officers.map((officer) => new Option(officer.displayName, String(officer.id))));
+    const user = getCurrentUser();
+    const preselected = schedule
+        ? officers.find((officer) => scheduleRules.isAssignedTo(schedule, officer.id, officer.displayName))
+        : officers.find((officer) => user && Number(officer.id) === Number(user.id));
+    select.value = preselected ? String(preselected.id) : '';
 }
 
 async function openJadwalModal(data = null) {
@@ -701,7 +725,6 @@ async function openJadwalModal(data = null) {
         document.getElementById('jadwalPeriode').value = data.periode || 1;
         document.getElementById('jadwalTahun').value = data.tahun || currentYear;
         document.getElementById('jadwalTanggal').value = data.tanggalJadwal || '';
-        document.getElementById('jadwalPetugas').value = data.officer || '';
         document.getElementById('jadwalRealisasi').value = data.tanggalRealisasi || '';
         document.getElementById('jadwalMinggu').value = data.minggu || 1;
     } else {
@@ -710,9 +733,15 @@ async function openJadwalModal(data = null) {
         document.getElementById('jadwalPeriode').value = '1';
         document.getElementById('jadwalTahun').value = currentYear;
         document.getElementById('jadwalTanggal').value = todayISO;
-        document.getElementById('jadwalPetugas').value = getRandomOfficer();
         document.getElementById('jadwalRealisasi').value = '';
         document.getElementById('jadwalMinggu').value = '1';
+    }
+    try {
+        await fillScheduleOfficers(data);
+    } catch (error) {
+        if (error instanceof ApiError && error.status === 401) return;
+        showToast(reportError('muat daftar Safety Officer', error, '⚠️ Daftar Safety Officer gagal dimuat. Coba ulangi beberapa saat lagi.'));
+        return;
     }
     openModal('jadwalModal');
 }
@@ -725,7 +754,8 @@ async function editJadwal(id) {
 async function hapusJadwal(id) {
     if (!confirm(`Hapus jadwal ${id}?`)) return;
 
-    await scheduleService.remove(id);
+    const result = await scheduleService.remove(id);
+    if (!result.ok) { showToast(pesanGagal(result.reason)); return; }
     await refreshAll();
     showToast(`🗑️ Jadwal ${id} dihapus`);
 }
@@ -741,8 +771,8 @@ document.getElementById('submitJadwal').addEventListener('click', async function
             periode: parseInt(document.getElementById('jadwalPeriode').value),
             tahun: parseInt(document.getElementById('jadwalTahun').value),
             tanggalJadwal: document.getElementById('jadwalTanggal').value,
-            officer: document.getElementById('jadwalPetugas').value,
-            tanggalRealisasi: document.getElementById('jadwalRealisasi').value,
+            // Akun petugas; nama & tanggal realisasi tidak dikirim (dari akun / dari sistem).
+            officerUserId: document.getElementById('jadwalPetugas').value,
             minggu: parseInt(document.getElementById('jadwalMinggu').value),
         });
         if (!result.ok) { showToast(pesanGagal(result.reason)); return; }
@@ -926,13 +956,64 @@ for (const id of ['temuanInput', 'kategoriLainnyaInput']) {
 // (status tidak berubah); "Simpan & Ajukan" menyimpan lalu mengajukan lewat
 // endpoint submit — server yang menentukan status dan tahapnya.
 
-/** Inspeksi yang sedang diubah lewat form ({ id }), atau null saat membuat baru. */
+/** Inspeksi yang sedang diubah lewat form ({ id, scheduleId, revising }), atau null saat membuat baru. */
 let editingInspection = null;
 let savingInspeksi = false;
+/** Jadwal di pilihan "Jadwal Inspeksi" saat ini (id -> jadwal), untuk mengikuti plant-nya. */
+let formSchedules = new Map();
+
+const scheduleLabel = (schedule) => `${schedule.id} · ${schedule.plantName} · Periode ${schedule.periode} Minggu ${schedule.minggu} · ${formatDate(schedule.tanggalJadwal)}`;
+
+/**
+ * Mengisi pilihan "Jadwal Inspeksi" (migrasi 008, wajib): jadwal milik Safety
+ * Officer login yang belum Terlaksana dan belum tertaut laporan, ditambah
+ * jadwal yang sudah tertaut ke inspeksi yang sedang diubah. Revisi: jadwal
+ * terkunci (tautan aslinya dipertahankan server; inspeksi lama tanpa jadwal
+ * tetap boleh direvisi). Server memeriksa ulang semuanya.
+ */
+async function loadScheduleOptions() {
+    const select = document.getElementById('formJadwal');
+    const current = editingInspection ? editingInspection.scheduleId : null;
+    let schedules = [];
+    try {
+        schedules = await scheduleRepository.getAll();
+    } catch (error) {
+        if (!(error instanceof ApiError && error.status === 401)) reportError('muat jadwal untuk form inspeksi', error, '');
+    }
+    const options = scheduleRules.eligibleSchedulesFor(schedules, getCurrentUser());
+    const linked = current && !options.some((schedule) => schedule.id === current) && schedules.find((schedule) => schedule.id === current);
+    if (linked) options.unshift(linked);
+    formSchedules = new Map(options.map((schedule) => [schedule.id, schedule]));
+    const revising = Boolean(editingInspection && editingInspection.revising);
+    const placeholder = revising && !current ? 'Tanpa jadwal (inspeksi lama)' : 'Pilih jadwal...';
+    select.replaceChildren(new Option(placeholder, ''), ...options.map((schedule) => new Option(scheduleLabel(schedule), schedule.id)));
+    select.value = current && formSchedules.has(current) ? current : '';
+    select.disabled = revising;
+    const hint = document.getElementById('formJadwalHint');
+    hint.textContent = options.length === 0 && !revising
+        ? 'Belum ada jadwal untuk Anda yang belum terlaksana. Buat atau minta jadwal di menu Penjadwalan terlebih dahulu.'
+        : 'Plant mengikuti jadwal. Jadwal tercatat Terlaksana saat laporan ini diajukan.';
+    hint.classList.toggle('field-hint-warning', options.length === 0 && !revising);
+    await syncScheduleSelection();
+}
+
+/** Plant mengikuti jadwal yang dipilih (dan terkunci); tanpa jadwal: plant bebas dipilih. */
+async function syncScheduleSelection() {
+    const schedule = formSchedules.get(document.getElementById('formJadwal').value);
+    if (!schedule) { plantSelectForm.setLocked(false); return; }
+    const plant = await plantRepository.findById(schedule.plantId);
+    if (plant) plantSelectForm.select(plant.id, plant.name, plant.code);
+    plantSelectForm.setLocked(true);
+}
+
+document.getElementById('formJadwal').addEventListener('change', () => {
+    syncScheduleSelection().catch((error) => reportError('pilih jadwal inspeksi', error, ''));
+});
 
 function formContent() {
     return {
         plantId: document.getElementById('selectedPlant').value,
+        scheduleId: document.getElementById('formJadwal').value,
         keteranganLokasi: document.getElementById('formKeteranganLokasi').value.trim(),
         tanggal: document.getElementById('formTanggal').value,
         dueDate: document.getElementById('formDueDate').value,
@@ -955,13 +1036,19 @@ function showFormValidation(reason) {
         showToast('⚠️ Tambahkan minimal 1 temuan!');
     } else if (reason === INSPECTION_ERROR.DATE_REQUIRED) {
         showToast('⚠️ Tanggal inspeksi wajib diisi!');
+    } else if (String(reason).startsWith('SCHEDULE_')) {
+        showToast(pesanGagal(reason));
+        loadScheduleOptions().catch(() => {});
     } else {
         showToast(pesanGagal(reason));
     }
 }
 
 function submittedMessage(id, submitResult) {
-    if (!submitResult.resubmitted) return `✅ Inspeksi ${id} berhasil disimpan dan diajukan ke Koordinator K3L.`;
+    if (!submitResult.resubmitted) {
+        const scheduleNote = submitResult.scheduleCompleted ? ` Jadwal ${submitResult.inspection.scheduleId} tercatat Terlaksana.` : '';
+        return `✅ Inspeksi ${id} berhasil disimpan dan diajukan ke Koordinator K3L.${scheduleNote}`;
+    }
     const stage = findStage(submitResult.inspection.currentApprovalStage);
     return `✅ Inspeksi ${id} berhasil disimpan dan diajukan ulang ke ${stage ? stage.title : 'tahap yang menolak'}.`;
 }
@@ -972,11 +1059,19 @@ async function saveInspeksi({ submit }) {
     const user = getCurrentUser();
     try {
         const content = formContent();
+        // Plant mengikuti jadwal, jadi yang diminta lebih dulu adalah jadwalnya (laporan baru
+        // wajib dari jadwal; revisi inspeksi lama tanpa jadwal tetap boleh). Server memeriksa ulang.
+        if (!content.scheduleId && !(editingInspection && editingInspection.revising)) {
+            showFormValidation(inspectionService.INSPECTION_ERROR.SCHEDULE_REQUIRED);
+            document.getElementById('formJadwal').focus();
+            return;
+        }
         // petugas TIDAK dibaca dari input bebas — server selalu memaksanya dari
         // identitas login (lihat inspections.routes.js); field formPetugas hanya tampilan.
         const saved = editingInspection
             ? await inspectionService.update(editingInspection.id, content, user)
-            : await inspectionService.create({ ...content, petugas: user ? user.displayName : getRandomOfficer() });
+            // petugasUserId hanya untuk pemeriksaan jadwal di browser; server memakai sesi.
+            : await inspectionService.create({ ...content, petugas: user ? user.displayName : getRandomOfficer(), petugasUserId: user ? user.id : null });
         if (!saved.ok) { showFormValidation(saved.reason); return; }
 
         const id = saved.data.inspection.id;
@@ -1049,6 +1144,10 @@ function resetInspeksiForm() {
     document.getElementById('formTanggal').value = '';
     document.getElementById('formDueDate').value = '';
     plantSelectForm.clear();
+    plantSelectForm.setLocked(false);
+    const scheduleSelect = document.getElementById('formJadwal');
+    scheduleSelect.value = '';
+    scheduleSelect.disabled = false;
     setFormMode(null);
 }
 
@@ -1076,7 +1175,7 @@ async function editInspeksi(id) {
 
     closeModal('detailModal'); // dipanggil dari Detail: form terlihat di bawahnya
     resetInspeksiForm();
-    editingInspection = { id: item.id };
+    editingInspection = { id: item.id, scheduleId: item.scheduleId || null, revising: item.status === INSPECTION_STATUS.REVISION_REQUIRED };
     const plant = await plantRepository.findById(item.plantId);
     if (plant) plantSelectForm.select(plant.id, plant.name, plant.code);
     document.getElementById('formKeteranganLokasi').value = item.keteranganLokasi === '-' ? '' : (item.keteranganLokasi || '');
@@ -1446,7 +1545,6 @@ registerAction('schedulesPage', (el) => goToSchedulesPage(Number(el.dataset.page
     .catch((error) => { reportError('muat halaman jadwal', error, ''); }));
 registerAction('perbaikanPage', (el) => goToPerbaikanPage(Number(el.dataset.page))
     .catch((error) => { reportError('muat halaman perbaikan', error, ''); }));
-registerAction('setRealisasiHariIni', () => setRealisasiHariIni());
 registerAction('changeCalendarMonth', (el) => changeCalendarMonth(Number(el.dataset.delta)));
 registerAction('showDayEvents', (el) => showDayEvents(el.dataset.date));
 registerAction('openLightbox', (el) => openLightbox(JSON.parse(el.dataset.images), Number(el.dataset.index)));
@@ -1501,7 +1599,6 @@ export {
     openLightbox,
     openPerbaikanModal,
     rejectStage,
-    setRealisasiHariIni,
     showDayEvents,
     switchTab,
     tambahPerbaikanCustom,

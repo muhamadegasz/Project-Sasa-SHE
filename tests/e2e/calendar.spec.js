@@ -9,6 +9,7 @@
 import { test, expect } from './support/test.js';
 import { loginViaUi } from './support/ui.js';
 import { apiLogin } from './support/api.js';
+import { markScheduleRealized } from './support/db.js';
 
 const MONTH_NAMES = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'];
 const NOW = new Date();
@@ -28,14 +29,22 @@ function monthFromNow(offset) {
     return { year: date.getFullYear(), month: date.getMonth() };
 }
 
+/**
+ * Migrasi 008: petugas = akun (officer = username seed; nama tampilannya sama),
+ * dan tanggal realisasi hanya diisi sistem saat laporan diajukan (selalu hari
+ * ini) — jadwal Terlaksana di tanggal tertentu diisi lewat support/db.js.
+ */
 async function createSchedules(rows) {
     const arif = await apiLogin('arif');
-    for (const row of rows) {
+    const officers = await (await arif.context.get('/api/schedules/officers')).json();
+    for (const { officer = 'Arif', tanggalRealisasi, ...row } of rows) {
+        const officerUserId = officers.find((item) => item.displayName === officer).id;
         const res = await arif.context.post('/api/schedules', {
             headers: { 'X-CSRF-Token': arif.csrfToken },
-            data: { plantId: 9, officer: 'Arif', tahun: 2026, periode: 1, minggu: 1, tanggalRealisasi: '', ...row },
+            data: { plantId: 9, officerUserId, tahun: 2026, periode: 1, minggu: 1, ...row },
         });
         expect(res.status(), await res.text()).toBe(201);
+        if (tanggalRealisasi) await markScheduleRealized((await res.json()).schedule.id, tanggalRealisasi);
     }
     await arif.context.dispose();
 }

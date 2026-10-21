@@ -3,7 +3,7 @@
  *   DRAFT --submit--> IN_REVIEW --reject--> REVISION_REQUIRED --resubmit--> IN_REVIEW
  *                     IN_REVIEW --approve tahap terakhir--> COMPLETED
  *
- * Tahap pengesahan berjalan KOORDINATOR_K3L -> MANAJER -> KETUA_P2K3 -> selesai.
+ * Tahap pengesahan berjalan KOORDINATOR_K3L -> MANAJER -> MANAJER_SHE -> KETUA_P2K3 -> selesai.
  * Penolakan TIDAK mengubah tahap: setelah direvisi dan diajukan ulang,
  * inspeksi kembali ke tahap yang menolaknya, bukan mulai dari awal.
  *

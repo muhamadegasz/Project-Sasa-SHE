@@ -83,11 +83,12 @@ async function measureSignatures(page) {
     });
 }
 
-test('PDF inspeksi selesai: tanda tangan ketiga tahap tertanam; watermark di posisi tersimpan persis; tanpa watermark bersih; berkas tanda tangan tidak berubah', async ({ page }) => {
+test('PDF inspeksi selesai: tanda tangan keempat tahap tertanam (termasuk Manajer SHE); watermark di posisi tersimpan persis; tanpa watermark bersih; berkas tanda tangan tidak berubah', async ({ page }) => {
     const arif = await apiLogin('arif');
     const inspection = await createInspectionFixture(arif);
     await approve(await apiLogin('dewi'), inspection.id, 'koordinator_k3l', { buffer: PNG_BYTES, mimeType: 'image/png' }, { x: 0.3, y: 0.62 });
     await approve(await apiLogin('andi'), inspection.id, 'manajer', { buffer: PNG_BYTES, mimeType: 'image/png', method: 'canvas' });
+    await approve(await apiLogin('sari'), inspection.id, 'manajer_she', { buffer: PNG_BYTES, mimeType: 'image/png' });
     await approve(await apiLogin('hadi'), inspection.id, 'ketua_p2k3', { buffer: JPEG_BYTES, mimeType: 'image/jpeg' }, { x: 0.7, y: 0.35 });
     const saved = await fetchJson(arif, `/api/inspections/${inspection.id}`);
     expect(saved.status).toBe('completed');
@@ -109,9 +110,9 @@ test('PDF inspeksi selesai: tanda tangan ketiga tahap tertanam; watermark di pos
     await expect(page.locator('#toastMessage')).toContainText('berhasil dicetak');
 
     // Diambil lewat endpoint terotorisasi (satu per tahap), dirender sebagai blob: (bukan URL API, bukan base64).
-    expect(signatureRequests).toHaveLength(3);
+    expect(signatureRequests).toHaveLength(4);
     const measured = await measureSignatures(page);
-    for (const stage of ['koordinator_k3l', 'manajer', 'ketua_p2k3']) {
+    for (const stage of ['koordinator_k3l', 'manajer', 'manajer_she', 'ketua_p2k3']) {
         expect(measured[stage], stage).not.toBeNull();
         expect(measured[stage].src).toMatch(/^blob:/);
     }
@@ -132,7 +133,7 @@ test('PDF inspeksi selesai: tanda tangan ketiga tahap tertanam; watermark di pos
     expect(measured.manajer.red, 'tanpa watermark: tidak ada piksel watermark').toBe(0);
 
     // Berkas tanda tangan tersimpan tidak disentuh rendering PDF.
-    for (const [stage, bytes] of [['koordinator_k3l', PNG_BYTES], ['manajer', PNG_BYTES], ['ketua_p2k3', JPEG_BYTES]]) {
+    for (const [stage, bytes] of [['koordinator_k3l', PNG_BYTES], ['manajer', PNG_BYTES], ['manajer_she', PNG_BYTES], ['ketua_p2k3', JPEG_BYTES]]) {
         const res = await arif.context.get(`/api/inspections/${inspection.id}/approvals/${byStage[stage].id}/signature`);
         expect(Buffer.compare(await res.body(), bytes), stage).toBe(0);
     }

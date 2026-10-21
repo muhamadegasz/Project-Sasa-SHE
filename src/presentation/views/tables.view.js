@@ -266,6 +266,13 @@ export async function renderJadwalTable(data = null, highlightQuery = '') {
         const periodeDisplay = highlight(periode ? periode.name : 'Periode ' + item.periode, highlightQuery);
         const tanggalJadwalDisplay = item.tanggalJadwal ? formatDate(item.tanggalJadwal) : '-';
         const tanggalRealisasiDisplay = item.tanggalRealisasi ? formatDate(item.tanggalRealisasi) : '-';
+        // Migrasi 008: laporan yang membuat jadwal ini Terlaksana (status pengesahannya
+        // terpisah — dilihat di Detail; Detail tetap mengikuti visibilitas inspeksi).
+        const reportBtn = item.inspectionId
+            ? `<button class="btn-sm info" data-action="openDetailModal" data-id="${escapeHtml(item.inspectionId)}" data-testid="schedule-report-btn" title="Lihat laporan ${escapeHtml(item.inspectionId)}"><i class="fas fa-eye"></i> ${escapeHtml(item.inspectionId)}</button>`
+            : '';
+        // Terlaksana = final: tidak bisa diubah; tertaut laporan / Terlaksana: tidak bisa dihapus.
+        const realized = scheduleRules.isRealized(item);
         const mingguDisplay = item.minggu ? `Minggu ${item.minggu}` : '-';
 
         const isOverdueSchedule = scheduleRules.isOverdue(item);
@@ -281,17 +288,17 @@ export async function renderJadwalTable(data = null, highlightQuery = '') {
         }
 
         return `
-                <tr>
+                <tr data-testid="schedule-row" data-id="${escapeHtml(item.id)}">
                     <td>${plantDisplay} ${plant ? '<span style="font-size:0.6rem;color:#8a6a6a;">(' + escapeHtml(plant.code) + ')</span>' : ''}</td>
                     <td>${periodeDisplay}</td>
                     <td>${escapeHtml(mingguDisplay)}</td>
                     <td>${escapeHtml(tanggalJadwalDisplay)} ${isOverdueSchedule ? OVERDUE_BADGE : ''}</td>
-                    <td>${escapeHtml(tanggalRealisasiDisplay)}</td>
+                    <td>${escapeHtml(tanggalRealisasiDisplay)} ${reportBtn}</td>
                     <td>${officerDisplay}</td>
                     <td><span class="status-badge ${statusClass}">${statusText}</span></td>
                     ${showActions ? `<td class="cell-actions">
-                        ${canEditSchedules ? `<button class="btn-sm warning" data-action="editJadwal" data-id="${escapeHtml(item.id)}" data-testid="schedule-edit-btn" title="Edit jadwal" aria-label="Edit jadwal ${escapeHtml(item.id)}"><i class="fas fa-edit"></i></button>` : ''}
-                        ${canDeleteSchedules ? `<button class="btn-sm danger" data-action="hapusJadwal" data-id="${escapeHtml(item.id)}" data-testid="schedule-delete-btn" title="Hapus jadwal" aria-label="Hapus jadwal ${escapeHtml(item.id)}"><i class="fas fa-trash"></i></button>` : ''}
+                        ${canEditSchedules && !realized ? `<button class="btn-sm warning" data-action="editJadwal" data-id="${escapeHtml(item.id)}" data-testid="schedule-edit-btn" title="Edit jadwal" aria-label="Edit jadwal ${escapeHtml(item.id)}"><i class="fas fa-edit"></i></button>` : ''}
+                        ${canDeleteSchedules && !realized && !item.inspectionId ? `<button class="btn-sm danger" data-action="hapusJadwal" data-id="${escapeHtml(item.id)}" data-testid="schedule-delete-btn" title="Hapus jadwal" aria-label="Hapus jadwal ${escapeHtml(item.id)}"><i class="fas fa-trash"></i></button>` : ''}
                     </td>` : ''}
                 </tr>
             `;

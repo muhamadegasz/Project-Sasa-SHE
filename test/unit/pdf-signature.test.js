@@ -144,3 +144,16 @@ test('PDF foto: nama berkas & src di-escape (XSS)', () => {
     assert.ok(!html.includes('onerror="alert(2)"'));
     assert.ok(html.includes('&lt;img src=x onerror=alert(1)&gt;'));
 });
+
+test('PDF Lembar Pengesahan: inspeksi baru empat blok (termasuk Manajer SHE); inspeksi lama yang selesai tanpa Manajer SHE tiga blok, tanpa blok kosong', () => {
+    const stagesIn = (html) => [...html.matchAll(/class="sign-item" data-stage="([^"]*)"/g)].map((match) => match[1]);
+    const fresh = completed([approved(1, 'koordinator_k3l'), approved(2, 'manajer'), approved(3, 'manajer_she'), approved(4, 'ketua_p2k3')]);
+    const freshHtml = buildInspectionReportHtml(fresh, new Map([[1, 'blob:a'], [2, 'blob:b'], [3, 'blob:c'], [4, 'blob:d']]));
+    assert.deepEqual(stagesIn(freshHtml), ['koordinator_k3l', 'manajer', 'manajer_she', 'ketua_p2k3']);
+    assert.ok(freshHtml.includes('Manajer SHE'));
+
+    const legacyHtml = buildInspectionReportHtml(completed([approved(1, 'koordinator_k3l'), approved(2, 'manajer'), approved(4, 'ketua_p2k3')]));
+    assert.deepEqual(stagesIn(legacyHtml), ['koordinator_k3l', 'manajer', 'ketua_p2k3']);
+    assert.ok(!legacyHtml.includes('Manajer SHE'));
+    assert.ok(!legacyHtml.includes('Belum ditandatangani'));
+});

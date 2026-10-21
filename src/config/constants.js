@@ -2,7 +2,7 @@
  *
  * APPROVAL_STAGE/ROLE adalah kontrak data, bukan sekadar daftar tampilan:
  * nilainya sama persis dengan ENUM di database (approvals.stage,
- * inspections.current_approval_stage, users.role — lihat migrasi 003).
+ * inspections.current_approval_stage, users.role — lihat migrasi 003 dan 007).
  * Mengubah nilai di sini tanpa migrasi akan memutus data yang sudah ada.
  */
 
@@ -11,6 +11,7 @@ export const ROLE = {
     SAFETY_OFFICER: 'safety_officer',
     KOORDINATOR_K3L: 'koordinator_k3l',
     MANAJER_BAGIAN: 'manajer_bagian',
+    MANAJER_SHE: 'manajer_she',
     KETUA_P2K3: 'ketua_p2k3',
     ADMIN: 'admin',
 };
@@ -19,18 +20,23 @@ export const ROLE = {
 export const APPROVAL_STAGE = {
     KOORDINATOR_K3L: 'koordinator_k3l',
     MANAJER: 'manajer',
+    MANAJER_SHE: 'manajer_she',
     KETUA_P2K3: 'ketua_p2k3',
 };
 
 /**
- * Tiga tahap pengesahan, berurutan (Phase 17.2). Safety Officer BUKAN tahap
+ * Empat tahap pengesahan, berurutan (Phase 17.2; Manajer SHE disisipkan di
+ * antara Manajer Bagian dan Ketua P2K3 lewat migrasi 007). Safety Officer BUKAN tahap
  * pengesahan — ia pembuat/pengaju/perevisi inspeksi. `role` adalah satu-
  * satunya role yang boleh memutuskan tahap itu (lihat domain/inspection-policy.js).
  */
 export const APPROVAL_STAGES = [
     { id: APPROVAL_STAGE.KOORDINATOR_K3L, role: ROLE.KOORDINATOR_K3L, name: 'Koord. K3L Bagian', title: 'Koordinator K3L Bagian', order: 1 },
     { id: APPROVAL_STAGE.MANAJER, role: ROLE.MANAJER_BAGIAN, name: 'Manajer Bagian', title: 'Manajer Bagian', order: 2 },
-    { id: APPROVAL_STAGE.KETUA_P2K3, role: ROLE.KETUA_P2K3, name: 'Ketua P2K3', title: 'Ketua P2K3', order: 3 },
+    // addedLater: inspeksi yang sudah melewati titik ini sebelum tahapnya ada
+    // tidak pernah melaluinya (domain/approval-rules.js applicableStages).
+    { id: APPROVAL_STAGE.MANAJER_SHE, role: ROLE.MANAJER_SHE, name: 'Manajer SHE', title: 'Manajer SHE', order: 3, addedLater: true },
+    { id: APPROVAL_STAGE.KETUA_P2K3, role: ROLE.KETUA_P2K3, name: 'Ketua P2K3', title: 'Ketua P2K3', order: 4 },
 ];
 
 /**

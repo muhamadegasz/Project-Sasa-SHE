@@ -81,6 +81,7 @@ test('navbar memakai logo perusahaan (aset lokal) — termuat dan tidak gepeng',
 for (const [username, name, role] of [
     ['arif', 'Arif', 'Safety Officer'],
     ['andi', 'Andi', 'Manajer Bagian'],
+    ['sari', 'Sari', 'Manajer SHE'],
     ['hadi', 'Hadi', 'Ketua P2K3'],
     ['admin', 'Administrator', 'Administrator'],
 ]) {

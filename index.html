@@ -339,6 +339,17 @@
                     <form id="inspeksiForm" onsubmit="return false;">
                         <fieldset class="form-block">
                             <legend class="form-block-title">Informasi Inspeksi</legend>
+                            <!-- Migrasi 008: setiap laporan berasal dari jadwal milik Safety Officer yang login
+                                 (belum Terlaksana) — wajib. Plant mengikuti jadwal; server memeriksa ulang. -->
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label for="formJadwal">Jadwal Inspeksi <span class="required-mark" aria-hidden="true">*</span></label>
+                                    <select id="formJadwal" data-testid="inspection-schedule" aria-required="true">
+                                        <option value="">Pilih jadwal...</option>
+                                    </select>
+                                    <p class="field-hint" id="formJadwalHint">Jadwal tercatat Terlaksana saat laporan ini diajukan.</p>
+                                </div>
+                            </div>
                             <div class="form-row">
                                 <div class="form-group">
                                     <label for="plantSearchInput">Lokasi / Plant <span class="required-mark" aria-hidden="true">*</span></label>
@@ -586,22 +597,19 @@
                         <input type="date" id="jadwalTanggal">
                     </div>
                     <div class="form-group">
-                        <label>Safety Officer</label>
-                        <input type="text" id="jadwalPetugas" placeholder="Nama Safety Officer" value="Arif">
+                        <!-- Migrasi 008: akun Safety Officer aktif (bukan teks bebas) — server memvalidasinya. -->
+                        <label for="jadwalPetugas">Safety Officer <span style="color:#c62828;">*</span></label>
+                        <select id="jadwalPetugas" data-testid="schedule-officer">
+                            <option value="">— Pilih Safety Officer —</option>
+                        </select>
                     </div>
                 </div>
                 <div class="form-row">
                     <div class="form-group">
-                        <label>Tanggal Realisasi (jika sudah dilaksanakan)</label>
-                        <input type="date" id="jadwalRealisasi">
-                    </div>
-                    <div class="form-group">
-                        <label>&nbsp;</label>
-                        <div style="display:flex;gap:0.5rem;">
-                            <button type="button" class="btn-sm success" data-action="setRealisasiHariIni" style="padding:0.4rem 1rem;">
-                                <i class="fas fa-calendar-check"></i> Set Hari Ini
-                            </button>
-                        </div>
+                        <!-- Hanya tampilan: diisi sistem saat laporan inspeksi yang tertaut diajukan. -->
+                        <label for="jadwalRealisasi">Tanggal Realisasi</label>
+                        <input type="date" id="jadwalRealisasi" readonly tabindex="-1" data-testid="schedule-realization">
+                        <p class="field-hint">Terisi otomatis saat laporan inspeksi dari jadwal ini diajukan.</p>
                     </div>
                 </div>
                 <button type="submit" class="btn-submit" id="submitJadwal"><i class="fas fa-save"></i> Simpan Jadwal</button>

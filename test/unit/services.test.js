@@ -78,6 +78,7 @@ const dewiPlant9 = { id: 5, displayName: 'Dewi', role: 'koordinator_k3l', plantI
 const koordinatorPlant3 = { id: 11, displayName: 'Bambang', role: 'koordinator_k3l', plantId: 3 };
 const andi = { id: 6, displayName: 'Andi', role: 'manajer_bagian' };
 const hadi = { id: 7, displayName: 'Hadi', role: 'ketua_p2k3' };
+const sari = { id: 12, displayName: 'Sari', role: 'manajer_she' };
 const admin = { id: 9, displayName: 'Admin', role: 'admin' };
 const owner = { id: 1, displayName: 'Arif', role: 'safety_officer' }; // petugasUserId inspeksi baseline
 const otherOfficer = { id: 2, displayName: 'Tulus', role: 'safety_officer' };
@@ -139,16 +140,19 @@ test('approve: Koordinator plant-nya sendiri berhasil — riwayat bertambah, tah
     );
 });
 
-test('approve: ketiga tahap -> COMPLETED, fullyApproved true', async () => {
+test('approve: keempat tahap -> COMPLETED, fullyApproved true; Ketua tidak bisa mendahului Manajer SHE', async () => {
     await approvalService.approve('INS-002', 'koordinator_k3l', dewiPlant9, SIGNATURE);
     await approvalService.approve('INS-002', 'manajer', andi, SIGNATURE);
+    assert.equal((await inspectionFake.findById('INS-002')).currentApprovalStage, 'manajer_she');
+    assert.equal((await approvalService.approve('INS-002', 'ketua_p2k3', hadi, SIGNATURE)).ok, false, 'Ketua belum gilirannya');
+    assert.equal((await approvalService.approve('INS-002', 'manajer_she', sari, SIGNATURE)).ok, true);
     const result = await approvalService.approve('INS-002', 'ketua_p2k3', hadi, SIGNATURE);
     assert.equal(result.data.fullyApproved, true);
 
     const stored = await inspectionFake.findById('INS-002');
     assert.equal(stored.status, 'completed');
     assert.equal(stored.currentApprovalStage, null);
-    assert.equal(stored.approvalHistory.length, 3);
+    assert.deepEqual(stored.approvalHistory.map((entry) => entry.stage), ['koordinator_k3l', 'manajer', 'manajer_she', 'ketua_p2k3']);
 });
 
 test('approve: approve ulang tahap yang sudah lewat ditolak, keputusan lama tidak ditimpa', async () => {
@@ -282,8 +286,10 @@ const validContent = {
     temuan: [{ deskripsi: 'Temuan A', kategori: 'Kelistrikan' }, { deskripsi: 'Temuan B', kategori: 'Kebakaran' }],
 };
 
+// Migrasi 008: laporan baru wajib bertautan jadwal milik petugasnya di plant yang sama.
 async function createDraft(overrides = {}) {
-    const result = await inspectionService.create({ ...validContent, petugas: 'Arif', petugasUserId: owner.id, ...overrides });
+    const scheduleId = scheduleFake.__scheduleFor({ officerUserId: owner.id, officer: 'Arif', plantId: overrides.plantId ?? validContent.plantId });
+    const result = await inspectionService.create({ ...validContent, scheduleId, petugas: 'Arif', petugasUserId: owner.id, ...overrides });
     assert.equal(result.ok, true, JSON.stringify(result));
     return result.data.inspection;
 }
@@ -329,6 +335,7 @@ test('update: pemilik mengubah draft — status tetap DRAFT, temuan diganti, sta
     const draft = await createDraft();
     const result = await inspectionService.update(draft.id, {
         ...validContent,
+        scheduleId: draft.scheduleId,
         keteranganLokasi: 'Area baru',
         temuan: [{ id: draft.temuan[0].id, deskripsi: 'Temuan A diperbarui', kategori: 'Kesehatan' }, { deskripsi: 'Temuan C', kategori: 'Kebocoran' }],
         status: 'completed', currentApprovalStage: 'ketua_p2k3', petugasUserId: 999,
@@ -414,7 +421,7 @@ test('revisi & ajukan ulang: kembali ke tahap YANG MENOLAK, riwayat utuh, temuan
     await approvalService.approve(draft.id, 'manajer', andi, SIGNATURE);
     const afterApprove = await inspectionFake.findById(draft.id);
     assert.deepEqual(afterApprove.approvalHistory.at(-1).attempt, 2);
-    assert.equal(afterApprove.currentApprovalStage, 'ketua_p2k3');
+    assert.equal(afterApprove.currentApprovalStage, 'manajer_she');
 });
 
 test('addAction: pemilik boleh di DRAFT, IN_REVIEW, REVISION_REQUIRED; COMPLETED final -> INSPECTION_COMPLETED, tidak tersimpan', async () => {
@@ -450,59 +457,73 @@ test('removeDraft: hanya pemilik, hanya DRAFT', async () => {
 
 const SE = scheduleService.SCHEDULE_ERROR;
 
-test('save: plant/officer/tahun/tanggal wajib', async () => {
+// Migrasi 008: petugas jadwal = akun Safety Officer aktif (officerUserId);
+// tanggal realisasi/status hanya diisi sistem saat laporan tertaut diajukan.
+const OFFICERS = [{ id: 21, displayName: 'Penguji' }, { id: 22, displayName: 'Diubah' }];
+const scheduleInput = (overrides = {}) => ({ plantId: '9', officerUserId: 21, tahun: 2026, tanggalJadwal: '2026-10-05', periode: 2, minggu: 3, ...overrides });
+
+test('save: plant/petugas/tahun/tanggal wajib; petugas harus akun Safety Officer aktif', async () => {
+    scheduleFake.__setOfficers(OFFICERS);
     assert.equal((await scheduleService.save({})).reason, SE.PLANT_REQUIRED);
     assert.equal((await scheduleService.save({ plantId: '3' })).reason, SE.OFFICER_REQUIRED);
-    assert.equal((await scheduleService.save({ plantId: '3', officer: '   ' })).reason, SE.OFFICER_REQUIRED);
-    assert.equal((await scheduleService.save({ plantId: '3', officer: 'A' })).reason, SE.YEAR_REQUIRED);
-    assert.equal((await scheduleService.save({ plantId: '3', officer: 'A', tahun: 1999 })).reason, SE.YEAR_REQUIRED);
-    assert.equal((await scheduleService.save({ plantId: '3', officer: 'A', tahun: 2026 })).reason, SE.DATE_REQUIRED);
+    assert.equal((await scheduleService.save({ plantId: '3', officerUserId: '' })).reason, SE.OFFICER_REQUIRED);
+    assert.equal((await scheduleService.save({ plantId: '3', officerUserId: 21 })).reason, SE.YEAR_REQUIRED);
+    assert.equal((await scheduleService.save({ plantId: '3', officerUserId: 21, tahun: 1999 })).reason, SE.YEAR_REQUIRED);
+    assert.equal((await scheduleService.save({ plantId: '3', officerUserId: 21, tahun: 2026 })).reason, SE.DATE_REQUIRED);
+    for (const officerUserId of [999, 'abc', -1]) {
+        assert.equal((await scheduleService.save(scheduleInput({ officerUserId }))).reason, SE.OFFICER_INVALID, String(officerUserId));
+    }
+    assert.equal(await scheduleFake.count(), 0);
 });
 
-test('save: berhasil membuat jadwal baru — plantName terisi, officer di-trim, status aktif', async () => {
-    const result = await scheduleService.save({
-        plantId: '9', officer: '  Penguji  ', tahun: 2026, tanggalJadwal: '2026-10-05', periode: 2, minggu: 3,
-    });
+test('save: membuat jadwal baru — nama petugas dari akun (bukan isian), plantName terisi, status aktif, realisasi dari isian diabaikan', async () => {
+    scheduleFake.__setOfficers(OFFICERS);
+    const result = await scheduleService.save(scheduleInput({ officer: 'Nama Palsu', tanggalRealisasi: '2026-10-07', status: 'selesai' }));
     assert.equal(result.data.created, true);
-    assert.equal(result.data.schedule.officer, 'Penguji');
+    assert.deepEqual([result.data.schedule.officer, result.data.schedule.officerUserId], ['Penguji', 21]);
     assert.equal(result.data.schedule.plantName, 'Logistic');
-    assert.equal(result.data.schedule.status, 'aktif');
+    assert.deepEqual([result.data.schedule.status, result.data.schedule.tanggalRealisasi], ['aktif', null]);
 });
 
-test('save: id terisi -> update, bukan create', async () => {
-    const created = await scheduleService.save({
-        plantId: '9', officer: 'Awal', tahun: 2026, tanggalJadwal: '2026-10-05', periode: 2, minggu: 3,
-    });
-    const updated = await scheduleService.save({
-        id: created.data.schedule.id, plantId: '9', officer: 'Diubah', tahun: 2026,
-        tanggalJadwal: '2026-10-06', periode: 2, minggu: 3, tanggalRealisasi: '2026-10-07',
-    });
+test('save: id terisi -> update (petugas bisa diganti, realisasi tetap dari sistem); jadwal Terlaksana terkunci', async () => {
+    scheduleFake.__setOfficers(OFFICERS);
+    const created = await scheduleService.save(scheduleInput());
+    const updated = await scheduleService.save({ ...scheduleInput({ officerUserId: 22, tanggalJadwal: '2026-10-06', tanggalRealisasi: '2026-10-07' }), id: created.data.schedule.id });
     assert.equal(updated.data.created, false);
-    assert.equal(updated.data.schedule.officer, 'Diubah');
-    assert.equal(updated.data.schedule.tanggalRealisasi, '2026-10-07');
+    assert.deepEqual([updated.data.schedule.officer, updated.data.schedule.officerUserId], ['Diubah', 22]);
+    assert.equal(updated.data.schedule.tanggalRealisasi, null, 'realisasi dari isian diabaikan');
     assert.equal(await scheduleFake.count(), 1, 'jumlah tidak bertambah — ini update, bukan create baru');
+
+    Object.assign(await scheduleFake.findById(created.data.schedule.id), { tanggalRealisasi: '2026-10-08', status: 'selesai' });
+    assert.equal((await scheduleService.save({ ...scheduleInput(), id: created.data.schedule.id })).reason, SE.SCHEDULE_REALIZED);
+    assert.equal((await scheduleService.remove(created.data.schedule.id)).reason, SE.SCHEDULE_REALIZED);
+    assert.equal(await scheduleFake.count(), 1);
 });
 
 test('save: id tak dikenal -> ok dengan schedule null (perilaku lama dipertahankan)', async () => {
-    const result = await scheduleService.save({ id: 'TIDAK-ADA', plantId: '9', officer: 'X', tahun: 2026, tanggalJadwal: '2026-10-06' });
+    scheduleFake.__setOfficers(OFFICERS);
+    const result = await scheduleService.save({ ...scheduleInput(), id: 'TIDAK-ADA' });
     assert.equal(result.ok, true);
     assert.equal(result.data.schedule, null);
 });
 
-test('remove: berhasil menghapus / id tak dikenal mengembalikan removed:false', async () => {
-    const created = await scheduleService.save({
-        plantId: '9', officer: 'X', tahun: 2026, tanggalJadwal: '2026-10-05', periode: 2, minggu: 3,
-    });
+test('remove: berhasil menghapus / id tak dikenal mengembalikan removed:false; tertaut laporan yang diajukan -> SCHEDULE_LINKED', async () => {
+    scheduleFake.__setOfficers(OFFICERS);
+    const created = await scheduleService.save(scheduleInput());
     assert.equal((await scheduleService.remove(created.data.schedule.id)).data.removed, true);
     assert.equal((await scheduleService.remove('TIDAK-ADA')).data.removed, false);
     assert.equal(await scheduleFake.count(), 0);
+
+    const linked = await scheduleService.save(scheduleInput());
+    Object.assign(await scheduleFake.findById(linked.data.schedule.id), { inspectionId: 'INS-050' });
+    assert.deepEqual(await scheduleService.remove(linked.data.schedule.id), { ok: false, reason: SE.SCHEDULE_LINKED, data: { inspectionId: 'INS-050' } });
 });
 
 test('schedule-rules: hanya Safety Officer & Admin boleh membuat/mengubah jadwal (sama dengan penjaga route)', () => {
     assert.deepEqual(SCHEDULE_EDITOR_ROLES, ['safety_officer', 'admin']);
     assert.ok(canManageSchedules({ id: 1, role: 'safety_officer' }));
     assert.ok(canManageSchedules({ id: 9, role: 'admin' }));
-    for (const role of ['koordinator_k3l', 'manajer_bagian', 'ketua_p2k3', 'tidak_dikenal']) {
+    for (const role of ['koordinator_k3l', 'manajer_bagian', 'manajer_she', 'ketua_p2k3', 'tidak_dikenal']) {
         assert.equal(canManageSchedules({ id: 5, role }), false, role);
     }
     assert.equal(canManageSchedules(null), false, 'tanpa login');
@@ -546,6 +567,7 @@ test('sanitizeCell: menetralkan awalan pemicu formula (= + - @), tidak menyentuh
 test('S-04 jalur sungguhan: inspeksi dengan payload formula-injection diekspor dalam bentuk dinetralkan', async () => {
     const created = await inspectionService.create({
         plantId: '3', tanggal: '2026-09-19', petugas: '=CMD()', status: 'proses', dueDate: '2026-10-01',
+        petugasUserId: 77, scheduleId: scheduleFake.__scheduleFor({ officerUserId: 77, officer: '=CMD()', plantId: 3 }),
         // Kategori kini ENUM tervalidasi (domain checkFindingCategory) — payload formula tidak
         // bisa lagi masuk lewat kategori; teks bebas lain tetap diuji di bawah.
         keteranganLokasi: '@evil', temuan: [{ deskripsi: '=1+1', kategori: 'Kelistrikan' }],
@@ -656,12 +678,13 @@ test('approve tanpa watermark -> riwayat watermark null; dengan watermark -> pos
     assert.equal(first.ok, true);
     const second = await approvalService.approve('INS-002', 'manajer', andi, SIGNATURE, { enabled: 'true', x: '0.25', y: '0.8' });
     assert.equal(second.ok, true);
+    assert.equal((await approvalService.approve('INS-002', 'manajer_she', sari, SIGNATURE)).ok, true);
     const third = await approvalService.approve('INS-002', 'ketua_p2k3', hadi, SIGNATURE, { enabled: false });
     assert.equal(third.ok, true);
 
     const history = (await inspectionFake.findById('INS-002')).approvalHistory;
     assert.deepEqual(history.map((entry) => [entry.stage, entry.watermark]), [
-        ['koordinator_k3l', null], ['manajer', { x: 0.25, y: 0.8 }], ['ketua_p2k3', null],
+        ['koordinator_k3l', null], ['manajer', { x: 0.25, y: 0.8 }], ['manajer_she', null], ['ketua_p2k3', null],
     ]);
 });
 

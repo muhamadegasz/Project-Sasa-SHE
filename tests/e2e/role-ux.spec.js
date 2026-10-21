@@ -80,7 +80,7 @@ test('Safety Officer: "Kelola" tetap ada, tanpa Sync; Penjadwalan dengan kolom A
     for (let count = (await schedules()).length; count <= 12; count++) {
         const res = await arif.context.post(`${API}/schedules`, {
             headers: { 'X-CSRF-Token': arif.csrfToken },
-            data: { plantId: 9, officer: 'Arif', tahun: 2026, tanggalJadwal: '2026-11-02', periode: 4, minggu: 1, tanggalRealisasi: '' },
+            data: { plantId: 9, officerUserId: arif.user.id, tahun: 2026, tanggalJadwal: '2026-11-02', periode: 4, minggu: 1 },
         });
         expect(res.status(), await res.text()).toBe(201);
     }
@@ -97,14 +97,17 @@ test('Safety Officer: "Kelola" tetap ada, tanpa Sync; Penjadwalan dengan kolom A
     expect(all.length, 'data uji: lebih dari satu halaman jadwal').toBeGreaterThan(10);
     const rows = page.locator('#jadwalTableBody tr');
     await expect(rows).toHaveCount(10);
-    await expect(rows.first().getByTestId('schedule-edit-btn')).toBeVisible();
+    // Bukan harus baris pertama: jadwal terbaru bisa milik worker lain yang laporannya sudah
+    // diajukan (Terlaksana -> tanpa Edit, migrasi 008).
+    await expect(page.locator('#jadwalTableBody').getByTestId('schedule-edit-btn').first()).toBeVisible();
     const summary = page.getByTestId('jadwal-pagination-summary');
     await expect(summary).toHaveText(/^Menampilkan 1–10 dari \d+ jadwal$/);
 
     // Terbaru di atas: nomor jadwal menurun di dalam halaman dan antarhalaman
     // (tanpa bergantung pada jadwal yang dibuat worker lain di saat yang sama).
-    const numbers = async () => (await rows.locator('[data-testid="schedule-edit-btn"]').evaluateAll(
-        (buttons) => buttons.map((button) => Number(button.dataset.id.replace(/\D/g, '')))));
+    // Dari baris (data-id), bukan tombol Edit: jadwal Terlaksana tidak punya tombol Edit (migrasi 008).
+    const numbers = async () => (await rows.evaluateAll(
+        (trs) => trs.map((tr) => Number(tr.dataset.id.replace(/\D/g, '')))));
     const firstPage = await numbers();
     expect(firstPage).toEqual([...firstPage].sort((a, b) => b - a));
     expect(firstPage[0], 'jadwal terbaru di baris pertama').toBeGreaterThanOrEqual(Math.max(...all.map((s) => Number(s.id.replace(/\D/g, '')))));
@@ -119,6 +122,6 @@ test('Safety Officer: "Kelola" tetap ada, tanpa Sync; Penjadwalan dengan kolom A
     const oldest = all[0];
     await page.locator('#searchJadwalInput').fill(oldest.id);
     await expect(summary).toHaveText('Menampilkan 1–1 dari 1 jadwal');
-    await expect(rows.first().getByTestId('schedule-edit-btn')).toHaveAttribute('data-id', oldest.id);
+    await expect(rows.first()).toHaveAttribute('data-id', oldest.id);
     await arif.context.dispose();
 });

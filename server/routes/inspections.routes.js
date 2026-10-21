@@ -51,6 +51,9 @@ function parseTemuan(value) {
 function contentFromRequest(req) {
     return {
         plantId: req.body.plantId,
+        // Migrasi 008: hanya kunci pencarian — inspection-service memuat jadwalnya
+        // dari database dan memeriksa petugas (sesi), plant, dan tautannya.
+        scheduleId: req.body.scheduleId,
         keteranganLokasi: req.body.keteranganLokasi,
         tanggal: req.body.tanggal,
         dueDate: req.body.dueDate,

@@ -12,7 +12,9 @@
 
 import * as inspectionRepository from '#repositories/inspection-repository.js';
 import * as plantRepository from '#repositories/plant-repository.js';
+import * as scheduleRepository from '#repositories/schedule-repository.js';
 import { submittedState } from '../domain/workflow-rules.js';
+import { SCHEDULE_CONFLICT, checkScheduleLink } from '../domain/schedule-rules.js';
 import { buildInitialAction, checkFindingCategory } from '../domain/inspection-rules.js';
 import {
     canDelete, canDeleteDraft, canEdit, canRevise, canSubmit, canView, isOwningOfficer,
@@ -41,7 +43,54 @@ export const INSPECTION_ERROR = {
     NOT_DELETABLE: 'NOT_DELETABLE',
     // Status berubah di antara pemeriksaan dan penyimpanan (mis. dua pengajuan bersamaan).
     STATE_CHANGED: 'STATE_CHANGED',
+    // Jadwal yang ditautkan (migrasi 008, domain/schedule-rules.js checkScheduleLink).
+    // Wajib untuk laporan baru: setiap laporan berasal dari jadwal inspeksi.
+    SCHEDULE_REQUIRED: 'SCHEDULE_REQUIRED',
+    SCHEDULE_NOT_FOUND: 'SCHEDULE_NOT_FOUND',
+    SCHEDULE_NOT_ASSIGNED: 'SCHEDULE_NOT_ASSIGNED',
+    SCHEDULE_PLANT_MISMATCH: 'SCHEDULE_PLANT_MISMATCH',
+    SCHEDULE_ALREADY_LINKED: 'SCHEDULE_ALREADY_LINKED',
+    SCHEDULE_ALREADY_REALIZED: 'SCHEDULE_ALREADY_REALIZED',
+    // Jadwal berubah di antara pemeriksaan dan transaksi pengajuan — tidak ada yang tersimpan.
+    SCHEDULE_UNAVAILABLE: 'SCHEDULE_UNAVAILABLE',
 };
+
+const SCHEDULE_LINK_ERROR = {
+    NOT_FOUND: INSPECTION_ERROR.SCHEDULE_NOT_FOUND,
+    NOT_ASSIGNED: INSPECTION_ERROR.SCHEDULE_NOT_ASSIGNED,
+    PLANT_MISMATCH: INSPECTION_ERROR.SCHEDULE_PLANT_MISMATCH,
+    ALREADY_LINKED: INSPECTION_ERROR.SCHEDULE_ALREADY_LINKED,
+    ALREADY_REALIZED: INSPECTION_ERROR.SCHEDULE_ALREADY_REALIZED,
+};
+
+/**
+ * Id jadwal dari isian, atau null bila kosong. Laporan baru WAJIB bertautan
+ * jadwal (SCHEDULE_REQUIRED); null hanya tersisa pada inspeksi lama dari
+ * sebelum migrasi 008, yang tetap bisa direvisi & diajukan ulang.
+ */
+function scheduleIdFrom(input) {
+    const value = input.scheduleId;
+    if (value === undefined || value === null) return null;
+    const trimmed = String(value).trim();
+    return trimmed === '' ? null : trimmed;
+}
+
+/**
+ * Jadwal yang akan ditautkan: dimuat dari repository (data server — id dari
+ * isian hanya kunci pencarian), lalu diperiksa checkScheduleLink(): ditugaskan
+ * ke petugas inspeksi ini, plant sama, belum tertaut laporan lain, belum
+ * Terlaksana. Tautan draft lain yang memakai jadwal yang sama ditolak kunci
+ * UNIQUE di database (SCHEDULE_CONFLICT dari repository).
+ *
+ * @returns {{ scheduleId: string | null }} atau {{ failure }}
+ */
+async function checkSchedule(scheduleId, link) {
+    if (!scheduleId) return { scheduleId: null };
+    const schedule = await scheduleRepository.findById(scheduleId);
+    const checked = checkScheduleLink(schedule, link);
+    if (checked.error) return { failure: fail(SCHEDULE_LINK_ERROR[checked.error]) };
+    return { scheduleId: checked.value.id };
+}
 
 /**
  * Aturan isi yang SAMA untuk simpan draft, simpan revisi, dan pengajuan:
@@ -135,10 +184,16 @@ export async function create(input) {
     if (failure) return failure;
     const findings = checkFindings(input.temuan);
     if (findings.failure) return findings.failure;
+    if (!scheduleIdFrom(input)) return fail(INSPECTION_ERROR.SCHEDULE_REQUIRED);
+    const schedule = await checkSchedule(scheduleIdFrom(input), {
+        officerUserId: input.petugasUserId, officerName: input.petugas, plantId: input.plantId,
+    });
+    if (schedule.failure) return schedule.failure;
 
     const inspection = await inspectionRepository.add({
         lokasi: plant.name,
         plantId: parseInt(input.plantId, 10),
+        scheduleId: schedule.scheduleId,
         keteranganLokasi: input.keteranganLokasi || '-',
         tanggal: formatDate(input.tanggal),
         petugas: input.petugas,
@@ -153,6 +208,7 @@ export async function create(input) {
         temuan: findings.temuan,
         perbaikan: [],
     });
+    if (inspection === SCHEDULE_CONFLICT) return fail(INSPECTION_ERROR.SCHEDULE_ALREADY_LINKED);
 
     return ok({ inspection });
 }
@@ -185,9 +241,19 @@ export async function update(inspectionId, input, actor) {
     if (content.failure) return content.failure;
     const findings = checkFindings(input.temuan, inspection.temuan || []);
     if (findings.failure) return findings.failure;
+    // Jadwal hanya bisa dipilih/diganti selama DRAFT (wajib terisi). Revisi
+    // mempertahankan tautan aslinya (isian diabaikan), tapi tetap diperiksa —
+    // mis. plant tidak boleh diubah menjauh dari plant jadwalnya.
+    const requestedScheduleId = fromStatus === INSPECTION_STATUS.DRAFT ? scheduleIdFrom(input) : inspection.scheduleId || null;
+    if (fromStatus === INSPECTION_STATUS.DRAFT && !requestedScheduleId) return fail(INSPECTION_ERROR.SCHEDULE_REQUIRED);
+    const schedule = await checkSchedule(requestedScheduleId, {
+        officerUserId: inspection.petugasUserId, officerName: inspection.petugas, plantId: input.plantId, inspectionId: inspection.id,
+    });
+    if (schedule.failure) return schedule.failure;
 
     const saved = await inspectionRepository.update(inspection.id, {
         plantId: parseInt(input.plantId, 10),
+        scheduleId: schedule.scheduleId,
         keteranganLokasi: input.keteranganLokasi || '-',
         tanggal: formatDate(input.tanggal),
         dueDate: formatDate(input.dueDate),
@@ -201,6 +267,7 @@ export async function update(inspectionId, input, actor) {
         initialActionsForNewFindings: fromStatus === INSPECTION_STATUS.REVISION_REQUIRED,
         pic: inspection.petugas,
     });
+    if (saved === SCHEDULE_CONFLICT) return fail(INSPECTION_ERROR.SCHEDULE_ALREADY_LINKED);
     if (!saved) return fail(INSPECTION_ERROR.STATE_CHANGED);
 
     return ok({ inspection: await inspectionRepository.findById(inspection.id) });
@@ -239,10 +306,28 @@ export async function submit(inspectionId, actor) {
     const content = await checkContent(inspection);
     if (content.failure) return content.failure;
 
-    const saved = await inspectionRepository.submit(inspection.id, fromStatus, nextState, initialActions);
+    // Jadwal yang tertaut diperiksa ulang dengan data terbaru. Pengajuan
+    // PERTAMA menandai jadwal Terlaksana di transaksi yang sama (repository:
+    // UPDATE bersyarat — gagal = seluruh pengajuan dibatalkan). Pengajuan
+    // ulang revisi tidak mengubah jadwal: tautannya sudah tersimpan sejak awal.
+    if (isFirstSubmission && !inspection.scheduleId) return fail(INSPECTION_ERROR.SCHEDULE_REQUIRED);
+    const schedule = await checkSchedule(inspection.scheduleId || null, {
+        officerUserId: inspection.petugasUserId, officerName: inspection.petugas, plantId: inspection.plantId, inspectionId: inspection.id,
+    });
+    if (schedule.failure) return schedule.failure;
+    const scheduleCompletion = isFirstSubmission && schedule.scheduleId
+        ? { scheduleId: schedule.scheduleId, officerUserId: inspection.petugasUserId, plantId: inspection.plantId }
+        : null;
+
+    const saved = await inspectionRepository.submit(inspection.id, fromStatus, nextState, initialActions, scheduleCompletion);
+    if (saved === SCHEDULE_CONFLICT) return fail(INSPECTION_ERROR.SCHEDULE_UNAVAILABLE);
     if (!saved) return fail(INSPECTION_ERROR.STATE_CHANGED);
 
-    return ok({ inspection: await inspectionRepository.findById(inspection.id), resubmitted: !isFirstSubmission });
+    return ok({
+        inspection: await inspectionRepository.findById(inspection.id),
+        resubmitted: !isFirstSubmission,
+        scheduleCompleted: Boolean(scheduleCompletion),
+    });
 }
 
 /**

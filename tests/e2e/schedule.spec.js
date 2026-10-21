@@ -1,5 +1,6 @@
-/* schedule.spec.js — Penjadwalan: tambah & edit (termasuk Tanggal Realisasi)
- * lewat UI sungguhan, tombol hanya untuk role yang diizinkan server, dan
+/* schedule.spec.js — Penjadwalan: tambah & edit lewat UI sungguhan (migrasi
+ * 008: petugas dipilih dari akun Safety Officer, Tanggal Realisasi hanya dari
+ * sistem), tombol hanya untuk role yang diizinkan server, dan
  * toast (desain baru) untuk berhasil/gagal.
  *
  * Akar masalah yang diuji: tombol Tambah/Edit dulu tampil untuk semua role,
@@ -11,13 +12,14 @@ import { API } from './support/env.js';
 import { test, expect } from './support/test.js';
 import { loginViaUi, goToTab, selectPlant, expectToastOnTop } from './support/ui.js';
 import { apiLogin } from './support/api.js';
+import { markScheduleRealized } from './support/db.js';
 
 const JADWAL_PLANT_PLACEHOLDER = 'Cari plant...';
 
 async function createScheduleFixture(session, overrides = {}) {
     const res = await session.context.post('/api/schedules', {
         headers: { 'X-CSRF-Token': session.csrfToken },
-        data: { plantId: 9, officer: 'Arif', tahun: 2026, tanggalJadwal: '2026-10-05', periode: 4, minggu: 1, tanggalRealisasi: '', ...overrides },
+        data: { plantId: 9, officerUserId: session.user.id, tahun: 2026, tanggalJadwal: '2026-10-05', periode: 4, minggu: 1, ...overrides },
     });
     expect(res.status(), await res.text()).toBe(201);
     return (await res.json()).schedule;
@@ -60,6 +62,13 @@ test('Safety Officer menambah jadwal lewat UI: toast berhasil, modal tertutup, t
     const arif = await apiLogin('arif');
     await loginViaUi(page, 'arif');
     await openAddScheduleModal(page);
+    // Petugas: akun Safety Officer aktif (bukan teks bebas); bawaan = akun sendiri.
+    const officerOptions = await page.locator('#jadwalPetugas option').allTextContents();
+    expect(officerOptions).toEqual(expect.arrayContaining(['— Pilih Safety Officer —', 'Arif', 'Tulus', 'Mustofa', 'Melka']));
+    expect(officerOptions).not.toContain('Administrator');
+    expect(officerOptions).not.toContain('Dewi');
+    await expect(page.locator('#jadwalPetugas')).toHaveValue(String(arif.user.id));
+    await expect(page.locator('#jadwalRealisasi')).toHaveAttribute('readonly', '');
     await page.locator('#jadwalMinggu').selectOption('3');
     await page.locator('#jadwalPeriode').selectOption('2');
     await page.locator('#jadwalTanggal').fill('2026-10-12');
@@ -70,14 +79,15 @@ test('Safety Officer menambah jadwal lewat UI: toast berhasil, modal tertutup, t
     const id = (await page.locator('#toastDescription').textContent()).match(/SCH-\d+/)[0];
 
     const stored = await fetchSchedule(arif, id);
-    expect(stored).toMatchObject({ plantId: 9, minggu: 3, periode: 2, tahun: 2026, tanggalJadwal: '2026-10-12', tanggalRealisasi: null });
+    expect(stored).toMatchObject({ plantId: 9, minggu: 3, periode: 2, tahun: 2026, tanggalJadwal: '2026-10-12', tanggalRealisasi: null, officer: 'Arif', officerUserId: arif.user.id });
     await searchSchedules(page, id);
     await expect(page.locator(`[data-action="editJadwal"][data-id="${id}"]`)).toBeVisible();
     await arif.context.dispose();
 });
 
-test('Edit jadwal: Tanggal Realisasi tersimpan — tetap ada setelah reload, status Selesai', async ({ page }) => {
+test('Edit jadwal: petugas diganti lewat akun, Tanggal Realisasi hanya tampilan (tidak bisa diisi); jadwal Terlaksana tanpa tombol Edit/Hapus', async ({ page }) => {
     const arif = await apiLogin('arif');
+    const tulus = await apiLogin('tulus');
     const schedule = await createScheduleFixture(arif);
 
     await loginViaUi(page, 'arif');
@@ -86,21 +96,31 @@ test('Edit jadwal: Tanggal Realisasi tersimpan — tetap ada setelah reload, sta
     await page.locator(`[data-action="editJadwal"][data-id="${schedule.id}"]`).click();
     await expect(page.locator('#jadwalModal')).toHaveClass(/show/);
     await expect(page.locator('#jadwalTanggal')).toHaveValue('2026-10-05');
-    await page.locator('#jadwalRealisasi').fill('2026-09-25');
+    await expect(page.locator('#jadwalPetugas')).toHaveValue(String(arif.user.id));
+    await expect(page.locator('#jadwalRealisasi')).toHaveAttribute('readonly', '');
+    await expect(page.locator('[data-action="setRealisasiHariIni"]'), 'tombol isi manual dihapus').toHaveCount(0);
+    await page.locator('#jadwalPetugas').selectOption({ label: 'Tulus' });
     await page.locator('#submitJadwal').click();
     await expectToast(page, { variant: 'success', title: 'Jadwal berhasil disimpan', description: `Perubahan jadwal ${schedule.id} berhasil disimpan` });
+    expect(await fetchSchedule(arif, schedule.id)).toMatchObject({ officer: 'Tulus', officerUserId: tulus.user.id, tanggalRealisasi: null, status: 'aktif' });
 
-    expect(await fetchSchedule(arif, schedule.id)).toMatchObject({ tanggalJadwal: '2026-10-05', tanggalRealisasi: '2026-09-25', plantId: 9 });
-
+    // Terlaksana (diisi sistem; di sini lewat fixture database uji): Selesai, tanpa Edit.
+    await markScheduleRealized(schedule.id, '2026-10-06');
     await page.reload();
     await expect(page.getByTestId('user-name')).toBeVisible();
     await goToTab(page, 'Penjadwalan');
     await searchSchedules(page, schedule.id);
-    const row = page.locator('#jadwalTableBody tr', { has: page.locator(`[data-id="${schedule.id}"]`) });
+    await expect(page.locator('#searchJadwalCount')).toHaveText(/^1 dari \d+$/); // pencarian id: satu baris
+    const row = page.locator('#jadwalTableBody tr').first();
     await expect(row).toContainText('Selesai');
-    await row.locator('[data-action="editJadwal"]').click();
-    await expect(page.locator('#jadwalRealisasi')).toHaveValue('2026-09-25');
+    await expect(page.locator(`[data-action="editJadwal"][data-id="${schedule.id}"]`)).toHaveCount(0);
+    const put = await arif.context.put(`/api/schedules/${schedule.id}`, {
+        headers: { 'X-CSRF-Token': arif.csrfToken },
+        data: { plantId: 9, officerUserId: arif.user.id, tahun: 2026, tanggalJadwal: '2026-10-05', periode: 4, minggu: 1 },
+    });
+    expect([put.status(), (await put.json()).error]).toEqual([400, 'SCHEDULE_REALIZED']);
     await arif.context.dispose();
+    await tulus.context.dispose();
 });
 
 test('role tanpa izin (Manajer): tidak ada tombol Tambah/Edit dan tanpa kolom Aksi; server tetap menolak 403', async ({ page }) => {
@@ -121,7 +141,7 @@ test('role tanpa izin (Manajer): tidak ada tombol Tambah/Edit dan tanpa kolom Ak
     const { csrfToken } = await (await page.request.get(`${API}/auth/me`)).json();
     const put = await page.request.put(`${API}/schedules/${schedule.id}`, {
         headers: { 'X-CSRF-Token': csrfToken },
-        data: { plantId: 9, officer: 'Arif', tahun: 2026, tanggalJadwal: '2026-10-05', periode: 4, minggu: 1, tanggalRealisasi: '2026-09-25' },
+        data: { plantId: 9, officerUserId: arif.user.id, tahun: 2026, tanggalJadwal: '2026-10-05', periode: 4, minggu: 1 },
     });
     expect(put.status()).toBe(403);
     expect((await fetchSchedule(arif, schedule.id)).tanggalRealisasi).toBeNull();
@@ -158,8 +178,10 @@ test('toast responsif: 375/390 tetap di dalam layar dengan margin aman; 1280/144
 
     for (const [width, height] of [[375, 667], [390, 844], [1280, 800], [1440, 900]]) {
         await page.setViewportSize({ width, height });
-        await page.locator('[data-action="setRealisasiHariIni"]').click();
-        await expectToast(page, { variant: 'info', title: 'Tanggal realisasi diisi hari ini' });
+        // Toast validasi di atas modal: petugas belum dipilih (modal tetap terbuka).
+        await page.locator('#jadwalPetugas').selectOption('');
+        await page.locator('#submitJadwal').click();
+        await expectToast(page, { variant: 'warning', title: 'Safety Officer wajib dipilih!' });
         await expect.poll(() => page.locator('#toastMessage').evaluate((el) => getComputedStyle(el).opacity)).toBe('1');
         const box = await page.locator('#toastMessage').evaluate((el) => {
             const rect = el.getBoundingClientRect();

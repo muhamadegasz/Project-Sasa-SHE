@@ -1563,3 +1563,42 @@ test dijalankan.
 - Watermark ditampilkan kembali pada approval history menggunakan metadata posisi yang tersimpan.
 
 - Watermark pada PDF atau output cetak belum termasuk dalam scope Phase 17.4D.
+
+## K-31: Role & tahap pengesahan Manajer SHE (migrasi 007)
+Tingkatan role yang benar (laporan pengguna): Safety Officer → Koordinator K3L Bagian → Manajer Bagian →
+**Manajer SHE** → Ketua P2K3, ditambah Admin — enam role.
+
+- **Tahap pengesahan ke-3 dari 4**, di antara Manajer Bagian dan Ketua P2K3 (`APPROVAL_STAGES`,
+  kode tahap & role `manajer_she`). Aturannya sama dengan tahap lain: wajib tanda tangan, boleh menolak
+  (diajukan ulang kembali ke tahap Manajer SHE), tidak bisa dilompati. Visibilitas seperti Manajer
+  Bagian: lintas plant, hanya tahapnya sendiri + yang selesai + riwayat persetujuannya.
+- **Migrasi 007** hanya menambah nilai `manajer_she` di akhir tiga ENUM (`users.role`, `approvals.stage`,
+  `inspections.current_approval_stage`). Tidak ada baris yang diubah.
+- **Data lama tidak dipindah:** inspeksi yang sudah menunggu Ketua P2K3 tetap di Ketua; yang sudah selesai
+  tetap selesai. Keduanya tidak melalui Manajer SHE, sehingga riwayat, ringkasan "x/y", dan Lembar
+  Pengesahan PDF hanya memuat tahap yang benar-benar dilalui (`applicableStages()`; hanya tahap bertanda
+  `addedLater` yang bisa tidak berlaku, tahap lain selalu tampil).
+- Akun Manajer SHE dibuat Admin lewat Manajemen Pengguna; akun seed uji: `sari`.
+
+## K-32: Laporan inspeksi tertaut ke jadwal inspeksi (migrasi 008)
+Akar masalah: tidak ada relasi sama sekali antara `inspections` dan `schedules`. "Terlaksana" hanya
+`tanggal_realisasi` yang diketik manual di form jadwal, petugas jadwal hanya teks bebas, dan
+`POST /api/schedules` mengisi `officer_user_id` dengan PEMBUAT jadwal, bukan petugasnya.
+
+- **Relasi:** `inspections.schedule_id` (NULL hanya untuk data lama dari sebelum migrasi 008 — tetap sah,
+  tidak di-backfill), `UNIQUE` (satu laporan per jadwal; banyak NULL diizinkan), FK `ON DELETE SET NULL`.
+- **Petugas jadwal = akun Safety Officer aktif** (`officer_user_id`, dipilih di form; nama disalin dari
+  akun). Pilihan petugas: `GET /api/schedules/officers` (hanya role pengelola jadwal, `{ id, displayName }`).
+  Jadwal lama hanya bisa ditautkan bila `officer_user_id` DAN nama petugasnya cocok dengan akun yang sama;
+  selain itu harus diubah dulu di form jadwal (pilih akun petugas).
+- **Pemilihan:** WAJIB untuk laporan baru (buat, simpan draft, pengajuan pertama -> SCHEDULE_REQUIRED); inspeksi
+  lama tanpa jadwal tetap bisa direvisi & diajukan ulang. Safety Officer memilih dari jadwalnya sendiri yang belum Terlaksana; plant mengikuti
+  jadwal. Server tidak mempercayai id dari isian: jadwal dimuat dari database dan diperiksa
+  `checkScheduleLink()` (ditugaskan ke pengguna sesi, plant sama, belum tertaut laporan lain, belum
+  Terlaksana) saat simpan draft, simpan revisi, dan pengajuan.
+- **Terlaksana:** hanya oleh pengajuan PERTAMA, di transaksi yang sama dengan perubahan status inspeksi
+  (UPDATE bersyarat; gagal = seluruh pengajuan dibatalkan). Draft tidak menandai jadwal. Status pengesahan
+  laporan tidak berhubungan dengan status jadwal. Field tanggal realisasi di form jadwal hanya tampilan;
+  jadwal Terlaksana tidak bisa diubah/dihapus.
+- **Revisi:** tautan asli dipertahankan (isian jadwal diabaikan; plant tidak boleh menjauh dari plant
+  jadwal); ajukan ulang tidak menandai ulang. Admin menghapus laporannya -> jadwal kembali belum Terlaksana.

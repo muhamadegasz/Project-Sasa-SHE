@@ -87,6 +87,8 @@ export async function add(inspection) {
 function contentFormData(content) {
     const formData = new FormData();
     formData.append('plantId', content.plantId);
+    // Migrasi 008: jadwal yang dipilih ("SCH-nnn", kosong = tanpa jadwal) — server memeriksa ulang.
+    formData.append('scheduleId', content.scheduleId ?? '');
     formData.append('keteranganLokasi', content.keteranganLokasi ?? '');
     formData.append('tanggal', toIsoDate(content.tanggal) || '');
     formData.append('dueDate', toIsoDate(content.dueDate) || '');

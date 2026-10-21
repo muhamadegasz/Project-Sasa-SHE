@@ -45,7 +45,7 @@ test('kolom final tanpa Sync & Progres; status + tahap yang ditunggu; Overdue di
     const revision = await createInspectionFixture(arif);
     await rejectViaApi(dewi, revision.id, 'koordinator_k3l', 'Lengkapi foto');
     const completed = await createInspectionFixture(arif);
-    for (const [session, stage] of [[dewi, 'koordinator_k3l'], [andi, 'manajer'], [hadi, 'ketua_p2k3']]) await approveViaApi(session, completed.id, stage);
+    for (const [session, stage] of [[dewi, 'koordinator_k3l'], [andi, 'manajer'], [await apiLogin('sari'), 'manajer_she'], [hadi, 'ketua_p2k3']]) await approveViaApi(session, completed.id, stage);
     const draft = await createInspectionFixture(arif, {}, { submit: false });
     const overdue = await createInspectionFixture(arif, { dueDate: '2020-01-15' });
 
