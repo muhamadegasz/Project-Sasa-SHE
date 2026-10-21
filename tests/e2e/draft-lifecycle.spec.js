@@ -8,10 +8,8 @@
 
 import { API } from './support/env.js';
 import { test, expect, newIsolatedPage } from './support/test.js';
-import { loginViaUi, goToTab, selectPlant, allInspeksiRow } from './support/ui.js';
+import { loginViaUi, goToTab, chooseNewSchedule, allInspeksiRow } from './support/ui.js';
 import { apiLogin, approveViaApi, createInspectionFixture } from './support/api.js';
-
-const PLANT_SEARCH_PLACEHOLDER = 'Cari plant... (ketik nama plant)';
 
 /** Setelah simpan / ajukan (ulang) / batal: kembali ke daftar Inspeksi, bukan tetap di form atau Dashboard. */
 async function expectBackOnInspeksi(page) {
@@ -31,7 +29,7 @@ test('draft -> ubah -> ajukan -> ditolak Manajer -> revisi pemilik -> ajukan ula
     // 1. Simpan sebagai draft lewat form.
     await loginViaUi(page, 'arif');
     await goToTab(page, 'Buat Inspeksi');
-    await selectPlant(page, PLANT_SEARCH_PLACEHOLDER, 'Electrical dan Instrument');
+    await chooseNewSchedule(page, 'arif', 'Electrical dan Instrument'); // laporan wajib dari jadwal (migrasi 008); plant mengikuti jadwal
     await page.getByPlaceholder('Contoh: Kabel terbuka').fill('E2E lifecycle: panel tanpa label');
     await page.locator('#kategoriInput').selectOption('Kelistrikan'); // kategori wajib dipilih
     await page.locator('#panel-form').getByRole('button', { name: 'Tambah' }).click();

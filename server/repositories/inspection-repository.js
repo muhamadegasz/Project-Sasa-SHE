@@ -35,6 +35,7 @@ import { visibilityScope } from '../../src/domain/inspection-policy.js';
 import { APPROVAL_DECISION, INSPECTION_STATUS } from '../../src/domain/statuses.js';
 import { formatInspectionStatus } from '../../src/shared/labels.js';
 import { buildInitialAction } from '../../src/domain/inspection-rules.js';
+import { SCHEDULE_CONFLICT } from '../../src/domain/schedule-rules.js';
 
 function toDisplayId(numericId) {
     return `INS-${String(numericId).padStart(3, '0')}`;
@@ -60,6 +61,23 @@ function toSqlDate(localDate) {
 function toNumericId(id) {
     const match = String(id).match(/(\d+)\s*$/);
     return match ? Number(match[1]) : NaN;
+}
+
+/** "SCH-007" -> 7; null/kosong -> null (inspeksi tanpa jadwal). */
+function toScheduleNumericId(scheduleId) {
+    if (scheduleId === undefined || scheduleId === null || scheduleId === '') return null;
+    const numericId = toNumericId(scheduleId);
+    return Number.isNaN(numericId) ? null : numericId;
+}
+const toScheduleDisplayId = (numericId) => (numericId == null ? null : `SCH-${String(numericId).padStart(3, '0')}`);
+
+/**
+ * Pelanggaran kunci UNIQUE inspections.schedule_id (jadwal sudah dipakai
+ * laporan lain) atau FK-nya (jadwal baru saja dihapus) — migrasi 008.
+ */
+function isScheduleLinkViolation(error) {
+    return (error.code === 'ER_DUP_ENTRY' && String(error.message).includes('uq_inspections_schedule'))
+        || (error.code === 'ER_NO_REFERENCED_ROW_2' && String(error.message).includes('fk_inspections_schedule'));
 }
 
 async function loadFull(row) {
@@ -125,6 +143,8 @@ async function loadFull(row) {
         id: toDisplayId(numericId),
         lokasi: row.plant_name,
         plantId: row.plant_id,
+        // Migrasi 008: jadwal yang tertaut ("SCH-nnn"), null untuk inspeksi tanpa jadwal/lama.
+        scheduleId: toScheduleDisplayId(row.schedule_id),
         keteranganLokasi: row.keterangan_lokasi,
         tanggal: formatDate(row.tanggal),
         petugas: row.petugas,
@@ -150,7 +170,7 @@ async function loadFull(row) {
 }
 
 const BASE_SELECT = `
-    SELECT i.id, i.plant_id, i.keterangan_lokasi, i.tanggal, i.petugas, i.petugas_user_id,
+    SELECT i.id, i.plant_id, i.schedule_id, i.keterangan_lokasi, i.tanggal, i.petugas, i.petugas_user_id,
            i.status, i.current_approval_stage, i.submitted_at, i.due_date, p.name AS plant_name
     FROM inspections i
     JOIN plants p ON p.id = i.plant_id
@@ -301,11 +321,12 @@ export async function add(inspection) {
         await connection.beginTransaction();
 
         const [result] = await connection.query(
-            `INSERT INTO inspections (plant_id, keterangan_lokasi, tanggal, petugas, petugas_user_id,
+            `INSERT INTO inspections (plant_id, schedule_id, keterangan_lokasi, tanggal, petugas, petugas_user_id,
                                       status, current_approval_stage, submitted_at, due_date)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
             [
                 inspection.plantId,
+                toScheduleNumericId(inspection.scheduleId),
                 inspection.keteranganLokasi,
                 toSqlDate(inspection.tanggal),
                 inspection.petugas,
@@ -355,6 +376,7 @@ export async function add(inspection) {
         return findById(toDisplayId(numericId));
     } catch (error) {
         await connection.rollback();
+        if (isScheduleLinkViolation(error)) return SCHEDULE_CONFLICT;
         throw error;
     } finally {
         connection.release();
@@ -482,8 +504,8 @@ export async function update(inspectionId, fields, options) {
         }
 
         await connection.query(
-            'UPDATE inspections SET plant_id = ?, keterangan_lokasi = ?, tanggal = ?, due_date = ? WHERE id = ?',
-            [fields.plantId, fields.keteranganLokasi, toSqlDate(fields.tanggal), toSqlDate(fields.dueDate), numericId],
+            'UPDATE inspections SET plant_id = ?, schedule_id = ?, keterangan_lokasi = ?, tanggal = ?, due_date = ? WHERE id = ?',
+            [fields.plantId, toScheduleNumericId(fields.scheduleId), fields.keteranganLokasi, toSqlDate(fields.tanggal), toSqlDate(fields.dueDate), numericId],
         );
 
         const [existingRows] = await connection.query('SELECT id FROM findings WHERE inspection_id = ?', [numericId]);
@@ -526,6 +548,7 @@ export async function update(inspectionId, fields, options) {
         return true;
     } catch (error) {
         await connection.rollback();
+        if (isScheduleLinkViolation(error)) return SCHEDULE_CONFLICT;
         throw error;
     } finally {
         connection.release();
@@ -539,9 +562,18 @@ export async function update(inspectionId, fields, options) {
  * pengajuan pertama, lalu tindakan awal per temuan (pengajuan pertama saja,
  * disiapkan service). Tidak ada baris pengesahan yang dibuat.
  *
- * @returns {Promise<boolean>}
+ * Migrasi 008 — `scheduleCompletion` ({ scheduleId, officerUserId, plantId },
+ * hanya pengajuan pertama inspeksi bertautan jadwal): di transaksi yang SAMA,
+ * jadwal ditandai Terlaksana (status 'selesai', tanggal_realisasi hari ini)
+ * dengan UPDATE bersyarat — tautannya benar tersimpan di inspeksi ini, masih
+ * ditugaskan ke petugas & plant yang sama, dan belum Terlaksana. Bila tidak
+ * ada baris yang berubah, SELURUH pengajuan dibatalkan (SCHEDULE_CONFLICT):
+ * tidak pernah ada laporan terajukan dengan jadwal yang tidak tertandai, atau
+ * sebaliknya.
+ *
+ * @returns {Promise<boolean | typeof SCHEDULE_CONFLICT>}
  */
-export async function submit(inspectionId, expectedStatus, nextState, initialActions) {
+export async function submit(inspectionId, expectedStatus, nextState, initialActions, scheduleCompletion = null) {
     const numericId = toNumericId(inspectionId);
     const connection = await pool.getConnection();
     try {
@@ -555,6 +587,19 @@ export async function submit(inspectionId, expectedStatus, nextState, initialAct
         if (update.affectedRows === 0) {
             await connection.rollback();
             return false;
+        }
+        if (scheduleCompletion) {
+            const [completed] = await connection.query(
+                `UPDATE schedules s
+                 JOIN inspections i ON i.schedule_id = s.id AND i.id = ?
+                 SET s.status = 'selesai', s.tanggal_realisasi = CURDATE()
+                 WHERE s.id = ? AND s.officer_user_id = ? AND s.plant_id = ? AND s.tanggal_realisasi IS NULL`,
+                [numericId, toScheduleNumericId(scheduleCompletion.scheduleId), scheduleCompletion.officerUserId, scheduleCompletion.plantId],
+            );
+            if (completed.affectedRows === 0) {
+                await connection.rollback();
+                return SCHEDULE_CONFLICT;
+            }
         }
         for (const action of initialActions) {
             await connection.query(
@@ -630,6 +675,15 @@ async function deleteInspectionWhere(inspectionId, statusCondition) {
             [numericId],
         );
         signaturePaths = signatureRows.map((row) => row.signature_file_path);
+        // Migrasi 008: laporan yang menandai jadwalnya Terlaksana dihapus Admin ->
+        // jadwal kembali belum terlaksana (Terlaksana = ada laporan yang diajukan).
+        // Draft tidak pernah menandai jadwal, jadi tidak ada yang dikembalikan.
+        await connection.query(
+            `UPDATE schedules s JOIN inspections i ON i.schedule_id = s.id
+             SET s.status = 'aktif', s.tanggal_realisasi = NULL
+             WHERE i.id = ? AND i.status <> 'draft'`,
+            [numericId],
+        );
         await connection.query('DELETE FROM inspections WHERE id = ?', [numericId]);
         await connection.commit();
     } catch (error) {

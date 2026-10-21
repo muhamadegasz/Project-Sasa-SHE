@@ -53,9 +53,14 @@ export async function apiLogin(username, password = username) {
 export async function createInspectionFixture(session, overrides = {}, { submit = true } = {}) {
     const tag = uniqueTag();
     const today = new Date().toISOString().slice(0, 10);
+    // Migrasi 008: laporan baru wajib bertautan jadwal milik petugasnya di plant yang sama.
+    const scheduleId = 'scheduleId' in overrides
+        ? overrides.scheduleId
+        : await createScheduleFixture(session, { plantId: overrides.plantId ?? 1 });
     const res = await session.context.post('/api/inspections', {
         headers: { 'X-CSRF-Token': session.csrfToken },
         data: {
+            scheduleId,
             plantId: 1,
             keteranganLokasi: tag,
             tanggal: today,
@@ -96,4 +101,19 @@ export async function approveViaApi(session, inspectionId, stageId, signatureMet
         throw new Error(`approveViaApi(${inspectionId}, ${stageId}) gagal: HTTP ${res.status()} ${await res.text()}`);
     }
     return res.json();
+}
+
+/**
+ * Migrasi 008: jadwal untuk Safety Officer `session` (petugas = akun itu).
+ * Kegagalan melempar error, sama seperti fixture lain. @returns id ("SCH-nnn")
+ */
+export async function createScheduleFixture(session, overrides = {}) {
+    const res = await session.context.post('/api/schedules', {
+        headers: { 'X-CSRF-Token': session.csrfToken },
+        data: { plantId: 1, officerUserId: session.user.id, tahun: 2026, tanggalJadwal: '2026-12-14', periode: 4, minggu: 3, ...overrides },
+    });
+    if (res.status() !== 201) {
+        throw new Error(`createScheduleFixture gagal: HTTP ${res.status()} ${await res.text()}`);
+    }
+    return (await res.json()).schedule.id;
 }

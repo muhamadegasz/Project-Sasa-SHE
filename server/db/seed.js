@@ -52,6 +52,8 @@ const SEED_USERS = [
     { username: 'andi', displayName: 'Andi', role: 'manajer_bagian' },
     { username: 'hadi', displayName: 'Hadi', role: 'ketua_p2k3' },
     { username: 'admin', displayName: 'Administrator', role: 'admin' },
+    // Migrasi 007: tahap Manajer SHE (di akhir daftar supaya id akun seed lain tetap).
+    { username: 'sari', displayName: 'Sari', role: 'manajer_she' },
 ];
 
 async function wipe(connection) {

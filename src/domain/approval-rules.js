@@ -1,4 +1,4 @@
-/* approval-rules.js — riwayat pengesahan tiga tahap (Phase 17.2).
+/* approval-rules.js — riwayat pengesahan berjenjang (Phase 17.2; empat tahap sejak migrasi 007).
  *
  * Riwayat bersifat APPEND-ONLY: `inspection.approvalHistory` berisi satu
  * entri per keputusan, dan satu tahap boleh punya beberapa attempt
@@ -64,14 +64,36 @@ export function isStageApproved(inspection, stageId) {
     return Boolean(latest && latest.decision === APPROVAL_DECISION.APPROVED);
 }
 
-/** Jumlah tahap yang keputusan terakhirnya disetujui. */
-export function countApproved(inspection) {
-    return APPROVAL_STAGES.filter((stage) => isStageApproved(inspection, stage.id)).length;
+/** Apakah inspeksi sudah melewati tahap ini (selesai, atau tahap berjalannya sesudahnya). */
+function isPastStage(inspection, stage) {
+    if (inspection.status === INSPECTION_STATUS.COMPLETED) return true;
+    const current = findStage(inspection.currentApprovalStage);
+    return Boolean(current) && current.order > stage.order;
 }
 
-/** Total tahap pengesahan yang harus dilalui. */
-export function totalStages() {
-    return APPROVAL_STAGES.length;
+/**
+ * Tahap yang dilalui inspeksi ini. Tahap yang ditambahkan belakangan
+ * (`addedLater`, mis. Manajer SHE) tidak berlaku bagi inspeksi yang sudah
+ * melewatinya tanpa keputusan apa pun di tahap itu: inspeksi yang sudah
+ * selesai, atau yang sudah sampai Ketua P2K3, sebelum tahap itu ada. Datanya
+ * tidak diubah; riwayat, ringkasan "x/y", dan PDF-nya hanya memuat tahap yang
+ * memang dilaluinya. Tanpa inspeksi: seluruh tahap.
+ */
+export function applicableStages(inspection) {
+    if (!inspection) return APPROVAL_STAGES;
+    return APPROVAL_STAGES.filter((stage) => !stage.addedLater
+        || stageDecisions(inspection, stage.id).length > 0
+        || !isPastStage(inspection, stage));
+}
+
+/** Jumlah tahap (yang dilalui inspeksi ini) yang keputusan terakhirnya disetujui. */
+export function countApproved(inspection) {
+    return applicableStages(inspection).filter((stage) => isStageApproved(inspection, stage.id)).length;
+}
+
+/** Total tahap pengesahan yang harus dilalui — untuk inspeksi tertentu bila diberikan. */
+export function totalStages(inspection) {
+    return applicableStages(inspection).length;
 }
 
 /**

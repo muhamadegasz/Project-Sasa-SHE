@@ -4,6 +4,9 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+
+import { APPROVAL_STAGE, ROLE } from '../../src/config/constants.js';
 
 import {
     canManageUsers, checkActiveFlag, checkDisplayName, checkPassword, checkRole, checkUsername,
@@ -58,8 +61,16 @@ test(`checkDisplayName: melebihi ${DISPLAY_NAME_MAX_LENGTH} karakter -> TOO_LONG
 
 // ---- checkRole ----
 
-test('checkRole: kelima role ENUM diterima', () => {
-    for (const role of ['safety_officer', 'koordinator_k3l', 'manajer_bagian', 'ketua_p2k3', 'admin']) {
+test('ROLE & APPROVAL_STAGE sama persis dengan ENUM terbaru di database (migrasi 007)', () => {
+    const sql = readFileSync(new URL('../../server/db/migrations/007_manajer_she.sql', import.meta.url), 'utf8');
+    const enumOf = (column) => sql.match(new RegExp(`MODIFY ${column} ENUM\\(([^)]*)\\)`))[1].split(',').map((value) => value.trim().replace(/^'|'$/g, '')).sort();
+    assert.deepEqual(Object.values(ROLE).sort(), enumOf('role'));
+    assert.deepEqual(Object.values(APPROVAL_STAGE).sort(), enumOf('stage'));
+    assert.deepEqual(Object.values(APPROVAL_STAGE).sort(), enumOf('current_approval_stage'));
+});
+
+test('checkRole: keenam role ENUM diterima (Manajer SHE sejak migrasi 007)', () => {
+    for (const role of ['safety_officer', 'koordinator_k3l', 'manajer_bagian', 'manajer_she', 'ketua_p2k3', 'admin']) {
         assert.deepEqual(checkRole(role), { value: role });
     }
 });
@@ -91,7 +102,7 @@ test(`checkPassword: batas panjang ${PASSWORD_MIN_LENGTH}-${PASSWORD_MAX_LENGTH}
 // ---- normalizePlantAssignment ----
 
 test('normalizePlantAssignment: role SELAIN koordinator_k3l -> selalu null, apa pun plantId yang dikirim (normalisasi diam-diam)', () => {
-    for (const role of ['safety_officer', 'manajer_bagian', 'ketua_p2k3', 'admin']) {
+    for (const role of ['safety_officer', 'manajer_bagian', 'manajer_she', 'ketua_p2k3', 'admin']) {
         for (const plantId of [undefined, null, '', 1, '9', 999]) {
             assert.deepEqual(normalizePlantAssignment(role, plantId), { value: null }, `${role}/${JSON.stringify(plantId)}`);
         }
@@ -121,7 +132,7 @@ test('normalizePlantAssignment: koordinator_k3l dengan plantId tidak sah -> PLAN
 
 test('canManageUsers: hanya admin; role lain / tanpa user -> false', () => {
     assert.equal(canManageUsers({ id: 9, role: 'admin' }), true);
-    for (const role of ['safety_officer', 'koordinator_k3l', 'manajer_bagian', 'ketua_p2k3', 'ADMIN', undefined]) {
+    for (const role of ['safety_officer', 'koordinator_k3l', 'manajer_bagian', 'manajer_she', 'ketua_p2k3', 'ADMIN', undefined]) {
         assert.equal(canManageUsers({ id: 1, role }), false, String(role));
     }
     assert.equal(canManageUsers(null), false);

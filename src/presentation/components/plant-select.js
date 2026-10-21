@@ -137,5 +137,15 @@ export function createPlantSelect({ inputId, dropdownId, hiddenInputId, displayI
 
     renderDropdown('');
 
-    return { select, clear, markInvalid };
+    /**
+     * Mengunci pilihan (migrasi 008: plant mengikuti jadwal inspeksi yang
+     * dipilih) — tidak bisa dicari atau dihapus sampai dibuka lagi.
+     */
+    function setLocked(locked) {
+        input.disabled = locked;
+        clearBtn.style.display = locked ? 'none' : '';
+        if (locked) dropdown.classList.remove('show');
+    }
+
+    return { select, clear, markInvalid, setLocked };
 }

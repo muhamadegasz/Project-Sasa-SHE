@@ -15,16 +15,15 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { API } from './support/env.js';
 import { test, expect } from './support/test.js';
-import { loginViaUi, goToTab, selectPlant } from './support/ui.js';
+import { loginViaUi, goToTab, chooseNewSchedule } from './support/ui.js';
 
-const PLANT_SEARCH_PLACEHOLDER = 'Cari plant... (ketik nama plant)';
 const FIXTURE_JPEG = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'e2e-foto-bukti.jpg');
 
 test('safety officer bisa membuat inspeksi baru lewat form sebagai DRAFT (pilih plant, tambah temuan, simpan)', async ({ page }) => {
     await loginViaUi(page, 'arif');
     await goToTab(page, 'Buat Inspeksi');
 
-    await selectPlant(page, PLANT_SEARCH_PLACEHOLDER, 'Electrical dan Instrument');
+    await chooseNewSchedule(page, 'arif', 'Electrical dan Instrument'); // laporan wajib dari jadwal (migrasi 008); plant mengikuti jadwal
 
     await page.getByPlaceholder('Contoh: Kabel terbuka').fill('E2E: kabel terkelupas di panel utama');
     await page.locator('#kategoriInput').selectOption('Kelistrikan'); // kategori wajib dipilih
@@ -54,7 +53,7 @@ test('identitas petugas yang dipakai adalah user yang sedang login, bukan input 
     await expect(petugasField).toHaveValue('Arif');
     await expect(petugasField).toHaveAttribute('readonly', '');
 
-    await selectPlant(page, PLANT_SEARCH_PLACEHOLDER, 'UTILITY');
+    await chooseNewSchedule(page, 'arif', 'UTILITY'); // laporan wajib dari jadwal (migrasi 008); plant mengikuti jadwal
     await page.getByPlaceholder('Contoh: Kabel terbuka').fill('E2E: verifikasi identitas petugas');
     await page.locator('#kategoriInput').selectOption('Kelistrikan'); // kategori wajib dipilih
     await page.locator('#panel-form').getByRole('button', { name: 'Tambah' }).click();
@@ -75,7 +74,7 @@ test('identitas petugas yang dipakai adalah user yang sedang login, bukan input 
     expect(inspection.petugas).toBe('Arif');
 });
 
-test('inspeksi tanpa plant dipilih ditolak dengan pesan validasi, tidak tersimpan', async ({ page }) => {
+test('inspeksi tanpa jadwal (dan tanpa plant) dipilih ditolak dengan pesan validasi, tidak tersimpan', async ({ page }) => {
     await loginViaUi(page, 'arif');
     await goToTab(page, 'Buat Inspeksi');
 
@@ -86,7 +85,9 @@ test('inspeksi tanpa plant dipilih ditolak dengan pesan validasi, tidak tersimpa
 
     await page.getByRole('button', { name: 'Simpan Draft' }).click();
 
-    await expect(page.locator('#toastMessage')).toContainText('pilih Lokasi / Plant');
+    // Migrasi 008: plant mengikuti jadwal, jadi yang diminta lebih dulu adalah jadwalnya.
+    await expect(page.locator('#toastMessage')).toContainText('Pilih jadwal inspeksi terlebih dahulu');
+    await expect(page.getByTestId('inspection-schedule')).toBeFocused();
     // Tidak berpindah ke dashboard/tab lain, dan tidak ada toast sukses menyusul.
     await expect(page.locator('#panel-form')).toHaveClass(/active/);
 });
@@ -95,7 +96,7 @@ test('foto sungguhan yang diunggah bisa dilihat kembali lewat lightbox (bukan pl
     await loginViaUi(page, 'arif');
     await goToTab(page, 'Buat Inspeksi');
 
-    await selectPlant(page, PLANT_SEARCH_PLACEHOLDER, 'Packing');
+    await chooseNewSchedule(page, 'arif', 'Packing'); // laporan wajib dari jadwal (migrasi 008); plant mengikuti jadwal
     await page.getByPlaceholder('Contoh: Kabel terbuka').fill('E2E: verifikasi upload foto sungguhan');
     await page.locator('#kategoriInput').selectOption('Kelistrikan'); // kategori wajib dipilih
     await page.locator('#panel-form').getByRole('button', { name: 'Tambah' }).click();
@@ -141,7 +142,7 @@ test('kegagalan API (500) saat submit menampilkan pesan aman, bukan detail error
         }
     });
 
-    await selectPlant(page, PLANT_SEARCH_PLACEHOLDER, 'Logistic');
+    await chooseNewSchedule(page, 'arif', 'Logistic'); // laporan wajib dari jadwal (migrasi 008); plant mengikuti jadwal
     await page.getByPlaceholder('Contoh: Kabel terbuka').fill('E2E: simulasi kegagalan backend');
     await page.locator('#kategoriInput').selectOption('Kelistrikan'); // kategori wajib dipilih
     await page.locator('#panel-form').getByRole('button', { name: 'Tambah' }).click();

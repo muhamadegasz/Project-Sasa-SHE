@@ -28,6 +28,61 @@ export function isRealized(schedule) {
     return Boolean(schedule && schedule.tanggalRealisasi);
 }
 
+// =========================================================================
+// Jadwal <-> laporan inspeksi (migrasi 008)
+// =========================================================================
+
+/**
+ * Hasil repository bila tautan jadwal ditolak database (kunci UNIQUE
+ * inspections.schedule_id, atau jadwal berubah di dalam transaksi pengajuan).
+ */
+export const SCHEDULE_CONFLICT = 'SCHEDULE_CONFLICT';
+
+const normalizeName = (value) => String(value ?? '').trim().toLowerCase();
+
+/**
+ * Apakah jadwal ditugaskan ke Safety Officer ini: officer_user_id DAN nama
+ * petugas jadwal sama dengan akunnya. Nama ikut diperiksa karena sebelum
+ * perbaikan ini POST /api/schedules mengisi officer_user_id dengan PEMBUAT
+ * jadwal, bukan petugasnya — jadwal lama yang dibuat untuk orang lain tidak
+ * boleh dianggap milik pembuatnya. Jadwal baru menyalin nama dari akun.
+ */
+export function isAssignedTo(schedule, officerUserId, officerName) {
+    return Boolean(schedule) && schedule.officerUserId != null
+        && Number(schedule.officerUserId) === Number(officerUserId)
+        && normalizeName(schedule.officer) === normalizeName(officerName);
+}
+
+/**
+ * Memeriksa apakah laporan inspeksi boleh ditautkan ke jadwal ini. Murni —
+ * pemanggil memuat jadwal dari repository (data server, bukan isian).
+ * `inspectionId` = laporan yang sedang disimpan (null untuk yang baru):
+ * tautan ke dirinya sendiri tetap sah, termasuk setelah jadwal Terlaksana
+ * (revisi & ajukan ulang mempertahankan tautan aslinya).
+ *
+ * @returns {{ value: schedule } | { error: 'NOT_FOUND' | 'NOT_ASSIGNED' | 'PLANT_MISMATCH' | 'ALREADY_LINKED' | 'ALREADY_REALIZED' }}
+ */
+export function checkScheduleLink(schedule, { officerUserId, officerName, plantId, inspectionId = null }) {
+    if (!schedule) return { error: 'NOT_FOUND' };
+    if (!isAssignedTo(schedule, officerUserId, officerName)) return { error: 'NOT_ASSIGNED' };
+    if (Number(schedule.plantId) !== Number(plantId)) return { error: 'PLANT_MISMATCH' };
+    const ownLink = inspectionId != null && schedule.inspectionId === inspectionId;
+    if (schedule.inspectionId && !ownLink) return { error: 'ALREADY_LINKED' };
+    if (isRealized(schedule) && !ownLink) return { error: 'ALREADY_REALIZED' };
+    return { value: schedule };
+}
+
+/**
+ * Jadwal yang bisa dipilih Safety Officer di form Buat Inspeksi: miliknya,
+ * belum Terlaksana, belum tertaut laporan. Kenyamanan UI — server memeriksa
+ * ulang lewat checkScheduleLink().
+ */
+export function eligibleSchedulesFor(schedules, user) {
+    if (!user) return [];
+    return schedules.filter((schedule) => isAssignedTo(schedule, user.id, user.displayName)
+        && !isRealized(schedule) && !schedule.inspectionId);
+}
+
 /**
  * Apakah jadwal terlewat: tanggalnya sudah lewat tetapi belum terlaksana.
  *

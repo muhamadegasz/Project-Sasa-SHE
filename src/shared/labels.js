@@ -20,6 +20,7 @@ const ROLE_LABELS = {
     [ROLE.SAFETY_OFFICER]: 'Safety Officer',
     [ROLE.KOORDINATOR_K3L]: 'Koordinator K3L',
     [ROLE.MANAJER_BAGIAN]: 'Manajer Bagian',
+    [ROLE.MANAJER_SHE]: 'Manajer SHE',
     [ROLE.KETUA_P2K3]: 'Ketua P2K3',
     [ROLE.ADMIN]: 'Administrator',
 };
@@ -67,15 +68,16 @@ export function formatInspectionStatusDetail(inspection) {
 }
 
 /**
- * Ringkasan pengesahan: "(3/3)" atau "2/3".
+ * Ringkasan pengesahan: "(4/4)" atau "2/4" — hanya tahap yang dilalui
+ * inspeksi itu (applicableStages; inspeksi lama tanpa Manajer SHE: "(3/3)").
  *
  * Dipakai di tabel inspeksi, modal perbaikan, dan ketiga jalur ekspor Excel.
  */
 export function formatApprovalStatus(inspection) {
     if (isFullyApproved(inspection)) {
-        return `(${totalStages()}/${totalStages()})`;
+        return `(${totalStages(inspection)}/${totalStages(inspection)})`;
     }
-    return `${countApproved(inspection)}/${totalStages()}`;
+    return `${countApproved(inspection)}/${totalStages(inspection)}`;
 }
 
 /* Phase 16.2 (U-03): sebelumnya nilai status yang sama ditulis dengan tiga

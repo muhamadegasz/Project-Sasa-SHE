@@ -81,7 +81,7 @@ test('gating navigasi: tab Admin hanya untuk Admin, "Buat Inspeksi" hanya untuk 
     await expect(page.locator('#panel-admin')).not.toHaveClass(/active/);
     await expect(page.locator('#panel-dashboard')).toHaveClass(/active/);
 
-    for (const username of ['dewi', 'andi', 'hadi']) {
+    for (const username of ['dewi', 'andi', 'sari', 'hadi']) {
         await switchAccountWithoutReload(page, username);
         await expect(nav(page, 'Admin'), username).toBeHidden();
         await expect(nav(page, 'Buat Inspeksi'), username).toBeHidden();
@@ -223,6 +223,10 @@ test('buat pengguna: terbaru di atas; setelah berhasil pencarian dikosongkan, ke
 
     // Buat akun dari halaman 2 dengan pencarian aktif -> pencarian kosong, halaman 1, akun baru terlihat.
     await page.getByTestId('add-user-btn').click();
+    // Enam role, urut tingkatan pengesahan (Manajer SHE di antara Manajer Bagian dan Ketua P2K3).
+    await expect(modal.getByLabel('Role').locator('option')).toHaveText([
+        'Safety Officer', 'Koordinator K3L', 'Manajer Bagian', 'Manajer SHE', 'Ketua P2K3', 'Administrator',
+    ]);
     await modal.getByLabel('Username').fill(username);
     await modal.getByLabel('Nama Tampilan').fill('Petugas Baru');
     await modal.getByLabel('Kata Sandi').fill(username);

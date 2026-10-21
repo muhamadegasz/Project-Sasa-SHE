@@ -12,6 +12,7 @@ import { readFileSync } from 'node:fs';
 
 import * as plantFake from '../fakes/plant-repository.js';
 import * as inspectionFake from '../fakes/inspection-repository.js';
+import * as scheduleFake from '../fakes/schedule-repository.js';
 import * as approvalService from '../../src/services/approval-service.js';
 import * as inspectionService from '../../src/services/inspection-service.js';
 import { FINDING_CATEGORIES, FINDING_CATEGORY_OTHER } from '../../src/config/constants.js';
@@ -26,11 +27,16 @@ const SIGNATURE = { method: 'upload', mimeType: 'image/png', size: 2048, file: '
 beforeEach(() => {
     plantFake.__seed([{ id: 9, name: 'Logistic', code: 'LOG' }, { id: 16, name: 'Utility', code: 'UTL' }]);
     inspectionFake.__seed([]);
+    scheduleFake.__seed([]);
+    draftScheduleId = null;
 });
 
-const content = (temuan, overrides = {}) => ({ plantId: '9', tanggal: '2026-09-29', dueDate: '2026-10-10', temuan, ...overrides });
+// Migrasi 008: laporan baru wajib bertautan jadwal; isian ubah draft membawa jadwal draft terakhir.
+let draftScheduleId = null;
+const content = (temuan, overrides = {}) => ({ plantId: '9', tanggal: '2026-09-29', dueDate: '2026-10-10', scheduleId: draftScheduleId, temuan, ...overrides });
 
 async function createDraft(temuan) {
+    draftScheduleId = scheduleFake.__scheduleFor({ officerUserId: owner.id, officer: 'Arif', plantId: 9 });
     const result = await inspectionService.create({ ...content(temuan), petugas: 'Arif', petugasUserId: owner.id });
     assert.equal(result.ok, true, JSON.stringify(result));
     return result.data.inspection;

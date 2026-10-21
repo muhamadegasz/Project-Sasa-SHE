@@ -8,10 +8,8 @@
 
 import { API } from './support/env.js';
 import { test, expect } from './support/test.js';
-import { loginViaUi, goToTab, selectPlant, allInspeksiRow } from './support/ui.js';
+import { loginViaUi, goToTab, chooseNewSchedule, allInspeksiRow } from './support/ui.js';
 import { apiLogin, approveViaApi, createInspectionFixture } from './support/api.js';
-
-const PLANT_SEARCH_PLACEHOLDER = 'Cari plant... (ketik nama plant)';
 
 async function fetchAs(session, id) {
     const res = await session.context.get(`${API}/inspections/${id}`);
@@ -78,7 +76,7 @@ test('buat: tanpa kategori bawaan; "Lainnya" memunculkan field wajib; kategori b
     await expect(rows.nth(1).getByTestId('finding-category')).toHaveText('Lainnya · Ergonomi');
     await expect(otherGroup).toBeHidden();
 
-    await selectPlant(page, PLANT_SEARCH_PLACEHOLDER, 'Electrical dan Instrument');
+    await chooseNewSchedule(page, 'arif', 'Electrical dan Instrument'); // laporan wajib dari jadwal (migrasi 008); plant mengikuti jadwal
     await page.getByTestId('inspection-date').fill(new Date().toISOString().slice(0, 10));
     await page.getByRole('button', { name: 'Simpan Draft' }).click();
     await expect(page.locator('#toastMessage')).toContainText('berhasil disimpan', { timeout: 15_000 });

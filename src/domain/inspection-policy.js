@@ -96,6 +96,13 @@ export function visibilityScope(user) {
             { statuses: [COMPLETED] },
             approvedByReviewer(user, APPROVAL_STAGE.MANAJER),
         ];
+    case ROLE.MANAJER_SHE:
+        // Sama dengan Manajer Bagian (lintas plant), untuk tahapnya sendiri.
+        return [
+            { statuses: [IN_REVIEW], currentApprovalStage: APPROVAL_STAGE.MANAJER_SHE },
+            { statuses: [COMPLETED] },
+            approvedByReviewer(user, APPROVAL_STAGE.MANAJER_SHE),
+        ];
     case ROLE.KETUA_P2K3:
         return [
             { statuses: [IN_REVIEW], currentApprovalStage: APPROVAL_STAGE.KETUA_P2K3 },

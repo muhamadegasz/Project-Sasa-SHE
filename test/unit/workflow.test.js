@@ -11,7 +11,9 @@ import { INSPECTION_STATUS } from '../../src/domain/statuses.js';
 import {
     approvedState, canTransition, firstStageId, nextStageId, rejectedState, submittedState,
 } from '../../src/domain/workflow-rules.js';
-import { buildDecisionRecord, isStageApproved, latestDecision, nextAttempt, totalStages } from '../../src/domain/approval-rules.js';
+import {
+    applicableStages, buildDecisionRecord, countApproved, isStageApproved, latestDecision, nextAttempt, totalStages,
+} from '../../src/domain/approval-rules.js';
 import { SIGNATURE_EXTENSIONS, SIGNATURE_MAX_BYTES, checkSignature } from '../../src/domain/signature-rules.js';
 import { detectImageType } from '../../src/presentation/components/signature-pad.js';
 import {
@@ -20,7 +22,7 @@ import {
 } from '../../src/domain/inspection-policy.js';
 
 const { DRAFT, IN_REVIEW, REVISION_REQUIRED, COMPLETED } = INSPECTION_STATUS;
-const { KOORDINATOR_K3L, MANAJER, KETUA_P2K3 } = APPROVAL_STAGE;
+const { KOORDINATOR_K3L, MANAJER, MANAJER_SHE, KETUA_P2K3 } = APPROVAL_STAGE;
 
 const officer = { id: 1, role: ROLE.SAFETY_OFFICER };
 const otherOfficer = { id: 2, role: ROLE.SAFETY_OFFICER };
@@ -28,6 +30,7 @@ const koordinatorPlant1 = { id: 5, role: ROLE.KOORDINATOR_K3L, plantId: 1 };
 const koordinatorPlant9 = { id: 6, role: ROLE.KOORDINATOR_K3L, plantId: 9 };
 const koordinatorNoPlant = { id: 9, role: ROLE.KOORDINATOR_K3L, plantId: null };
 const manajer = { id: 7, role: ROLE.MANAJER_BAGIAN, plantId: null };
+const manajerShe = { id: 12, role: ROLE.MANAJER_SHE };
 const ketua = { id: 8, role: ROLE.KETUA_P2K3 };
 const admin = { id: 10, role: ROLE.ADMIN };
 
@@ -39,17 +42,20 @@ function inspection(overrides = {}) {
 // Tahap pengesahan
 // =========================================================================
 
-test('tahap: tepat tiga, urut Koordinator -> Manajer -> Ketua, Safety Officer bukan tahap', () => {
-    assert.deepEqual(APPROVAL_STAGES.map((stage) => stage.id), [KOORDINATOR_K3L, MANAJER, KETUA_P2K3]);
-    assert.equal(totalStages(), 3);
+test('tahap: tepat empat, urut Koordinator -> Manajer Bagian -> Manajer SHE -> Ketua, Safety Officer bukan tahap', () => {
+    assert.deepEqual(APPROVAL_STAGES.map((stage) => stage.id), [KOORDINATOR_K3L, MANAJER, MANAJER_SHE, KETUA_P2K3]);
+    assert.deepEqual(APPROVAL_STAGES.map((stage) => stage.role), [ROLE.KOORDINATOR_K3L, ROLE.MANAJER_BAGIAN, ROLE.MANAJER_SHE, ROLE.KETUA_P2K3]);
+    assert.deepEqual(APPROVAL_STAGES.map((stage) => stage.order), [1, 2, 3, 4]);
+    assert.equal(totalStages(), 4);
     assert.ok(!APPROVAL_STAGES.some((stage) => stage.role === ROLE.SAFETY_OFFICER), 'Safety Officer bukan pemilik tahap mana pun');
     assert.ok(!APPROVAL_STAGES.some((stage) => stage.role === ROLE.ADMIN), 'Admin bukan pemilik tahap mana pun');
 });
 
-test('tahap: Koordinator -> Manajer -> Ketua -> selesai (null)', () => {
+test('tahap: Koordinator -> Manajer Bagian -> Manajer SHE -> Ketua -> selesai (null)', () => {
     assert.equal(firstStageId(), KOORDINATOR_K3L);
     assert.equal(nextStageId(KOORDINATOR_K3L), MANAJER);
-    assert.equal(nextStageId(MANAJER), KETUA_P2K3);
+    assert.equal(nextStageId(MANAJER), MANAJER_SHE);
+    assert.equal(nextStageId(MANAJER_SHE), KETUA_P2K3);
     assert.equal(nextStageId(KETUA_P2K3), null);
 });
 
@@ -90,7 +96,8 @@ test('submit tidak sah dari IN_REVIEW atau COMPLETED', () => {
 
 test('approve: maju ke tahap berikutnya; approve tahap terakhir -> COMPLETED', () => {
     assert.deepEqual(approvedState(inspection({ currentApprovalStage: KOORDINATOR_K3L })), { status: IN_REVIEW, currentApprovalStage: MANAJER });
-    assert.deepEqual(approvedState(inspection({ currentApprovalStage: MANAJER })), { status: IN_REVIEW, currentApprovalStage: KETUA_P2K3 });
+    assert.deepEqual(approvedState(inspection({ currentApprovalStage: MANAJER })), { status: IN_REVIEW, currentApprovalStage: MANAJER_SHE });
+    assert.deepEqual(approvedState(inspection({ currentApprovalStage: MANAJER_SHE })), { status: IN_REVIEW, currentApprovalStage: KETUA_P2K3 });
     assert.deepEqual(approvedState(inspection({ currentApprovalStage: KETUA_P2K3 })), { status: COMPLETED, currentApprovalStage: null });
 });
 
@@ -161,7 +168,7 @@ test('plant: Manajer tidak dibatasi cakupan plant Koordinator', () => {
 // =========================================================================
 
 test('role: Safety Officer tidak bisa menyetujui tahap mana pun, walau pemilik', () => {
-    for (const stage of [KOORDINATOR_K3L, MANAJER, KETUA_P2K3]) {
+    for (const stage of [KOORDINATOR_K3L, MANAJER, MANAJER_SHE, KETUA_P2K3]) {
         assert.equal(canApprove(officer, inspection({ currentApprovalStage: stage })), false);
         assert.equal(canReject(officer, inspection({ currentApprovalStage: stage })), false);
     }
@@ -180,8 +187,20 @@ test('role: Ketua tidak bisa menyetujui inspeksi di tahap Manajer', () => {
     assert.ok(canApprove(ketua, inspection({ currentApprovalStage: KETUA_P2K3 })));
 });
 
-test('role: Admin bukan tahap pengesahan — tidak bisa menyetujui/menolak di tahap mana pun', () => {
+test('role: Manajer SHE hanya memutuskan tahapnya sendiri (lintas plant); Manajer Bagian & Ketua tidak bisa memutuskan tahap Manajer SHE', () => {
+    for (const plantId of [1, 9, 14]) {
+        assert.ok(canApprove(manajerShe, inspection({ plantId, currentApprovalStage: MANAJER_SHE })), `plant ${plantId}`);
+        assert.ok(canReject(manajerShe, inspection({ plantId, currentApprovalStage: MANAJER_SHE })), `plant ${plantId}`);
+    }
     for (const stage of [KOORDINATOR_K3L, MANAJER, KETUA_P2K3]) {
+        assert.equal(canApprove(manajerShe, inspection({ currentApprovalStage: stage })), false, stage);
+    }
+    assert.equal(canApprove(manajer, inspection({ currentApprovalStage: MANAJER_SHE })), false);
+    assert.equal(canApprove(ketua, inspection({ currentApprovalStage: MANAJER_SHE })), false);
+});
+
+test('role: Admin bukan tahap pengesahan — tidak bisa menyetujui/menolak di tahap mana pun', () => {
+    for (const stage of [KOORDINATOR_K3L, MANAJER, MANAJER_SHE, KETUA_P2K3]) {
         assert.equal(canApprove(admin, inspection({ currentApprovalStage: stage })), false);
         assert.equal(canReject(admin, inspection({ currentApprovalStage: stage })), false);
     }
@@ -238,6 +257,14 @@ test('visibilitas: Manajer/Ketua hanya tahapnya sendiri + yang selesai', () => {
     assert.ok(canView(ketua, inspection({ currentApprovalStage: KETUA_P2K3 })));
     assert.equal(canView(ketua, inspection({ currentApprovalStage: MANAJER })), false);
     assert.ok(canView(ketua, inspection({ status: COMPLETED, currentApprovalStage: null, plantId: 14 })));
+    assert.ok(canView(manajerShe, inspection({ currentApprovalStage: MANAJER_SHE, plantId: 14 })));
+    assert.ok(canView(manajerShe, inspection({ status: COMPLETED, currentApprovalStage: null, plantId: 9 })));
+    for (const stage of [KOORDINATOR_K3L, MANAJER, KETUA_P2K3]) {
+        assert.equal(canView(manajerShe, inspection({ currentApprovalStage: stage })), false, stage);
+    }
+    assert.equal(canView(manajer, inspection({ currentApprovalStage: MANAJER_SHE })), false);
+    assert.equal(canView(ketua, inspection({ currentApprovalStage: MANAJER_SHE })), false);
+    assert.equal(canView(manajerShe, inspection({ status: REVISION_REQUIRED, currentApprovalStage: MANAJER_SHE })), false, 'revisi milik Safety Officer');
 });
 
 test('Admin: melihat semua non-draft, boleh menghapus termasuk yang IN_REVIEW, bukan draft', () => {
@@ -416,4 +443,37 @@ test('detectImageType (browser): PNG/JPEG dari byte awal; lainnya null — tidak
     }
     assert.equal(detectImageType(new Uint8Array(png.slice(0, 8))), null, 'terlalu pendek');
     assert.equal(detectImageType(null), null);
+});
+
+test('riwayat: Manajer SHE yang menyetujui tetap melihat di tahap Ketua (hanya-baca); Manajer SHE lain tidak', () => {
+    const atKetua = inspection({ currentApprovalStage: KETUA_P2K3, approvalHistory: [decided(KOORDINATOR_K3L, koordinatorPlant1), decided(MANAJER, manajer), decided(MANAJER_SHE, manajerShe)] });
+    assertReadOnly(manajerShe, atKetua, 'tahap Ketua');
+    assert.equal(canView({ id: 99, role: ROLE.MANAJER_SHE }, atKetua), false, 'Manajer SHE lain');
+});
+
+test('tahap yang dilalui: inspeksi baru melalui keempat tahap; inspeksi yang sudah melewati titik Manajer SHE sebelum tahap itu ada tidak (data tidak diubah)', () => {
+    const ids = (item) => applicableStages(item).map((stage) => stage.id);
+    const all = [KOORDINATOR_K3L, MANAJER, MANAJER_SHE, KETUA_P2K3];
+    const legacy = [KOORDINATOR_K3L, MANAJER, KETUA_P2K3];
+    assert.deepEqual(ids(undefined), all);
+    assert.deepEqual(ids(inspection({ status: DRAFT, currentApprovalStage: null })), all);
+    for (const stage of [KOORDINATOR_K3L, MANAJER, MANAJER_SHE]) assert.deepEqual(ids(inspection({ currentApprovalStage: stage })), all, stage);
+
+    // Lama: sudah di Ketua / ditolak Ketua / selesai — tanpa keputusan Manajer SHE.
+    const before = [decided(KOORDINATOR_K3L, koordinatorPlant1), decided(MANAJER, manajer)];
+    const atKetua = inspection({ currentApprovalStage: KETUA_P2K3, approvalHistory: before });
+    assert.deepEqual(ids(atKetua), legacy);
+    assert.deepEqual(ids(inspection({ status: REVISION_REQUIRED, currentApprovalStage: KETUA_P2K3, approvalHistory: before })), legacy);
+    const completedLegacy = inspection({ status: COMPLETED, currentApprovalStage: null, approvalHistory: [...before, decided(KETUA_P2K3, ketua)] });
+    assert.deepEqual(ids(completedLegacy), legacy);
+    assert.deepEqual([countApproved(completedLegacy), totalStages(completedLegacy)], [3, 3]);
+    assert.deepEqual([countApproved(atKetua), totalStages(atKetua)], [2, 3]);
+
+    // Baru: melalui Manajer SHE -> empat tahap, termasuk saat selesai.
+    const withShe = [...before, decided(MANAJER_SHE, manajerShe)];
+    assert.deepEqual(ids(inspection({ currentApprovalStage: KETUA_P2K3, approvalHistory: withShe })), all);
+    const completedNew = inspection({ status: COMPLETED, currentApprovalStage: null, approvalHistory: [...withShe, decided(KETUA_P2K3, ketua)] });
+    assert.deepEqual([countApproved(completedNew), totalStages(completedNew)], [4, 4]);
+    // Hanya tahap yang ditambahkan belakangan yang bisa tidak berlaku; tahap lain selalu tampil.
+    assert.deepEqual(ids(inspection({ status: COMPLETED, currentApprovalStage: null, approvalHistory: [] })), legacy);
 });

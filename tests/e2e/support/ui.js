@@ -106,3 +106,32 @@ export async function expectToastOnTop(page, text) {
         return element.contains(topmost);
     }), { message: 'toast harus berada paling atas, tidak tertutup halaman login' }).toBe(true);
 }
+
+/**
+ * Migrasi 008: laporan baru wajib berasal dari jadwal Safety Officer yang
+ * login. Membuat jadwal untuk `username` di plant `plantName` lewat API, lalu
+ * memilihnya di form Buat Inspeksi (tab dibuka ulang supaya pilihan jadwal
+ * dimuat ulang — isian form lain tidak dikosongkan). Plant mengikuti jadwal.
+ * @returns id jadwal ("SCH-nnn")
+ */
+export async function chooseNewSchedule(page, username, plantName) {
+    const { apiLogin } = await import('./api.js');
+    const session = await apiLogin(username);
+    try {
+        const plants = await (await session.context.get('/api/plants')).json();
+        const plant = plants.find((item) => item.name === plantName);
+        if (!plant) throw new Error(`chooseNewSchedule: plant "${plantName}" tidak ada`);
+        const res = await session.context.post('/api/schedules', {
+            headers: { 'X-CSRF-Token': session.csrfToken },
+            data: { plantId: plant.id, officerUserId: session.user.id, tahun: 2026, tanggalJadwal: '2026-12-21', periode: 4, minggu: 4 },
+        });
+        if (res.status() !== 201) throw new Error(`chooseNewSchedule gagal: HTTP ${res.status()} ${await res.text()}`);
+        const scheduleId = (await res.json()).schedule.id;
+        await goToTab(page, 'Buat Inspeksi');
+        await page.getByTestId('inspection-schedule').selectOption(scheduleId);
+        await expect(page.locator('#plantSearchInput')).toHaveValue(plantName);
+        return scheduleId;
+    } finally {
+        await session.context.dispose();
+    }
+}

@@ -4,7 +4,7 @@
  * (memanggil service, lalu membuka ulang modal ini) TETAP di legacy-app.js —
  * itu controller, bukan view; lihat docs/DECISIONS.md K-12.
  *
- * Phase 17.2: tiga tahap, dibaca dari riwayat append-only
+ * Phase 17.2: tahap pengesahan (empat sejak migrasi 007), dibaca dari riwayat append-only
  * (item.approvalHistory) dan tahap berjalan (item.currentApprovalStage).
  * Tombol aksi tetap hanya muncul di tahap yang sedang menunggu, untuk siapa
  * pun — penyembunyian berdasar role adalah UI Phase 17.3; wewenangnya sudah
@@ -18,8 +18,9 @@
 import { escapeHtml } from '../../shared/html.js';
 import { formatDate } from '../../shared/date.js';
 import { formatInspectionStatus } from '../../shared/labels.js';
-import { APPROVAL_STAGES } from '../../config/constants.js';
-import { isStageApproved, latestDecision, nextAttempt, stageDecisions, totalStages } from '../../domain/approval-rules.js';
+import {
+    applicableStages, isStageApproved, latestDecision, nextAttempt, stageDecisions, totalStages,
+} from '../../domain/approval-rules.js';
 import { isAwaitingStage } from '../../domain/workflow-rules.js';
 import { APPROVAL_DECISION, INSPECTION_STATUS } from '../../domain/statuses.js';
 import * as inspectionRepository from '../../repositories/inspection-repository.js';
@@ -123,7 +124,7 @@ export function canDecideCurrentStage(user, item) {
 export function renderApprovalStages(item, user = getCurrentUser(), { readOnly = false } = {}) {
     return `
         <div class="approval-stages">
-            ${APPROVAL_STAGES.map((stage) => {
+            ${applicableStages(item).map((stage) => {
                 const latest = latestDecision(item, stage.id);
                 const isAwaiting = isAwaitingStage(item, stage.id);
                 const isRejectedAwaitingRevision = item.status === INSPECTION_STATUS.REVISION_REQUIRED
@@ -234,7 +235,7 @@ export async function openApprovalModal(inspeksiId) {
             </div>
 
             <div class="detail-section">
-                <div class="section-title"><i class="fas fa-stamp"></i> Tahap Pengesahan (${totalStages()} Tahap)</div>
+                <div class="section-title"><i class="fas fa-stamp"></i> Tahap Pengesahan (${totalStages(item)} Tahap)</div>
                 ${renderApprovalStages(item)}
             </div>
 

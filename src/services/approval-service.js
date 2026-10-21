@@ -4,7 +4,7 @@
  * inspection-policy) dengan data dari repository. Tidak menyentuh DOM, tidak
  * menampilkan toast, tidak me-render apa pun.
  *
- * Phase 17.2: tiga tahap (Koordinator K3L -> Manajer -> Ketua P2K3), riwayat
+ * Phase 17.2: tahap Koordinator K3L -> Manajer Bagian -> Manajer SHE (migrasi 007) -> Ketua P2K3, riwayat
  * append-only, tahap yang berjalan disimpan di inspection.currentApprovalStage.
  * Service ini dipakai di browser (umpan balik cepat) DAN di server (otoritatif)
  * — server selalu memeriksa ulang, apa pun hasil pemeriksaan di browser.

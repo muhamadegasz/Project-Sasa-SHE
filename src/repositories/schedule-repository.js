@@ -61,3 +61,18 @@ export async function remove(id) {
 export async function count() {
     return (await getAll()).length;
 }
+
+/**
+ * Migrasi 008: akun Safety Officer aktif yang bisa ditugaskan sebagai petugas
+ * jadwal (GET /api/schedules/officers — hanya role pengelola jadwal). Bentuk
+ * minimal { id, displayName }, bukan daftar akun Admin.
+ */
+export async function listAssignableOfficers() {
+    return apiGet('/schedules/officers');
+}
+
+/** Satu akun Safety Officer aktif berdasarkan id, atau undefined. Server memeriksa ulang. */
+export async function findAssignableOfficer(id) {
+    const officers = await listAssignableOfficers();
+    return officers.find((officer) => Number(officer.id) === Number(id));
+}

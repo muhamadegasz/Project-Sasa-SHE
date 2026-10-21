@@ -368,7 +368,10 @@
     box-shadow: 0 0 0 3px rgba(198, 40, 40, 0.15);
 }
 
-.inspection-form .form-group input[readonly] {
+.inspection-form .form-group input[readonly],
+.inspection-form .form-group input:disabled,
+.inspection-form .form-group select:disabled,
+#jadwalModal .form-group input[readonly] {
     background: #f7f4f4;
     color: #5a4a4a;
 }
@@ -517,4 +520,15 @@
 .inspection-form .form-actions .btn-text {
     margin-top: 0;
     padding: 0.7rem 0.6rem;
+}
+
+/* Keterangan singkat di bawah field (migrasi 008: jadwal inspeksi, tanggal realisasi). */
+.field-hint {
+    margin-top: 0.3rem;
+    font-size: 0.7rem;
+    color: #8a6a6a;
+}
+
+.field-hint-warning {
+    color: #b31b1b;
 }

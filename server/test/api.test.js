@@ -131,8 +131,8 @@ test('GET /api/users hanya boleh admin', async () => {
     const admin = await loginAs('admin');
     const asAdmin = await admin.agent.get('/api/users');
     assert.equal(asAdmin.status, 200);
-    // 9 sejak Phase 17.2: Koordinator kedua (rina, plant 9) untuk menguji cakupan plant.
-    assert.equal(asAdmin.body.length, 9);
+    // 9 sejak Phase 17.2 (Koordinator kedua, rina), 10 sejak migrasi 007 (Manajer SHE, sari).
+    assert.equal(asAdmin.body.length, 10);
 });
 
 /**
@@ -140,8 +140,22 @@ test('GET /api/users hanya boleh admin', async () => {
  * mengajukannya lewat endpoint submit, karena kebanyakan test butuh inspeksi
  * yang sudah IN_REVIEW.
  */
+/**
+ * Migrasi 008: laporan baru wajib bertautan jadwal milik petugasnya — jadwal
+ * baru dibuat untuk petugas ini di plant yang sama kecuali test memberi
+ * `scheduleId` sendiri.
+ */
+async function scheduleForOfficer(officer, plantId) {
+    const res = await withCsrf(officer.agent.post('/api/schedules'), officer.csrfToken)
+        .send({ plantId, officerUserId: officer.user.id, tahun: 2026, tanggalJadwal: '2026-11-16', periode: 4, minggu: 3 });
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    return res.body.schedule.id;
+}
+
 async function createInspection(officer, overrides = {}, { submit = true } = {}) {
+    const scheduleId = 'scheduleId' in overrides ? overrides.scheduleId : await scheduleForOfficer(officer, overrides.plantId ?? 1);
     const res = await withCsrf(officer.agent.post('/api/inspections'), officer.csrfToken).send({
+        scheduleId,
         plantId: 1,
         keteranganLokasi: 'Gudang B',
         tanggal: '2026-09-20',
@@ -178,6 +192,7 @@ test('alur penuh (Phase 17.2): ajukan -> Koordinator -> Manajer -> Ketua -> COMP
     const rina = await loginAs('rina'); // koordinator plant 9
     const andi = await loginAs('andi');
     const hadi = await loginAs('hadi');
+    const sari = await loginAs('sari'); // Manajer SHE
     const admin = await loginAs('admin');
 
     // 1. Safety Officer membuat inspeksi — petugas dipaksa dari sesi; status dari
@@ -254,8 +269,15 @@ test('alur penuh (Phase 17.2): ajukan -> Koordinator -> Manajer -> Ketua -> COMP
         .send({ action: 'X', status: 'open', pic: 'Y', photos: ['a.jpg'] });
     assert.equal(wrongRoleAction.status, 403);
 
-    // 8. Manajer lalu Ketua -> COMPLETED.
+    // 8. Manajer Bagian -> Manajer SHE -> Ketua -> COMPLETED; tidak ada yang bisa melompati Manajer SHE.
     assert.equal((await decide(andi, id, 'approve', { stageId: 'manajer' })).status, 200);
+    assert.equal((await arif.agent.get(`/api/inspections/${id}`)).body.currentApprovalStage, 'manajer_she');
+    assert.equal((await decide(hadi, id, 'approve', { stageId: 'ketua_p2k3' })).status, 404, 'Ketua belum melihat tahap Manajer SHE');
+    const andiOnShe = await decide(andi, id, 'approve', { stageId: 'manajer_she' });
+    assert.deepEqual([andiOnShe.status, andiOnShe.body.error], [403, 'FORBIDDEN'], 'Manajer Bagian bukan pemilik tahap Manajer SHE');
+    const approveShe = await decide(sari, id, 'approve', { stageId: 'manajer_she' });
+    assert.equal(approveShe.status, 200);
+    assert.equal(approveShe.body.fullyApproved, false);
     const approveKetua = await decide(hadi, id, 'approve', { stageId: 'ketua_p2k3' });
     assert.equal(approveKetua.status, 200);
     assert.equal(approveKetua.body.fullyApproved, true);
@@ -264,7 +286,7 @@ test('alur penuh (Phase 17.2): ajukan -> Koordinator -> Manajer -> Ketua -> COMP
     assert.equal(completed.status, 'completed');
     assert.equal(completed.currentApprovalStage, null);
     assert.deepEqual(completed.approvalHistory.map((entry) => [entry.stage, entry.decision]),
-        [['koordinator_k3l', 'approved'], ['manajer', 'approved'], ['ketua_p2k3', 'approved']]);
+        [['koordinator_k3l', 'approved'], ['manajer', 'approved'], ['manajer_she', 'approved'], ['ketua_p2k3', 'approved']]);
 
     // 9. COMPLETED bersifat final: pemilik pun tidak bisa lagi menambah tindakan perbaikan.
     const afterCompleted = await withCsrf(arif.agent.post(`/api/inspections/${id}/corrective-actions`), arif.csrfToken)
@@ -331,15 +353,17 @@ test('jadwal: buat, update, hapus (hapus hanya admin)', async () => {
     const arif = await loginAs('arif');
     const admin = await loginAs('admin');
 
+    const tulus = await loginAs('tulus');
     const created = await withCsrf(arif.agent.post('/api/schedules'), arif.csrfToken)
-        .send({ plantId: 1, officer: 'Arif', tahun: 2026, tanggalJadwal: '2026-11-01', periode: 4, minggu: 1 });
+        .send({ plantId: 1, officerUserId: arif.user.id, tahun: 2026, tanggalJadwal: '2026-11-01', periode: 4, minggu: 1 });
     assert.equal(created.status, 201);
     const scheduleId = created.body.schedule.id;
 
+    // Migrasi 008: petugas = akun; nama selalu dari akun, bukan dari isian.
     const updated = await withCsrf(arif.agent.put(`/api/schedules/${scheduleId}`), arif.csrfToken)
-        .send({ plantId: 1, officer: 'Arif Diubah', tahun: 2026, tanggalJadwal: '2026-11-02', periode: 4, minggu: 1 });
+        .send({ plantId: 1, officerUserId: tulus.user.id, officer: 'Nama Palsu', tahun: 2026, tanggalJadwal: '2026-11-02', periode: 4, minggu: 1 });
     assert.equal(updated.status, 200);
-    assert.equal(updated.body.schedule.officer, 'Arif Diubah');
+    assert.deepEqual([updated.body.schedule.officer, updated.body.schedule.officerUserId], ['Tulus', tulus.user.id]);
 
     const deleteAsOfficer = await withCsrf(arif.agent.delete(`/api/schedules/${scheduleId}`), arif.csrfToken);
     assert.equal(deleteAsOfficer.status, 403);
@@ -351,38 +375,49 @@ test('jadwal: buat, update, hapus (hapus hanya admin)', async () => {
     assert.ok(!getDeleted.body.some((s) => s.id === scheduleId));
 });
 
-test('jadwal: tanggal realisasi (opsional) tersimpan "YYYY-MM-DD" dan bisa dikosongkan; Admin boleh membuat & mengubah', async () => {
+test('jadwal (migrasi 008): petugas = akun Safety Officer aktif yang DITUGASKAN (bukan pembuat); tanggal realisasi/status dari isian diabaikan; Admin boleh membuat & mengubah', async () => {
     const arif = await loginAs('arif');
     const admin = await loginAs('admin');
-    const body = { plantId: 8, officer: 'Arif', tahun: 2026, tanggalJadwal: '2026-11-01', periode: 4, minggu: 2 };
-    const scheduleOf = async (id) => (await arif.agent.get('/api/schedules')).body.find((s) => s.id === id);
+    const body = { plantId: 8, officerUserId: arif.user.id, tahun: 2026, tanggalJadwal: '2026-11-01', periode: 4, minggu: 2 };
+    const scheduleRow = async (displayId) => (await pool.query(
+        'SELECT officer, officer_user_id, status, tanggal_realisasi FROM schedules WHERE id = ?', [toNumeric(displayId)]))[0][0];
 
-    // Persis bentuk kiriman form (input date kosong -> "").
-    const created = await withCsrf(arif.agent.post('/api/schedules'), arif.csrfToken).send({ ...body, tanggalRealisasi: '' });
+    // Admin membuat jadwal untuk Arif: officer_user_id = Arif, bukan Admin pembuatnya.
+    const created = await withCsrf(admin.agent.post('/api/schedules'), admin.csrfToken).send({ ...body, tanggalRealisasi: '2026-11-03', status: 'selesai' });
     assert.equal(created.status, 201, JSON.stringify(created.body));
     const id = created.body.schedule.id;
-    assert.equal((await scheduleOf(id)).tanggalRealisasi, null, 'tanpa realisasi -> NULL');
+    assert.deepEqual(await scheduleRow(id), { officer: 'Arif', officer_user_id: arif.user.id, status: 'aktif', tanggal_realisasi: null });
 
-    const realized = await withCsrf(arif.agent.put(`/api/schedules/${id}`), arif.csrfToken).send({ ...body, tanggalRealisasi: '2026-11-03' });
-    assert.equal(realized.status, 200, JSON.stringify(realized.body));
-    assert.deepEqual(
-        (({ tanggalJadwal, tanggalRealisasi, minggu, periode, tahun, plantId }) => ({ tanggalJadwal, tanggalRealisasi, minggu, periode, tahun, plantId }))(await scheduleOf(id)),
-        { tanggalJadwal: '2026-11-01', tanggalRealisasi: '2026-11-03', minggu: 2, periode: 4, tahun: 2026, plantId: 8 },
-        'tersimpan di database, bukan hanya di respons',
-    );
+    const edited = await withCsrf(arif.agent.put(`/api/schedules/${id}`), arif.csrfToken).send({ ...body, tanggalJadwal: '2026-11-05', tanggalRealisasi: '2026-11-06' });
+    assert.equal(edited.status, 200);
+    assert.deepEqual(await scheduleRow(id), { officer: 'Arif', officer_user_id: arif.user.id, status: 'aktif', tanggal_realisasi: null });
+    assert.equal((await arif.agent.get('/api/schedules')).body.find((row) => row.id === id).tanggalJadwal, '2026-11-05');
 
-    const cleared = await withCsrf(arif.agent.put(`/api/schedules/${id}`), arif.csrfToken).send({ ...body, tanggalRealisasi: '' });
-    assert.equal(cleared.status, 200);
-    assert.equal((await scheduleOf(id)).tanggalRealisasi, null, 'realisasi boleh dikosongkan lagi');
+    // Petugas harus akun Safety Officer AKTIF: Admin/Koordinator/akun tidak ada/nonaktif/teks -> 400 OFFICER_INVALID.
+    const inactive = await createOfficer(admin);
+    await putActive(admin, inactive.id, false);
+    const dewi = await loginAs('dewi');
+    for (const officerUserId of [admin.user.id, dewi.user.id, 999999, inactive.id, 'Arif']) {
+        const res = await withCsrf(admin.agent.post('/api/schedules'), admin.csrfToken).send({ ...body, officerUserId });
+        assert.deepEqual([res.status, res.body.error], [400, 'OFFICER_INVALID'], String(officerUserId));
+    }
+    const missing = await withCsrf(admin.agent.post('/api/schedules'), admin.csrfToken).send({ ...body, officerUserId: undefined, officer: 'Arif' });
+    assert.deepEqual([missing.status, missing.body.error], [400, 'OFFICER_REQUIRED'], 'nama teks saja tidak cukup');
 
-    const byAdmin = await withCsrf(admin.agent.put(`/api/schedules/${id}`), admin.csrfToken).send({ ...body, tanggalRealisasi: '2026-11-04' });
-    assert.equal(byAdmin.status, 200);
-    assert.equal((await scheduleOf(id)).tanggalRealisasi, '2026-11-04');
+    // Pilihan petugas: hanya role pengelola jadwal; isinya hanya Safety Officer aktif, bentuk minimal.
+    const officers = await arif.agent.get('/api/schedules/officers');
+    assert.equal(officers.status, 200);
+    assert.ok(officers.body.some((officer) => officer.id === arif.user.id && officer.displayName === 'Arif'));
+    assert.ok(!officers.body.some((officer) => [admin.user.id, dewi.user.id, inactive.id].includes(officer.id)));
+    assert.deepEqual(Object.keys(officers.body[0]).sort(), ['displayName', 'id']);
+    for (const username of ['dewi', 'andi', 'hadi']) {
+        assert.equal((await (await loginAs(username)).agent.get('/api/schedules/officers')).status, 403, username);
+    }
 });
 
 test('jadwal: Koordinator, Manajer, Ketua -> 403 FORBIDDEN untuk membuat & mengubah (otorisasi tidak berubah); data tidak tersentuh', async () => {
     const arif = await loginAs('arif');
-    const body = { plantId: 1, officer: 'Arif', tahun: 2026, tanggalJadwal: '2026-11-01', periode: 4, minggu: 1, tanggalRealisasi: '' };
+    const body = { plantId: 1, officerUserId: arif.user.id, tahun: 2026, tanggalJadwal: '2026-11-01', periode: 4, minggu: 1, tanggalRealisasi: '' };
     const created = await withCsrf(arif.agent.post('/api/schedules'), arif.csrfToken).send(body);
     const id = created.body.schedule.id;
     const [[{ total: before }]] = await pool.query('SELECT COUNT(*) AS total FROM schedules');
@@ -420,6 +455,7 @@ test('jadwal: Koordinator, Manajer, Ketua -> 403 FORBIDDEN untuk membuat & mengu
 /** Inspeksi dengan satu foto sungguhan (multipart) di plant tertentu. */
 async function createInspectionWithPhoto(officer, plantId) {
     const res = await withCsrf(officer.agent.post('/api/inspections'), officer.csrfToken)
+        .field('scheduleId', await scheduleForOfficer(officer, plantId))
         .field('plantId', String(plantId))
         .field('keteranganLokasi', `visibilitas plant ${plantId}`)
         .field('tanggal', '2026-09-20')
@@ -597,16 +633,18 @@ test('visibilitas riwayat: penyetuju tetap melihat (daftar, detail, foto, tanda 
     const rina = await loginAs('rina'); // koordinator plant 9
     const andi = await loginAs('andi');
     const hadi = await loginAs('hadi');
+    const sari = await loginAs('sari');
 
     const inspection = await createInspectionWithPhoto(arif, 1);
     const photoId = inspection.fotoDekat[0].id;
     assert.equal((await decide(dewi, inspection.id, 'approve', { stageId: 'koordinator_k3l' })).status, 200);
     assert.equal((await decide(andi, inspection.id, 'approve', { stageId: 'manajer' })).status, 200);
+    assert.equal((await decide(sari, inspection.id, 'approve', { stageId: 'manajer_she' })).status, 200);
     const read = async () => (await arif.agent.get(`/api/inspections/${inspection.id}`)).body;
     const [dewiApproval] = (await read()).approvalHistory;
 
-    // Tahap Ketua: kedua penyetuju melihat semuanya; Koordinator plant lain tidak.
-    for (const [label, session] of [['dewi', dewi], ['andi', andi]]) {
+    // Tahap Ketua: ketiga penyetuju melihat semuanya; Koordinator plant lain tidak.
+    for (const [label, session] of [['dewi', dewi], ['andi', andi], ['sari', sari]]) {
         await assertVisible(session, inspection.id, `${label}, tahap Ketua`);
         assert.equal(await photoStatus(session, photoId), 200, `${label}: foto`);
         assert.equal((await getSignature(session, inspection.id, dewiApproval.id)).status, 200, `${label}: tanda tangan`);
@@ -620,18 +658,21 @@ test('visibilitas riwayat: penyetuju tetap melihat (daftar, detail, foto, tanda 
         ['dewi approve tahap Ketua', dewi, 'approve', 'ketua_p2k3', 403, 'FORBIDDEN'],
         ['andi approve ulang', andi, 'approve', 'manajer', 400, 'STAGE_NOT_CURRENT'],
         ['andi reject tahap Ketua', andi, 'reject', 'ketua_p2k3', 403, 'FORBIDDEN'],
+        ['sari approve ulang', sari, 'approve', 'manajer_she', 400, 'STAGE_NOT_CURRENT'],
+        ['sari approve tahap Ketua', sari, 'approve', 'ketua_p2k3', 403, 'FORBIDDEN'],
     ]) {
         const res = await decide(session, inspection.id, action, { stageId, reason: 'Bukan wewenang' });
         assert.deepEqual([res.status, res.body.error], [status, error], label);
     }
     const untouched = await read();
-    assert.equal(untouched.approvalHistory.length, 2, 'tidak ada keputusan tambahan');
+    assert.equal(untouched.approvalHistory.length, 3, 'tidak ada keputusan tambahan');
     assert.deepEqual([untouched.status, untouched.currentApprovalStage], ['in_review', 'ketua_p2k3']);
 
     // Ketua menolak -> REVISION_REQUIRED: penyetuju tetap melihat; Ketua (hanya menolak) tidak.
     assert.equal((await decide(hadi, inspection.id, 'reject', { stageId: 'ketua_p2k3', reason: 'Lengkapi foto' })).status, 200);
     await assertVisible(dewi, inspection.id, 'dewi, REVISION_REQUIRED');
     await assertVisible(andi, inspection.id, 'andi, REVISION_REQUIRED');
+    await assertVisible(sari, inspection.id, 'sari, REVISION_REQUIRED');
     await assertHidden(hadi, inspection.id, 'penolak tanpa persetujuan');
     const whileRevising = await decide(andi, inspection.id, 'approve', { stageId: 'ketua_p2k3' });
     assert.deepEqual([whileRevising.status, whileRevising.body.error], [400, 'NOT_IN_REVIEW']);
@@ -817,8 +858,18 @@ test('visibilitas tindakan perbaikan: draft/revisi SO lain tidak bisa dibaca ata
 // approve/reject. Setiap aksi juga diuji lewat akses LANGSUNG by id (IDOR).
 // =========================================================================
 
-function putDraft(session, id, body) {
-    return withCsrf(session.agent.put(`/api/inspections/${id}`), session.csrfToken).send(body);
+/**
+ * Migrasi 008: menyimpan draft wajib membawa jadwalnya. Bila test tidak
+ * menyebut `scheduleId`, jadwal yang sudah tertaut ikut dikirim apa adanya
+ * (sama seperti form, yang selalu mengirim pilihan jadwal yang sedang terisi).
+ */
+async function putDraft(session, id, body) {
+    let payload = body;
+    if (!('scheduleId' in body)) {
+        const [[row]] = await pool.query('SELECT schedule_id FROM inspections WHERE id = ?', [toNumeric(id)]);
+        if (row && row.schedule_id) payload = { ...body, scheduleId: `SCH-${String(row.schedule_id).padStart(3, '0')}` };
+    }
+    return withCsrf(session.agent.put(`/api/inspections/${id}`), session.csrfToken).send(payload);
 }
 
 const DRAFT_CONTENT = {
@@ -896,6 +947,7 @@ test('ubah draft: hanya pemilik; status tetap DRAFT; temuan diperbarui/ditambah/
 
     // Foto baru lewat multipart ditambahkan ke draft.
     const withPhoto = await withCsrf(arif.agent.put(`/api/inspections/${draft.id}`), arif.csrfToken)
+        .field('scheduleId', draft.scheduleId)
         .field('plantId', '1').field('tanggal', '2026-09-21').field('dueDate', '2026-10-05')
         .field('temuan', JSON.stringify(DRAFT_CONTENT.temuan))
         .attach('fotoDekat', FIXTURE_JPEG);
@@ -978,11 +1030,12 @@ test('revisi: tolak -> REVISION_REQUIRED (tahap tetap) -> pemilik merevisi -> aj
         [['koordinator_k3l', 1, 'approved'], ['manajer', 1, 'rejected']], 'tidak ada keputusan baru sampai peninjau memutuskan');
 
     assert.equal((await decide(andi, inspection.id, 'approve', { stageId: 'manajer' })).status, 200);
+    assert.equal((await decide(await loginAs('sari'), inspection.id, 'approve', { stageId: 'manajer_she' })).status, 200);
     assert.equal((await decide(hadi, inspection.id, 'approve', { stageId: 'ketua_p2k3' })).status, 200);
     const completed = (await arif.agent.get(`/api/inspections/${inspection.id}`)).body;
     assert.equal(completed.status, 'completed');
     assert.deepEqual(completed.approvalHistory.map((entry) => [entry.stage, entry.attempt, entry.decision]), [
-        ['koordinator_k3l', 1, 'approved'], ['manajer', 1, 'rejected'], ['manajer', 2, 'approved'], ['ketua_p2k3', 1, 'approved'],
+        ['koordinator_k3l', 1, 'approved'], ['manajer', 1, 'rejected'], ['manajer', 2, 'approved'], ['manajer_she', 1, 'approved'], ['ketua_p2k3', 1, 'approved'],
     ], 'attempt 1 tidak ditimpa');
 });
 
@@ -995,6 +1048,7 @@ test('hapus draft: hanya pemilik & hanya DRAFT; file fotonya ikut dihapus dari d
     const deleteAs = (session, id) => withCsrf(session.agent.delete(`/api/inspections/${id}`), session.csrfToken);
 
     const created = await withCsrf(arif.agent.post('/api/inspections'), arif.csrfToken)
+        .field('scheduleId', await scheduleForOfficer(arif, 1))
         .field('plantId', '1').field('tanggal', '2026-09-21')
         .field('temuan', JSON.stringify(DRAFT_CONTENT.temuan))
         .attach('fotoDekat', FIXTURE_JPEG);
@@ -1218,6 +1272,7 @@ test('approve bertanda tangan: UPLOAD PNG/JPEG & CANVAS PNG diterima; format ter
     assert.equal(byDewi.status, 200, JSON.stringify(byDewi.body));
     // Nama .jpg + MIME klien image/jpeg, tapi isinya PNG -> disimpan sebagai PNG.
     assert.equal((await approveWith(andi, inspection.id, 'manajer', { file: PNG_BYTES, filename: 'ttd.jpg', contentType: 'image/jpeg' })).status, 200);
+    assert.equal((await approveWith(await loginAs('sari'), inspection.id, 'manajer_she')).status, 200);
     // Kanvas: Blob PNG tanpa nama/MIME yang berarti.
     const byHadi = await approveWith(hadi, inspection.id, 'ketua_p2k3', { method: 'canvas', filename: 'blob', contentType: 'application/octet-stream' });
     assert.equal(byHadi.status, 200);
@@ -1225,7 +1280,8 @@ test('approve bertanda tangan: UPLOAD PNG/JPEG & CANVAS PNG diterima; format ter
 
     const rows = await approvalRows(inspection.id);
     assert.deepEqual(rows.map((row) => [row.stage, row.signature_method, row.signature_mime_type, row.legacy_unsigned]), [
-        ['koordinator_k3l', 'upload', 'image/jpeg', 0], ['manajer', 'upload', 'image/png', 0], ['ketua_p2k3', 'canvas', 'image/png', 0],
+        ['koordinator_k3l', 'upload', 'image/jpeg', 0], ['manajer', 'upload', 'image/png', 0], ['manajer_she', 'upload', 'image/png', 0],
+        ['ketua_p2k3', 'canvas', 'image/png', 0],
     ]);
     assert.deepEqual([rows[0].reviewer_user_id, rows[0].reviewer_name], [dewi.user.id, 'Dewi'], 'identitas dari sesi, bukan isian');
     for (const row of rows) {
@@ -1235,7 +1291,7 @@ test('approve bertanda tangan: UPLOAD PNG/JPEG & CANVAS PNG diterima; format ter
     assert.ok(rows[0].signature_file_path.endsWith('.jpg'));
     assert.ok(rows[1].signature_file_path.endsWith('.png'), 'ekstensi dari isi berkas, bukan dari nama .jpg');
     assert.deepEqual(readFileSync(path.join(UPLOAD_DIR, rows[2].signature_file_path)), PNG_BYTES);
-    assert.equal(new Set(rows.map((row) => row.signature_file_path)).size, 3, 'satu berkas per keputusan');
+    assert.equal(new Set(rows.map((row) => row.signature_file_path)).size, 4, 'satu berkas per keputusan');
 
     const detail = await arif.agent.get(`/api/inspections/${inspection.id}`);
     assert.deepEqual(detail.body.approvalHistory.map((entry) => [entry.id, entry.signatureMethod, entry.hasSignature]),
@@ -1270,6 +1326,7 @@ test('penyajian tanda tangan: hanya lewat visibilitas inspeksi; id keputusan teb
         'Koordinator plant lain tetap tidak bisa');
 
     assert.equal((await approveWith(andi, inspection.id, 'manajer')).status, 200);
+    assert.equal((await approveWith(await loginAs('sari'), inspection.id, 'manajer_she')).status, 200);
     assert.equal((await approveWith(hadi, inspection.id, 'ketua_p2k3', { method: 'canvas' })).status, 200);
     assert.equal((await getSignature(dewi, inspection.id, dewiApproval.id)).status, 200, 'COMPLETED di plant-nya: terlihat lagi');
     assert.equal((await getSignature(admin, inspection.id, dewiApproval.id)).status, 200);
@@ -1458,16 +1515,18 @@ test('watermark: tanpa field / nonaktif -> tersimpan nonaktif tanpa posisi; akti
         method: 'canvas', extraFields: { watermarkEnabled: 'true', watermarkX: '0.25', watermarkY: '0.8123' },
     });
     assert.equal(withWatermark.status, 200, JSON.stringify(withWatermark.body));
+    assert.equal((await approveWith(await loginAs('sari'), inspection.id, 'manajer_she')).status, 200);
     assert.equal((await approveWith(hadi, inspection.id, 'ketua_p2k3', { extraFields: { watermarkEnabled: 'false' } })).status, 200);
 
     assert.deepEqual(await watermarkRows(inspection.id), [
         ['koordinator_k3l', 0, null, null],
         ['manajer', 1, '0.2500', '0.8123'],
+        ['manajer_she', 0, null, null],
         ['ketua_p2k3', 0, null, null],
     ]);
     const detail = await arif.agent.get(`/api/inspections/${inspection.id}`);
     assert.deepEqual(detail.body.approvalHistory.map((entry) => [entry.stage, entry.watermark]), [
-        ['koordinator_k3l', null], ['manajer', { x: 0.25, y: 0.8123 }], ['ketua_p2k3', null],
+        ['koordinator_k3l', null], ['manajer', { x: 0.25, y: 0.8123 }], ['manajer_she', null], ['ketua_p2k3', null],
     ]);
     // Watermark hanya metadata: berkas tanda tangan yang tersimpan = berkas yang dikirim.
     const stored = await getSignature(arif, inspection.id, detail.body.approvalHistory[1].id);
@@ -1720,7 +1779,7 @@ test('users: hapus permanen — hanya akun nonaktif tanpa inspeksi belum selesai
     const inspection = await createInspectionWithPhoto(officer, 1);
     const draft = await createInspection(officer, DRAFT_CONTENT, { submit: false });
     const schedule = await withCsrf(officer.agent.post('/api/schedules'), officer.csrfToken)
-        .send({ plantId: 1, officer: 'Petugas Dihapus', tahun: 2026, tanggalJadwal: '2026-11-01', periode: 4, minggu: 1 });
+        .send({ plantId: 1, officerUserId: officerId, tahun: 2026, tanggalJadwal: '2026-11-01', periode: 4, minggu: 1 });
     assert.equal(schedule.status, 201);
     assert.equal((await approveWith(coordinator, inspection.id, 'koordinator_k3l')).status, 200);
 
@@ -1741,6 +1800,8 @@ test('users: hapus permanen — hanya akun nonaktif tanpa inspeksi belum selesai
     await putActive(admin, officerId, false);
     assert.equal((await deleteUser(admin, officerId)).body.error, 'USER_HAS_OPEN_INSPECTIONS', 'masih ada yang sedang direview');
     assert.equal((await approveWith(andi, inspection.id, 'manajer')).status, 200);
+    const sari = await loginAs('sari');
+    assert.equal((await approveWith(sari, inspection.id, 'manajer_she')).status, 200);
     assert.equal((await approveWith(hadi, inspection.id, 'ketua_p2k3')).status, 200);
 
     const id = toNumeric(inspection.id);
@@ -1774,7 +1835,8 @@ test('users: hapus permanen — hanya akun nonaktif tanpa inspeksi belum selesai
     assert.deepEqual(scheduleRow, { officer: 'Petugas Dihapus', officer_user_id: null });
     const [approvalRowsAfter] = await pool.query('SELECT stage, reviewer_user_id, reviewer_name FROM approvals WHERE inspection_id = ? ORDER BY id', [id]);
     assert.deepEqual(approvalRowsAfter.map((row) => [row.stage, row.reviewer_user_id, row.reviewer_name]), [
-        ['koordinator_k3l', null, 'Koordinator Dihapus'], ['manajer', andi.user.id, 'Andi'], ['ketua_p2k3', hadi.user.id, 'Hadi'],
+        ['koordinator_k3l', null, 'Koordinator Dihapus'], ['manajer', andi.user.id, 'Andi'], ['manajer_she', sari.user.id, 'Sari'],
+        ['ketua_p2k3', hadi.user.id, 'Hadi'],
     ]);
 
     // Riwayat tetap terbaca lewat API, termasuk tanda tangan keputusan milik akun yang dihapus.
@@ -1846,9 +1908,9 @@ test('Admin menghapus inspeksi non-draft: data turunan (CASCADE) + berkas foto &
     const admin = await loginAs('admin');
     const deleteAs = (session, id) => withCsrf(session.agent.delete(`/api/inspections/${id}`), session.csrfToken);
 
-    // Target: selesai disahkan (foto + 3 tanda tangan). Pembanding: inspeksi lain dengan foto + tanda tangan.
+    // Target: selesai disahkan (foto + 4 tanda tangan). Pembanding: inspeksi lain dengan foto + tanda tangan.
     const target = await createInspectionWithPhoto(arif, 1);
-    for (const [session, stage] of [[dewi, 'koordinator_k3l'], [andi, 'manajer'], [hadi, 'ketua_p2k3']]) {
+    for (const [session, stage] of [[dewi, 'koordinator_k3l'], [andi, 'manajer'], [await loginAs('sari'), 'manajer_she'], [hadi, 'ketua_p2k3']]) {
         assert.equal((await approveWith(session, target.id, stage)).status, 200);
     }
     const sibling = await createInspectionWithPhoto(arif, 1);
@@ -1952,7 +2014,7 @@ test('status tindakan perbaikan: hanya pemilik — SO lain / reviewer / Admin / 
     assert.equal((await putActionStatus(arif, inspection.id, 999999, 'closed')).status, 404);
     assert.deepEqual([(await actionRow(actionId)).status, (await actionRow(otherActionId)).status], ['open', 'open']);
 
-    for (const [session, stage] of [[dewi, 'koordinator_k3l'], [andi, 'manajer'], [hadi, 'ketua_p2k3']]) {
+    for (const [session, stage] of [[dewi, 'koordinator_k3l'], [andi, 'manajer'], [await loginAs('sari'), 'manajer_she'], [hadi, 'ketua_p2k3']]) {
         assert.equal((await approveWith(session, inspection.id, stage)).status, 200);
     }
     const locked = await putActionStatus(arif, inspection.id, actionId, 'closed');
@@ -2017,7 +2079,7 @@ test('kategori tidak valid -> 400 dengan kode jelas (bukan 500 dari ENUM); tidak
     const [[{ total: after }]] = await pool.query('SELECT COUNT(*) AS total FROM inspections');
     assert.equal(after, before);
     const ok = await withCsrf(arif.agent.post('/api/inspections'), arif.csrfToken)
-        .send({ plantId: 1, tanggal: '2026-09-29', temuan: [{ deskripsi: 'x', kategori: 'Lainnya', kategoriLainnya: 'k'.repeat(100) }] });
+        .send({ plantId: 1, scheduleId: await scheduleForOfficer(arif, 1), tanggal: '2026-09-29', temuan: [{ deskripsi: 'x', kategori: 'Lainnya', kategoriLainnya: 'k'.repeat(100) }] });
     assert.equal(ok.status, 201, 'tepat 100 karakter diterima');
 });
 
@@ -2060,4 +2122,241 @@ test('ubah draft & revisi: "Lainnya" -> baku mengosongkan penjelasan; penjelasan
     assert.deepEqual([resubmitted.status, resubmitted.currentApprovalStage], ['in_review', 'manajer']);
     assert.deepEqual((await findingRows(draft.id)).map(({ id, kategori, kategori_lainnya: other }) => [id, kategori, other]),
         [[chair.id, 'Lainnya', 'Ergonomi'], [legacyStairs.id, 'Lainnya', null]]);
+});
+
+// =========================================================================
+// Migrasi 007 — Manajer SHE: tahap ke-3 dari 4
+// =========================================================================
+
+test('Manajer SHE: tahapnya sendiri + yang selesai, lintas plant; Admin bisa membuat akunnya; inspeksi yang sudah di tahap Ketua sebelum migrasi tetap di Ketua', async () => {
+    const admin = await loginAs('admin');
+    const arif = await loginAs('arif');
+    const dewi = await loginAs('dewi');
+    const rina = await loginAs('rina');
+    const andi = await loginAs('andi');
+    const hadi = await loginAs('hadi');
+    const sari = await loginAs('sari');
+
+    // Akun Manajer SHE dibuat Admin: role sah, tanpa plant (normalisasi), bisa login.
+    const username = uniqueUsername('she');
+    const created = await postUser(admin, { username, displayName: 'Manajer SHE Baru', role: 'manajer_she', plantId: 1, password: username });
+    assert.equal(created.status, 201, JSON.stringify(created.body));
+    assert.deepEqual([created.body.user.role, created.body.user.plantId], ['manajer_she', null]);
+    assert.equal((await loginAs(username)).user.role, 'manajer_she');
+
+    // Plant 1 dan plant 9: Manajer SHE tidak dibatasi plant; hanya setelah Manajer Bagian menyetujui.
+    const plant1 = await createInspection(arif, { plantId: 1 });
+    const plant9 = await createInspection(arif, { plantId: 9 });
+    await assertHidden(sari, plant1.id, 'tahap Koordinator');
+    for (const [item, koordinator] of [[plant1, dewi], [plant9, rina]]) {
+        assert.equal((await approveWith(koordinator, item.id, 'koordinator_k3l')).status, 200);
+        await assertHidden(sari, item.id, 'tahap Manajer Bagian');
+        assert.equal((await approveWith(andi, item.id, 'manajer')).status, 200);
+        await assertVisible(sari, item.id, 'tahap Manajer SHE');
+        await assertHidden(hadi, item.id, 'Ketua belum gilirannya');
+    }
+    // Menolak: kembali ke Safety Officer, diajukan ulang ke tahap Manajer SHE (tahap yang menolak).
+    const rejected = await decide(sari, plant9.id, 'reject', { stageId: 'manajer_she', reason: 'Lengkapi foto area' });
+    assert.equal(rejected.status, 200);
+    await submitInspection(arif, plant9.id);
+    assert.equal((await arif.agent.get(`/api/inspections/${plant9.id}`)).body.currentApprovalStage, 'manajer_she');
+    assert.equal((await approveWith(sari, plant1.id, 'manajer_she')).status, 200);
+    await assertVisible(sari, plant1.id, 'riwayat persetujuannya di tahap Ketua');
+    await assertVisible(hadi, plant1.id, 'tahap Ketua');
+
+    // Data lama: inspeksi yang sudah di tahap Ketua sebelum migrasi 007 (tanpa keputusan
+    // Manajer SHE) tidak dipindah — Ketua memutuskan langsung, riwayatnya tetap tiga tahap.
+    const legacy = await createInspection(arif, { plantId: 1 });
+    assert.equal((await approveWith(dewi, legacy.id, 'koordinator_k3l')).status, 200);
+    assert.equal((await approveWith(andi, legacy.id, 'manajer')).status, 200);
+    await pool.query("UPDATE inspections SET current_approval_stage = 'ketua_p2k3' WHERE id = ?", [toNumeric(legacy.id)]); // keadaan pra-migrasi
+    await assertHidden(sari, legacy.id, 'sudah melewati titik Manajer SHE');
+    assert.equal((await approveWith(hadi, legacy.id, 'ketua_p2k3')).status, 200);
+    const done = (await arif.agent.get(`/api/inspections/${legacy.id}`)).body;
+    assert.equal(done.status, 'completed');
+    assert.deepEqual(done.approvalHistory.map((entry) => entry.stage), ['koordinator_k3l', 'manajer', 'ketua_p2k3']);
+});
+
+// =========================================================================
+// Migrasi 008 — laporan inspeksi tertaut ke jadwal inspeksinya
+// =========================================================================
+
+async function createScheduleFor(session, officer, overrides = {}) {
+    const res = await withCsrf(session.agent.post('/api/schedules'), session.csrfToken)
+        .send({ plantId: 1, officerUserId: officer.user.id, tahun: 2026, tanggalJadwal: '2026-11-02', periode: 4, minggu: 1, ...overrides });
+    assert.equal(res.status, 201, JSON.stringify(res.body));
+    return res.body.schedule.id;
+}
+async function scheduleState(displayId) {
+    const [[row]] = await pool.query(
+        "SELECT status, DATE_FORMAT(tanggal_realisasi, '%Y-%m-%d') AS realisasi FROM schedules WHERE id = ?", [toNumeric(displayId)]);
+    return row;
+}
+async function linkedScheduleOf(inspectionId) {
+    const [[row]] = await pool.query('SELECT schedule_id FROM inspections WHERE id = ?', [toNumeric(inspectionId)]);
+    return row.schedule_id;
+}
+const TODAY = async () => (await pool.query("SELECT DATE_FORMAT(CURDATE(), '%Y-%m-%d') AS d"))[0][0].d;
+
+test('jadwal -> laporan: draft menyimpan tautan tanpa menandai jadwal; pengajuan menautkan & menandai Terlaksana dalam satu transaksi; pengesahan tetap terpisah', async () => {
+    const arif = await loginAs('arif');
+    const admin = await loginAs('admin');
+    const dewi = await loginAs('dewi');
+    const scheduleId = await createScheduleFor(admin, arif);
+
+    const draft = await createInspection(arif, { scheduleId }, { submit: false });
+    assert.equal(draft.scheduleId, scheduleId);
+    assert.equal(await linkedScheduleOf(draft.id), toNumeric(scheduleId));
+    assert.deepEqual(await scheduleState(scheduleId), { status: 'aktif', realisasi: null }, 'draft tidak menandai jadwal');
+    assert.equal((await arif.agent.get('/api/schedules')).body.find((row) => row.id === scheduleId).inspectionId, null, 'tautan draft tidak tampil di daftar jadwal');
+
+    const submitted = await submitInspection(arif, draft.id);
+    assert.deepEqual([submitted.status, submitted.currentApprovalStage, submitted.approvalHistory.length], ['in_review', 'koordinator_k3l', 0]);
+    assert.deepEqual(await scheduleState(scheduleId), { status: 'selesai', realisasi: await TODAY() });
+    const listed = (await dewi.agent.get('/api/schedules')).body.find((row) => row.id === scheduleId);
+    assert.equal(listed.inspectionId, draft.id, 'jadwal menunjuk laporannya');
+
+    assert.equal((await approveWith(dewi, draft.id, 'koordinator_k3l')).status, 200);
+    assert.deepEqual(await scheduleState(scheduleId), { status: 'selesai', realisasi: await TODAY() }, 'pengesahan tidak mengubah jadwal');
+
+    // Terlaksana = final: tidak bisa diubah/dihapus.
+    const edit = await withCsrf(admin.agent.put(`/api/schedules/${scheduleId}`), admin.csrfToken)
+        .send({ plantId: 1, officerUserId: arif.user.id, tahun: 2026, tanggalJadwal: '2026-11-09', periode: 4, minggu: 2 });
+    assert.deepEqual([edit.status, edit.body.error], [400, 'SCHEDULE_REALIZED']);
+    const del = await withCsrf(admin.agent.delete(`/api/schedules/${scheduleId}`), admin.csrfToken);
+    assert.deepEqual([del.status, del.body.error], [400, 'SCHEDULE_LINKED']);
+});
+
+test('jadwal -> laporan: jadwal SO lain, data lama (id pembuat), plant berbeda, tidak ada, sudah Terlaksana -> 400; tidak ada inspeksi tersimpan', async () => {
+    const arif = await loginAs('arif');
+    const tulus = await loginAs('tulus');
+    const admin = await loginAs('admin');
+    const tulusSchedule = await createScheduleFor(admin, tulus);
+    // Data lama: dibuat Arif untuk Tulus sebelum perbaikan route (officer_user_id = pembuat).
+    const legacy = await createScheduleFor(admin, tulus);
+    await pool.query('UPDATE schedules SET officer_user_id = ? WHERE id = ?', [arif.user.id, toNumeric(legacy)]);
+    const plant8 = await createScheduleFor(admin, arif, { plantId: 8 });
+    const realized = await createScheduleFor(admin, arif);
+    await pool.query("UPDATE schedules SET status = 'selesai', tanggal_realisasi = '2026-10-01' WHERE id = ?", [toNumeric(realized)]);
+
+    const [[{ total: before }]] = await pool.query('SELECT COUNT(*) AS total FROM inspections');
+    for (const [scheduleId, error] of [
+        [tulusSchedule, 'SCHEDULE_NOT_ASSIGNED'], [legacy, 'SCHEDULE_NOT_ASSIGNED'], [plant8, 'SCHEDULE_PLANT_MISMATCH'],
+        ['SCH-999999', 'SCHEDULE_NOT_FOUND'], [realized, 'SCHEDULE_ALREADY_REALIZED'],
+    ]) {
+        const res = await withCsrf(arif.agent.post('/api/inspections'), arif.csrfToken)
+            .send({ plantId: 1, scheduleId, tanggal: '2026-10-21', dueDate: '2026-11-04', temuan: [{ deskripsi: 'X', kategori: 'Kelistrikan' }] });
+        assert.deepEqual([res.status, res.body.error], [400, error], scheduleId);
+    }
+    const [[{ total: after }]] = await pool.query('SELECT COUNT(*) AS total FROM inspections');
+    assert.equal(after, before);
+    assert.deepEqual(await scheduleState(tulusSchedule), { status: 'aktif', realisasi: null });
+
+    // Peran lain tidak bisa membuat/mengajukan laporan sama sekali (route + service).
+    for (const username of ['dewi', 'andi', 'sari', 'hadi', 'admin']) {
+        const session = await loginAs(username);
+        const res = await withCsrf(session.agent.post('/api/inspections'), session.csrfToken)
+            .send({ plantId: 1, scheduleId: tulusSchedule, tanggal: '2026-10-21', temuan: [{ deskripsi: 'X', kategori: 'Kelistrikan' }] });
+        assert.equal(res.status, 403, username);
+    }
+});
+
+test('jadwal -> laporan: dipakai dua draft -> kunci UNIQUE menolak yang kedua; dua pengajuan bersamaan -> tepat satu berhasil, jadwal ditandai sekali; draft bisa mengganti (tidak mengosongkan) jadwal', async () => {
+    const arif = await loginAs('arif');
+    const admin = await loginAs('admin');
+    const scheduleId = await createScheduleFor(admin, arif);
+    const other = await createScheduleFor(admin, arif);
+
+    const first = await createInspection(arif, { scheduleId }, { submit: false });
+    const second = await withCsrf(arif.agent.post('/api/inspections'), arif.csrfToken)
+        .send({ ...DRAFT_CONTENT, scheduleId });
+    assert.deepEqual([second.status, second.body.error], [400, 'SCHEDULE_ALREADY_LINKED']);
+
+    // Draft: mengganti ke jadwal lain lalu kembali; mengosongkan ditolak (jadwal wajib).
+    assert.equal((await putDraft(arif, first.id, { ...DRAFT_CONTENT, scheduleId: other })).status, 200);
+    assert.equal(await linkedScheduleOf(first.id), toNumeric(other));
+    const emptied = await putDraft(arif, first.id, { ...DRAFT_CONTENT, scheduleId: '' });
+    assert.deepEqual([emptied.status, emptied.body.error], [400, 'SCHEDULE_REQUIRED']);
+    assert.equal(await linkedScheduleOf(first.id), toNumeric(other));
+    assert.equal((await putDraft(arif, first.id, { ...DRAFT_CONTENT, scheduleId })).status, 200);
+
+    const [a, b] = await Promise.all([
+        withCsrf(arif.agent.post(`/api/inspections/${first.id}/submit`), arif.csrfToken),
+        withCsrf(arif.agent.post(`/api/inspections/${first.id}/submit`), arif.csrfToken),
+    ]);
+    assert.deepEqual([a.status, b.status].sort(), [200, 400]);
+    const [[{ n }]] = await pool.query('SELECT COUNT(*) AS n FROM inspections WHERE schedule_id = ?', [toNumeric(scheduleId)]);
+    assert.equal(n, 1, 'tidak ada laporan ganda untuk jadwal ini');
+    assert.deepEqual(await scheduleState(scheduleId), { status: 'selesai', realisasi: await TODAY() });
+    assert.deepEqual(await scheduleState(other), { status: 'aktif', realisasi: null });
+});
+
+test('jadwal -> laporan: transaksi pengajuan — jadwal yang tidak lagi cocok membatalkan SELURUH pengajuan (inspeksi tetap DRAFT, tanpa tindakan awal)', async () => {
+    const arif = await loginAs('arif');
+    const tulus = await loginAs('tulus');
+    const admin = await loginAs('admin');
+    const scheduleId = await createScheduleFor(admin, arif);
+    const draft = await createInspection(arif, { scheduleId }, { submit: false });
+
+    // Jadwal dialihkan ke SO lain setelah draft dibuat -> pemeriksaan ulang saat pengajuan menolak.
+    assert.equal((await withCsrf(admin.agent.put(`/api/schedules/${scheduleId}`), admin.csrfToken)
+        .send({ plantId: 1, officerUserId: tulus.user.id, tahun: 2026, tanggalJadwal: '2026-11-02', periode: 4, minggu: 1 })).status, 200);
+    const rejected = await withCsrf(arif.agent.post(`/api/inspections/${draft.id}/submit`), arif.csrfToken);
+    assert.deepEqual([rejected.status, rejected.body.error], [400, 'SCHEDULE_NOT_ASSIGNED']);
+
+    // Penjaga di dalam transaksi (UPDATE bersyarat), tanpa pemeriksaan service: repository langsung.
+    const repository = await import('../repositories/inspection-repository.js');
+    const result = await repository.submit(draft.id, 'draft', { status: 'in_review', currentApprovalStage: 'koordinator_k3l' },
+        [{ findingId: null, action: 'X', status: 'open', pic: 'Arif' }], { scheduleId, officerUserId: arif.user.id, plantId: 1 });
+    assert.equal(result, 'SCHEDULE_CONFLICT');
+    const [[row]] = await pool.query('SELECT status, submitted_at FROM inspections WHERE id = ?', [toNumeric(draft.id)]);
+    assert.deepEqual(row, { status: 'draft', submitted_at: null }, 'status inspeksi ikut dibatalkan');
+    const [[{ actions }]] = await pool.query('SELECT COUNT(*) AS actions FROM corrective_actions WHERE inspection_id = ?', [toNumeric(draft.id)]);
+    assert.equal(actions, 0);
+    assert.deepEqual(await scheduleState(scheduleId), { status: 'aktif', realisasi: null });
+});
+
+test('jadwal -> laporan: revisi mempertahankan tautan asli (isian jadwal diabaikan), ajukan ulang tidak menandai ulang; laporan dihapus Admin -> jadwal belum Terlaksana lagi; laporan baru tanpa jadwal ditolak, data lama tetap jalan', async () => {
+    const arif = await loginAs('arif');
+    const admin = await loginAs('admin');
+    const dewi = await loginAs('dewi');
+    const andi = await loginAs('andi');
+    const scheduleId = await createScheduleFor(admin, arif);
+    const other = await createScheduleFor(admin, arif);
+    const inspection = await createInspection(arif, { scheduleId });
+    const realizedOn = (await scheduleState(scheduleId)).realisasi;
+    await pool.query("UPDATE schedules SET tanggal_realisasi = '2026-10-15' WHERE id = ?", [toNumeric(scheduleId)]); // penanda: tidak boleh ditimpa
+    assert.equal((await approveWith(dewi, inspection.id, 'koordinator_k3l')).status, 200);
+    assert.equal((await decide(andi, inspection.id, 'reject', { stageId: 'manajer', reason: 'Lengkapi foto' })).status, 200);
+
+    const current = (await arif.agent.get(`/api/inspections/${inspection.id}`)).body;
+    const revisedTemuan = current.temuan.map(({ id, deskripsi, kategori }) => ({ id, deskripsi, kategori }));
+    const moved = await putDraft(arif, inspection.id, { ...DRAFT_CONTENT, plantId: 8, temuan: revisedTemuan });
+    assert.deepEqual([moved.status, moved.body.error], [400, 'SCHEDULE_PLANT_MISMATCH']);
+    assert.equal((await putDraft(arif, inspection.id, { ...DRAFT_CONTENT, scheduleId: other, temuan: revisedTemuan })).status, 200);
+    assert.equal(await linkedScheduleOf(inspection.id), toNumeric(scheduleId), 'tautan asli tetap');
+
+    const resubmitted = await submitInspection(arif, inspection.id);
+    assert.deepEqual([resubmitted.status, resubmitted.currentApprovalStage, resubmitted.scheduleId], ['in_review', 'manajer', scheduleId]);
+    assert.deepEqual(await scheduleState(scheduleId), { status: 'selesai', realisasi: '2026-10-15' }, 'ajukan ulang tidak menandai ulang');
+    assert.deepEqual(await scheduleState(other), { status: 'aktif', realisasi: null });
+    assert.ok(realizedOn);
+
+    // Admin menghapus laporannya -> Terlaksana dibatalkan (tidak ada lagi laporan yang membuktikannya).
+    assert.equal((await withCsrf(admin.agent.delete(`/api/inspections/${inspection.id}`), admin.csrfToken)).status, 200);
+    assert.deepEqual(await scheduleState(scheduleId), { status: 'aktif', realisasi: null });
+
+    // Laporan BARU tanpa jadwal ditolak (wajib); data lama (seed tanpa schedule_id) tetap jalan apa adanya.
+    const without = await withCsrf(arif.agent.post('/api/inspections'), arif.csrfToken).send({ ...DRAFT_CONTENT, scheduleId: '' });
+    assert.deepEqual([without.status, without.body.error], [400, 'SCHEDULE_REQUIRED']);
+    const [[{ legacyRows }]] = await pool.query("SELECT COUNT(*) AS legacyRows FROM inspections WHERE schedule_id IS NULL AND id <= 6");
+    assert.equal(legacyRows, 6);
+    const [[legacyInReview]] = await pool.query("SELECT id FROM inspections WHERE schedule_id IS NULL AND status = 'in_review' AND current_approval_stage = 'koordinator_k3l' AND plant_id = 1 AND id <= 6 LIMIT 1");
+    if (legacyInReview) assert.equal((await approveWith(dewi, `INS-${String(legacyInReview.id).padStart(3, '0')}`, 'koordinator_k3l')).status, 200, 'pengesahan data lama tanpa jadwal');
+
+    // Jadwal yang hanya tertaut draft boleh dihapus: tautan draft dilepas (ON DELETE SET NULL), draft tetap.
+    const loose = await createScheduleFor(admin, arif);
+    const draft = await createInspection(arif, { scheduleId: loose }, { submit: false });
+    assert.equal((await withCsrf(admin.agent.delete(`/api/schedules/${loose}`), admin.csrfToken)).status, 200);
+    assert.equal(await linkedScheduleOf(draft.id), null);
 });

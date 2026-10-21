@@ -7,10 +7,9 @@
  */
 
 import { escapeHtml } from '../../shared/html.js';
-import { APPROVAL_STAGES } from '../../config/constants.js';
 import { formatActionStatus, formatInspectionStatus } from '../../shared/labels.js';
 import { formatDate } from '../../shared/date.js';
-import { isStageApproved, latestDecision } from '../../domain/approval-rules.js';
+import { applicableStages, isStageApproved, latestDecision } from '../../domain/approval-rules.js';
 import { INSPECTION_STATUS } from '../../domain/statuses.js';
 import * as inspectionRepository from '../../repositories/inspection-repository.js';
 import { composeSignature } from '../components/watermark.js';
@@ -83,11 +82,13 @@ function buildSignatureImage(approval, signatureImages) {
 }
 
 /**
- * Phase 17.2: satu blok per tahap pengesahan (tiga), dari keputusan terakhirnya.
+ * Phase 17.2: satu blok per tahap pengesahan yang dilalui inspeksi ini
+ * (applicableStages — inspeksi lama tanpa Manajer SHE tidak mendapat blok kosongnya),
+ * dari keputusan terakhirnya.
  * Release: termasuk gambar tanda tangan keputusan itu (+ watermark bila ada).
  */
 function buildApprovalSignatures(item, signatureImages) {
-    return APPROVAL_STAGES.map(s => {
+    return applicableStages(item).map(s => {
         if (isStageApproved(item, s.id)) {
             const approval = latestDecision(item, s.id);
             return `
@@ -126,7 +127,7 @@ export async function prepareSignatureImages(item) {
     const urls = [];
     const images = new Map();
     try {
-        for (const stage of APPROVAL_STAGES) {
+        for (const stage of applicableStages(item)) {
             if (!isStageApproved(item, stage.id)) continue;
             const approval = latestDecision(item, stage.id);
             if (!approval.hasSignature || approval.id == null) continue;

@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { API } from './support/env.js';
 import { test, expect } from './support/test.js';
 import { loginViaUi } from './support/ui.js';
-import { apiLogin, createInspectionFixture } from './support/api.js';
+import { apiLogin, createInspectionFixture, createScheduleFixture } from './support/api.js';
 
 const FIXTURES = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures');
 const PHOTO_JPEG = readFileSync(path.join(FIXTURES, 'e2e-foto-bukti.jpg'));   // 320 x 240
@@ -25,6 +25,7 @@ const PHOTO_URL = /\/api\/inspections\/photos\/\d+\/file$/;
 /** Inspeksi (plant 1) dengan foto sungguhan lewat multipart, lalu diajukan. */
 async function createWithPhotos(session, { dekat = [], jauh = [], plantId = 1 } = {}) {
     const form = new FormData();
+    form.append('scheduleId', await createScheduleFixture(session, { plantId })); // laporan wajib dari jadwal (migrasi 008)
     form.append('plantId', String(plantId));
     form.append('keteranganLokasi', `e2e foto ${Date.now()}`);
     form.append('tanggal', new Date().toISOString().slice(0, 10));
@@ -51,6 +52,7 @@ async function approve(session, inspectionId, stageId, watermark = null) {
 async function completeAll(inspectionId) {
     await approve(await apiLogin('dewi'), inspectionId, 'koordinator_k3l', { x: 0.5, y: 0.5 });
     await approve(await apiLogin('andi'), inspectionId, 'manajer');
+    await approve(await apiLogin('sari'), inspectionId, 'manajer_she');
     await approve(await apiLogin('hadi'), inspectionId, 'ketua_p2k3');
 }
 
@@ -220,7 +222,7 @@ test('PDF: beberapa foto dokumentasi asli tertanam (ukuran asli, bisa berlanjut 
     expect(report.text).toMatch(/Dokumentasi Foto/);
     expect(report.text).toContain('4 foto');
 
-    expect(report.signatures, 'tanda tangan ketiga tahap').toHaveLength(3);
+    expect(report.signatures, 'tanda tangan keempat tahap').toHaveLength(4);
     for (const { src } of report.signatures) expect(src).toMatch(/^blob:/);
     expect(report.signatures[0].red, 'watermark Koordinator tetap tergambar').toBeGreaterThan(50);
     expect(report.text).toContain('Dokumen ini dihasilkan oleh Sistem Informasi K3 SHE Sasa');
@@ -241,7 +243,7 @@ test('PDF: tanpa foto -> "Tidak ada dokumentasi foto." dan PDF tetap valid; foto
     const empty = await readReport(page);
     expect(empty.text).toContain('Tidak ada dokumentasi foto.');
     expect(empty.photos).toHaveLength(0);
-    expect(empty.signatures).toHaveLength(3);
+    expect(empty.signatures).toHaveLength(4);
 
     // INS-001 (seed, milik arif, selesai): baris fotonya ada, berkasnya tidak ada di server.
     const seeded = await (await page.request.get(`${API}/inspections/INS-001`)).json();
